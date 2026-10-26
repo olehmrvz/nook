@@ -56,3 +56,9 @@ panel ignoresMouseEvents is driven by pointer position. Stable signing to keep T
       growing shape), one spring keyed on mode (no bounce on close), no orderOut/orderFront blink.
       Checked with `defaults write dev.nook.app slowMotion -float 10` frame captures.
 - [x] Stable signing identity "Nook Local Signing" created by the user; install.sh falls back to ad-hoc.
+
+## Workspace (2026-10-26)
+- Repo: github.com/olehmrvz/nook (private). Local clone: `~/Developer/agents/Nook`, branches `main` (stable) and
+  `develop` (work). The old copy in the Sandbox worktree `choose/nook/` (commit d3f1e3a) is superseded.
+- Next concrete action: after the user grants Full Disk Access, read `notifications-debug.log` and confirm the
+  notification DB format; then verify calendar data, AirPods island and Cuely voice follow.
