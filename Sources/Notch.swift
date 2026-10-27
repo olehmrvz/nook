@@ -50,10 +50,15 @@ enum Flash: Equatable {
     case noText
     /// Output volume 0…1: the notch widens to "Звук" on the left and a level bar on the right.
     case volume(Float, muted: Bool)
+    /// Built-in display brightness 0…1, same look as the volume.
+    case brightness(Float)
+    /// A Focus mode (Do Not Disturb…) turned on or off.
+    case focus(on: Bool, name: String, symbol: String)
 
     /// Same for every volume level, so the bar moves instead of the slot content being replaced.
     var kind: String {
         if case .volume = self { return "volume" }
+        if case .brightness = self { return "brightness" }
         return String(describing: self)
     }
 }
@@ -142,6 +147,7 @@ final class NotchModel: ObservableObject {
     let mirror = MirrorCamera()
     let caffeine = Caffeine()
     let volume = VolumeControl()
+    let focus = FocusWatcher()
     let updater = Updater()
     /// Opens Nook's menu (the gear in the panel), set by the app delegate.
     var onOpenMenu: (() -> Void)?
@@ -179,7 +185,11 @@ final class NotchModel: ObservableObject {
 
     /// Side slot width: wide for the volume bar, small for icons.
     var slotWidth: CGFloat {
-        if case .volume = flash { return 104 }
+        switch flash {
+        case .volume, .brightness: return 104
+        case .focus: return 132
+        default: break
+        }
         return hasLiveActivity ? Self.slot : 0
     }
 
@@ -211,7 +221,16 @@ final class NotchModel: ObservableObject {
             guard let self, !self.resting, !self.expanded else { return }
             self.show(.volume(level, muted: muted), for: 1.6)
         }
+        volume.onBrightness = { [weak self] level in
+            guard let self, !self.resting, !self.expanded else { return }
+            self.show(.brightness(level), for: 1.6)
+        }
         volume.start()
+        focus.onChange = { [weak self] on, name, symbol in
+            guard let self, !self.resting, Settings.focusHUD else { return }
+            self.show(.focus(on: on, name: name, symbol: symbol), for: 2.5)
+        }
+        focus.start()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }

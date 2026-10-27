@@ -2,11 +2,14 @@ import AppKit
 import AudioToolbox
 import CoreAudio
 
-/// Output volume in the notch. Watches the default output device; with Accessibility access it also takes the
-/// volume keys itself, so the macOS volume HUD does not show next to Nook's.
+/// Volume and brightness in the notch. Watches the default output device; with Accessibility access it also takes
+/// the volume and brightness keys itself, so the macOS HUD does not show next to Nook's.
 final class VolumeControl {
     /// Level 0…1 and mute, on the main thread, whenever the volume changes (keys, menu bar, another app).
     var onChange: ((Float, Bool) -> Void)?
+    /// Built-in display brightness 0…1 after a brightness key (automatic brightness changes show nothing).
+    var onBrightness: ((Float) -> Void)?
+    private var keyMonitor: Any?
 
     private var device = AudioObjectID(kAudioObjectUnknown)
     private var last: (level: Float, muted: Bool)?
@@ -30,6 +33,28 @@ final class VolumeControl {
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutput, .main, listener)
         attach()
         if Settings.volumeHUD { installKeyTap() }
+        if tap == nil && Settings.volumeHUD && !Settings.askedKeyAccess {
+            // Once: macOS shows its own volume/brightness HUD until Nook may take the keys.
+            Settings.askedKeyAccess = true
+            askAccess()
+        }
+        // Access granted later (System Settings): take the keys at once, no restart needed.
+        DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("com.apple.accessibility.api"),
+                                                            object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self?.installKeyTap() }
+        }
+        if tap == nil {
+            // No Accessibility: the keys stay with macOS (its HUD shows too); Nook still shows the new brightness.
+            keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .systemDefined) { [weak self] event in
+                guard let self, Settings.volumeHUD, event.subtype.rawValue == 8 else { return }
+                let key = Int32((event.data1 & 0xFFFF0000) >> 16)
+                guard key == NX_KEYTYPE_BRIGHTNESS_UP || key == NX_KEYTYPE_BRIGHTNESS_DOWN,
+                      (event.data1 & 0xFF00) >> 8 == 0x0A else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if let level = Brightness.level { self.onBrightness?(level) }
+                }
+            }
+        }
     }
 
     /// Follows the current output (speakers, headphones, AirPods). Switching devices shows nothing.
@@ -88,9 +113,17 @@ final class VolumeControl {
         if let after = current { last = after; onChange?(after.level, after.muted) }
     }
 
+    /// Nook handles the volume and brightness keys (the macOS HUD stays hidden).
+    var hasKeys: Bool { tap != nil }
+
+    func askAccess() {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+    }
+
     /// Needs Accessibility; without it the keys stay with macOS and Nook only shows the change.
     private func installKeyTap() {
-        guard tap == nil, AXIsProcessTrusted() else { return }
+        guard tap == nil, Settings.volumeHUD, AXIsProcessTrusted() else { return }
         let mask = CGEventMask(1) << CGEventMask(NX_SYSDEFINED)
         let callback: CGEventTapCallBack = { _, type, event, info in
             guard let info else { return Unmanaged.passUnretained(event) }
@@ -104,18 +137,58 @@ final class VolumeControl {
             }
             let key = Int32((ns.data1 & 0xFFFF0000) >> 16)
             let down = (ns.data1 & 0xFF00) >> 8 == 0x0A
-            guard [NX_KEYTYPE_SOUND_UP, NX_KEYTYPE_SOUND_DOWN, NX_KEYTYPE_MUTE].contains(key) else {
-                return Unmanaged.passUnretained(event)
+            let fine = ns.modifierFlags.contains([.option, .shift])
+            if [NX_KEYTYPE_SOUND_UP, NX_KEYTYPE_SOUND_DOWN, NX_KEYTYPE_MUTE].contains(key) {
+                if down { control.press(key, fine: fine) }
+                return nil
             }
-            if down { control.press(key, fine: ns.modifierFlags.contains([.option, .shift])) }
-            return nil
+            // Brightness: only the built-in display; other displays keep the system behaviour.
+            if (key == NX_KEYTYPE_BRIGHTNESS_UP || key == NX_KEYTYPE_BRIGHTNESS_DOWN), let level = Brightness.level {
+                if down {
+                    let step: Float = fine ? 1 / 64 : 1 / 16
+                    let next = max(0, min(1, ((level + (key == NX_KEYTYPE_BRIGHTNESS_UP ? step : -step)) / step).rounded() * step))
+                    Brightness.set(next)
+                    control.onBrightness?(next)
+                }
+                return nil
+            }
+            return Unmanaged.passUnretained(event)
         }
         guard let port = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
                                            eventsOfInterest: mask, callback: callback,
                                            userInfo: Unmanaged.passUnretained(self).toOpaque()) else { return }
         tap = port
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
         let source = CFMachPortCreateRunLoopSource(nil, port, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
+    }
+}
+
+/// Built-in display brightness through DisplayServices (private, the same calls Control Center uses).
+enum Brightness {
+    private typealias Get = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
+    private typealias Set = @convention(c) (UInt32, Float) -> Int32
+    private static let framework = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW)
+    private static let getter = dlsym(framework, "DisplayServicesGetBrightness").map { unsafeBitCast($0, to: Get.self) }
+    private static let setter = dlsym(framework, "DisplayServicesSetBrightness").map { unsafeBitCast($0, to: Set.self) }
+
+    private static var builtIn: CGDirectDisplayID? {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(16, &ids, &count) == .success else { return nil }
+        return ids.prefix(Int(count)).first { CGDisplayIsBuiltin($0) != 0 }
+    }
+
+    /// nil without a built-in display (lid closed, desktop Mac).
+    static var level: Float? {
+        guard let display = builtIn, let getter else { return nil }
+        var value: Float = 0
+        return getter(display, &value) == 0 ? value : nil
+    }
+
+    static func set(_ value: Float) {
+        guard let display = builtIn, let setter else { return }
+        _ = setter(display, value)
     }
 }

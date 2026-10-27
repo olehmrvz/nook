@@ -288,6 +288,25 @@ struct CollapsedView: View {
             .foregroundStyle(.white.opacity(0.9))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 10)
+        case .focus(let on, let name, let symbol):
+            HStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(on ? Palette.violet.lifted() : .white.opacity(0.6))
+                    .frame(width: 18, alignment: .leading)
+                Text(name).font(.system(size: 12.5, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 10)
+        case .brightness(let level):
+            HStack(spacing: 6) {
+                Image(systemName: level < 0.5 ? "sun.min.fill" : "sun.max.fill").font(.system(size: 12, weight: .medium))
+                    .frame(width: 18, alignment: .leading)
+                Text("Яркость").font(.system(size: 12.5, weight: .medium))
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 10)
         case nil:
             switch model.live {
             case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
@@ -318,6 +337,15 @@ struct CollapsedView: View {
             Image(systemName: "xmark").foregroundStyle(muted)
         case .volume(let level, let muted):
             VolumeBar(level: muted ? 0 : CGFloat(level))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
+        case .focus(let on, _, _):
+            Text(on ? "Вкл" : "Выкл").font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(on ? Palette.violet.lifted() : .white.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 14)
+        case .brightness(let level):
+            VolumeBar(level: CGFloat(level))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
         case nil:

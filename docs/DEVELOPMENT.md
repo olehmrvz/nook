@@ -60,4 +60,7 @@ terminal, not from a process an agent started (an agent must not approve its own
 - **Volume:** `Sources/Volume.swift` watches the default output device (CoreAudio). With Accessibility access it
   also takes the volume keys (event tap on NX_SYSDEFINED), sets the level itself in 1/16 steps (⌥⇧: 1/64), so the
   macOS HUD does not appear. Without access the keys stay with macOS and Nook only shows the change.
+- **Brightness:** built-in display via DisplayServices (private). Shown only after a brightness key, never for
+  automatic brightness. **Focus / Do Not Disturb:** `Sources/Focus.swift` watches `~/Library/DoNotDisturb/DB`
+  (needs Full Disk Access) with file-system events, no polling; `focus-debug.log` records structure only.
 - **Pointer:** event-driven polling; the panel takes the keyboard only for text fields.

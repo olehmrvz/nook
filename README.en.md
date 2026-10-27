@@ -44,7 +44,7 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Calendar and reminders, a "Join" button 5 minutes before a meeting.
 - Timer and Pomodoro, notes, mirror (camera), teleprompter for video.
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
-- Volume shown in the notch instead of the system HUD.
+- Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
 - Weather, battery, choice of display for the notch.
 
 ## Install

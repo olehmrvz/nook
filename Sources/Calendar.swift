@@ -49,6 +49,14 @@ enum Settings {
         get { d.object(forKey: "volumeHUD") as? Bool ?? true }
         set { d.set(newValue, forKey: "volumeHUD") }
     }
+    static var askedKeyAccess: Bool {
+        get { d.bool(forKey: "askedKeyAccess") }
+        set { d.set(newValue, forKey: "askedKeyAccess") }
+    }
+    static var focusHUD: Bool {
+        get { d.object(forKey: "focusHUD") as? Bool ?? true }
+        set { d.set(newValue, forKey: "focusHUD") }
+    }
     static var autoUpdate: Bool {
         get { d.object(forKey: "autoUpdate") as? Bool ?? true }
         set { d.set(newValue, forKey: "autoUpdate") }

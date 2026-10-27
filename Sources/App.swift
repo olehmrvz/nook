@@ -186,8 +186,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item(muted > 0 ? "Снова показывать скрытые приложения (\(muted))" : "Скрытых приложений нет",
              #selector(unmuteApps), to: notes).isEnabled = muted > 0
 
-        item("Громкость в вырезе", #selector(toggleVolumeHUD), on: Settings.volumeHUD)
+        item("Громкость и яркость в вырезе", #selector(toggleVolumeHUD), on: Settings.volumeHUD)
             .image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)
+        if Settings.volumeHUD && !model.volume.hasKeys {
+            item("Скрыть системное окно громкости и яркости…", #selector(askKeyAccess))
+                .toolTip = "Нужен Универсальный доступ: тогда клавиши громкости и яркости обрабатывает Nook"
+        }
+        item(model.focus.available ? "«Не беспокоить» в вырезе" : "«Не беспокоить» в вырезе (нужен полный доступ к диску)",
+             #selector(toggleFocusHUD), on: Settings.focusHUD)
+            .image = NSImage(systemSymbolName: "moon", accessibilityDescription: nil)
 
         // Privacy and access
         let privacy = submenu("Доступ и приватность", symbol: "lock")
@@ -224,6 +231,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleLogin(_ sender: NSMenuItem) { LoginItem.setEnabled(!LoginItem.isEnabled) }
     @objc private func toggleAgentSound(_ sender: NSMenuItem) { Settings.agentDoneSound.toggle() }
     @objc private func toggleNotificationIslands(_ sender: NSMenuItem) { Settings.notificationIslands.toggle() }
+    @objc private func askKeyAccess() {
+        model.volume.askAccess()
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+    @objc private func toggleFocusHUD() { Settings.focusHUD.toggle() }
     @objc private func toggleVolumeHUD() { Settings.volumeHUD.toggle() }
     @objc private func toggleNotificationText() { Settings.notificationText.toggle() }
     @objc private func toggleAutoUpdate(_ sender: NSMenuItem) { Settings.autoUpdate.toggle() }
