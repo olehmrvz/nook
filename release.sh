@@ -10,7 +10,8 @@ cd "$PROJECT_DIR"
 "$PROJECT_DIR/install.sh" --build-only
 APP="$PROJECT_DIR/.build/Nook.app"
 # The updater accepts only builds signed like the installed ones: never publish an ad-hoc build.
-codesign -dvv "$APP" 2>&1 | grep -q "Authority=Nook Local Signing" \
+SIGNATURE="$(codesign -dvv "$APP" 2>&1)"
+[[ "$SIGNATURE" == *"Authority=Nook Local Signing"* ]] \
   || { echo "Not signed with \"Nook Local Signing\" (run make-cert.sh); release cancelled." >&2; exit 1; }
 
 BUILD_NUMBER="$(git rev-list --count HEAD)"
