@@ -705,6 +705,9 @@ struct ExpandedView: View {
         if hasWeather || battery.hasBattery {
             Button { withAnimation(Motion.smooth) { model.showPower.toggle() } } label: { statusLabel(hasWeather) }
                 .buttonStyle(.plain)
+                // Never squeezed to "…": the gap around the camera gives way first.
+                .fixedSize()
+                .layoutPriority(1)
                 .hoverLift()
         }
     }
