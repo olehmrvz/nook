@@ -104,7 +104,8 @@ final class VolumeControl {
             AudioObjectSetPropertyData(device, &Self.mute, 0, nil, UInt32(MemoryLayout<UInt32>.size), &muted)
         } else {
             let step: Float = fine ? 1 / 64 : 1 / 16
-            var level = max(0, min(1, (now.level + (key == NX_KEYTYPE_SOUND_UP ? step : -step)) / step).rounded() * step)
+            let target = now.level + (key == NX_KEYTYPE_SOUND_UP ? step : -step)
+            var level = max(0, min(1, (target / step).rounded() * step))
             AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
             if now.muted {
                 var unmuted: UInt32 = 0
