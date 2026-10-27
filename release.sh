@@ -23,6 +23,8 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 # The active gh account may belong to another project: use olehmrvz's token for this call only.
 export GH_TOKEN="$(gh auth token --user olehmrvz)"
 git push -q origin HEAD
+# Tags of earlier releases are made on GitHub: fetch them for the change list.
+git fetch -q --tags origin
 PREVIOUS="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || true)"
 NOTES="$(git log --pretty='- %s' ${PREVIOUS:+$PREVIOUS..}HEAD | head -30)"
 NOTES="$NOTES
