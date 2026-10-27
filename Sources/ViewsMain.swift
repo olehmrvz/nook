@@ -252,7 +252,7 @@ struct CollapsedView: View {
     }
 
     /// Changes whenever the slots show something else, so the old content scales away and the new one in.
-    private var slotKey: String { "\(String(describing: model.flash))|\(String(describing: model.live))" }
+    private var slotKey: String { "\(model.flash?.kind ?? "")|\(String(describing: model.live))" }
 
     private func slot(_ content: some View) -> some View {
         ZStack {
@@ -260,7 +260,7 @@ struct CollapsedView: View {
                 .id(slotKey)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
         }
-        .frame(width: model.hasLiveActivity ? NotchModel.slot : 0)
+        .frame(width: model.slotWidth)
     }
 
     @ViewBuilder private var leftSlot: some View {
@@ -279,6 +279,15 @@ struct CollapsedView: View {
             Image(systemName: "doc.on.clipboard.fill")
         case .noText:
             Image(systemName: "text.viewfinder").foregroundStyle(muted)
+        case .volume(let level, let muted):
+            HStack(spacing: 6) {
+                Image(systemName: VolumeBar.symbol(level, muted: muted)).font(.system(size: 12, weight: .medium))
+                    .frame(width: 18, alignment: .leading)
+                Text("Звук").font(.system(size: 12.5, weight: .medium))
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 10)
         case nil:
             switch model.live {
             case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
@@ -307,6 +316,10 @@ struct CollapsedView: View {
             Image(systemName: "checkmark").foregroundStyle(Palette.green)
         case .noText:
             Image(systemName: "xmark").foregroundStyle(muted)
+        case .volume(let level, let muted):
+            VolumeBar(level: muted ? 0 : CGFloat(level))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
         case nil:
             switch model.live {
             case .permission: Circle().fill(Palette.orange.opacity(0.9)).frame(width: 6, height: 6)
@@ -325,6 +338,25 @@ struct CollapsedView: View {
             case .prompter, nil: EmptyView()
             }
         }
+    }
+}
+
+/// The level bar of the volume flash.
+struct VolumeBar: View {
+    let level: CGFloat
+
+    var body: some View {
+        Capsule().fill(Color.white.opacity(0.22))
+            .frame(width: 72, height: 5)
+            .overlay(alignment: .leading) {
+                Capsule().fill(Color.white).frame(width: max(level > 0 ? 5 : 0, 72 * level))
+            }
+            .animation(.easeOut(duration: 0.12), value: level)
+    }
+
+    static func symbol(_ level: Float, muted: Bool) -> String {
+        if muted || level <= 0.001 { return "speaker.slash.fill" }
+        return level < 0.34 ? "speaker.wave.1.fill" : (level < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill")
     }
 }
 

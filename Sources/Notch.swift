@@ -48,6 +48,14 @@ enum Flash: Equatable {
     case copied
     /// "Copy text from image" found nothing.
     case noText
+    /// Output volume 0…1: the notch widens to "Звук" on the left and a level bar on the right.
+    case volume(Float, muted: Bool)
+
+    /// Same for every volume level, so the bar moves instead of the slot content being replaced.
+    var kind: String {
+        if case .volume = self { return "volume" }
+        return String(describing: self)
+    }
 }
 
 /// Medium pills that drop out of the notch for a few seconds.
@@ -133,6 +141,7 @@ final class NotchModel: ObservableObject {
     let notes = NotesStore()
     let mirror = MirrorCamera()
     let caffeine = Caffeine()
+    let volume = VolumeControl()
     let updater = Updater()
     /// Opens Nook's menu (the gear in the panel), set by the app delegate.
     var onOpenMenu: (() -> Void)?
@@ -168,8 +177,14 @@ final class NotchModel: ObservableObject {
         return nil
     }
 
+    /// Side slot width: wide for the volume bar, small for icons.
+    var slotWidth: CGFloat {
+        if case .volume = flash { return 104 }
+        return hasLiveActivity ? Self.slot : 0
+    }
+
     var collapsedWidth: CGFloat {
-        notch.width + 2 * Self.ear + (hasLiveActivity ? 2 * Self.slot : 0)
+        notch.width + 2 * Self.ear + 2 * slotWidth
     }
 
     func start() {
@@ -192,6 +207,11 @@ final class NotchModel: ObservableObject {
             return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
         }
         updater.start()
+        volume.onChange = { [weak self] level, muted in
+            guard let self, !self.resting, !self.expanded else { return }
+            self.show(.volume(level, muted: muted), for: 1.6)
+        }
+        volume.start()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }
@@ -462,7 +482,11 @@ final class NotchModel: ObservableObject {
 
     func show(_ flash: Flash, for seconds: Double) {
         flashWork?.cancel()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { self.flash = flash }
+        if self.flash?.kind == flash.kind {
+            withAnimation(.easeOut(duration: 0.12)) { self.flash = flash }   // the same flash, a new value
+        } else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { self.flash = flash }
+        }
         let work = DispatchWorkItem { [weak self] in
             withAnimation(.easeOut(duration: 0.3)) { self?.flash = nil }
         }

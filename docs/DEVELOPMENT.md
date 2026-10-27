@@ -57,4 +57,7 @@ terminal, not from a process an agent started (an agent must not approve its own
 - **Updates:** `Sources/Updater.swift` reads the latest GitHub release, downloads `Nook.zip`, accepts it only if
   it satisfies the running app's designated requirement (same bundle id and certificate), and installs it when
   the panel is closed.
+- **Volume:** `Sources/Volume.swift` watches the default output device (CoreAudio). With Accessibility access it
+  also takes the volume keys (event tap on NX_SYSDEFINED), sets the level itself in 1/16 steps (⌥⇧: 1/64), so the
+  macOS HUD does not appear. Without access the keys stay with macOS and Nook only shows the change.
 - **Pointer:** event-driven polling; the panel takes the keyboard only for text fields.

@@ -44,6 +44,11 @@ enum Settings {
         get { d.object(forKey: "showMenuIcon") as? Bool ?? true }
         set { d.set(newValue, forKey: "showMenuIcon") }
     }
+    /// Volume changes shown in the notch (and the volume keys handled by Nook with Accessibility access).
+    static var volumeHUD: Bool {
+        get { d.object(forKey: "volumeHUD") as? Bool ?? true }
+        set { d.set(newValue, forKey: "volumeHUD") }
+    }
     static var autoUpdate: Bool {
         get { d.object(forKey: "autoUpdate") as? Bool ?? true }
         set { d.set(newValue, forKey: "autoUpdate") }
