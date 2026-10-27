@@ -170,3 +170,20 @@ then pick items from the backlog. Changes are uncommitted on `develop`.
 
 Next concrete action: after the user unlocks, check hover-open, drag to shelf and Home/Agents screenshots;
 then commit on `develop` when the user asks.
+
+## Updates, menu, displays, coffee (2026-10-27, evening)
+
+Done and checked:
+- Shadow: window 900×400, so the panel shadow fades inside it (was cut into a band at 356 pt).
+- Idle auto-close counts from the moment the panel opened (a panel opened by a script closed at once).
+- Agents connect on first launch, once per agent; Codex also gets `[features] hooks = true`
+  (config edit tested on 6 sample files: none, other keys, hooks=false, hooks=true, dotted keys, empty).
+- Menu regrouped (Экран, Агенты, Уведомления, Доступ и приватность, Обновления), also under ⚙︎ in the panel;
+  the menu bar icon can be hidden, opening Nook.app again brings it back.
+- Display choice: checked by moving Nook to the external MAG274Q and back.
+- Coffee button (IOPMAssertion PreventUserIdleSystemSleep).
+- Repo made public; `release.sh` published v6. Updater checked end to end: build 1.3 updated itself to 1.6
+  in ~75 s (download, signature check, replace, restart).
+
+Not checked: the menu itself (needs a click), the coffee button click, hiding the icon, and a first launch
+on a Mac without Nook (the brother's).
