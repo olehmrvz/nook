@@ -795,10 +795,17 @@ struct ExpandedView: View {
     private var contentHeight: CGFloat { NotchModel.expandedSize.height - 6 - 16 - headerHeight - 10 }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            tabGroup(Tab.leftSide)
-            Spacer(minLength: model.notch.width + 8)
-            tabGroup(Tab.rightSide, keyLock: true)
+        // Two equal halves around the camera: nothing on the right can slide under the notch, whatever tab is open.
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                tabGroup(Tab.leftSide)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
+            Color.clear.frame(width: model.notch.width + 12)
+            HStack(spacing: 6) {
+            Spacer(minLength: 0)
+            tabGroup(Tab.rightSide, keyLock: true, titles: false)
             // One capsule for status and quick actions, like the tab groups: even gaps on the right.
             HStack(spacing: 1) {
                 statusChip
@@ -812,15 +819,18 @@ struct ExpandedView: View {
             }
             .padding(2)
             .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
+            }
+            .frame(maxWidth: .infinity)
         }
         .frame(height: headerHeight)
     }
 
-    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false) -> some View {
+    /// `titles: false` — icons only, also for the open tab (the right half has little room).
+    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false, titles: Bool = true) -> some View {
         HStack(spacing: 1) {
             ForEach(tabs) { tab in
                 TabPill(tab: tab, active: model.tab == tab, badge: tab == .ai && !agents.permissions.isEmpty,
-                        space: tabSpace) { model.select(tab) }
+                        space: tabSpace, showsTitle: titles) { model.select(tab) }
             }
             if keyLock { KeyLockPill(lock: model.keyboardLock) }
         }
@@ -913,6 +923,7 @@ struct TabPill: View {
     let active: Bool
     let badge: Bool
     let space: Namespace.ID
+    var showsTitle = true
     let select: () -> Void
     @State private var hover = false
 
@@ -920,13 +931,13 @@ struct TabPill: View {
         Button(action: select) {
             HStack(spacing: 6) {
                 Image(systemName: tab.icon).font(.system(size: 11, weight: .medium))
-                if active {
+                if active && showsTitle {
                     Text(tab.title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize()
                         .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)))
                 }
                 if badge { Circle().fill(accent).frame(width: 6, height: 6) }
             }
-            .padding(.horizontal, active ? 10 : 7).padding(.vertical, 4)
+            .padding(.horizontal, active && showsTitle ? 10 : 7).padding(.vertical, 4)
             .background {
                 if active {
                     Capsule().fill(Color.white.opacity(0.18)).matchedGeometryEffect(id: "activeTab", in: space)
