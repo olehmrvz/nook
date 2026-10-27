@@ -3,13 +3,13 @@ import AppKit
 /// Claude Code and Codex sessions, fed by command hooks through a local unix socket.
 /// Permission requests can be answered from the notch; unanswered ones fall back to the terminal.
 final class AgentHub: ObservableObject {
-    enum Provider: String { case claude, codex
+    enum Provider: String, Codable { case claude, codex
         var title: String { self == .claude ? "Claude" : "Codex" }
     }
-    enum Status { case idle, working, waiting, attention, done }
+    enum Status: String, Codable { case idle, working, waiting, attention, done }
     enum Indicator { case working, waiting }
 
-    struct Session: Identifiable {
+    struct Session: Identifiable, Codable {
         let id: String
         let provider: Provider
         var cwd: String
@@ -18,6 +18,20 @@ final class AgentHub: ObservableObject {
         var updated: Date
         var pid: Int32
         var turnStarted: Date?
+        /// What you asked for in this turn (first line of the prompt).
+        var prompt: String?
+        /// What the agent does right now, e.g. "Edit · Views.swift" or "Bash · npm test".
+        var action: String?
+        /// Its last answer, kept after the turn ends.
+        var lastMessage: String?
+        /// Text of the last Notification hook ("Claude is waiting for your input").
+        var note: String?
+        var toolCount = 0
+        /// File names edited in this turn, in order.
+        var edited: [String] = []
+        var branch: String?
+        /// Where the agent runs: terminal app, herdr workspace / tab, tmux pane (from its environment).
+        var terminal: [String: String]?
         var project: String { cwd.isEmpty ? provider.title : (cwd as NSString).lastPathComponent }
     }
 
@@ -29,22 +43,32 @@ final class AgentHub: ObservableObject {
         let summary: String
         let project: String
         let suggestions: Any?
+        /// The tool's input as Claude sent it; questions and plans are rendered from it.
+        let input: [String: Any]
         let fd: Int32
         let created = Date()
     }
 
-    @Published private(set) var sessions: [Session] = []
+    @Published private(set) var sessions: [Session] = [] { didSet { scheduleSave() } }
     @Published private(set) var permissions: [Permission] = []
+    /// False when neither Claude Code nor Codex calls Nook's hook yet.
+    @Published private(set) var hooksInstalled = true
 
     static let socketPath = supportDir.appendingPathComponent("agent.sock").path
     static let tokenURL = supportDir.appendingPathComponent("agent.token")
     static let hookURL = supportDir.appendingPathComponent("agent-hook.sh")
+    static let sessionsURL = supportDir.appendingPathComponent("sessions.json")
     static let permissionTimeout: TimeInterval = 110
 
     private var token = ""
+    /// Commands from the `Nook` command line (tabs, timer, prompter), set by the app delegate.
+    var onShow: ((String) -> Void)?
     private var onPermission: (() -> Void)?
     private var onDone: ((Island) -> Void)?
     private var timer: Timer?
+    private var saveWork: DispatchWorkItem?
+    private let io = DispatchQueue(label: "nook.agents")
+    private var branchChecked = Set<String>()
 
     var indicator: Indicator? {
         if !permissions.isEmpty { return .waiting }
@@ -58,8 +82,63 @@ final class AgentHub: ObservableObject {
         signal(SIGPIPE, SIG_IGN)
         token = Self.loadToken()
         Self.writeHookScript()
+        Self.writeShellScript()
         listen()
+        restore()
+        checkHooks()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.prune() }
+    }
+
+    // MARK: Persistence
+
+    /// Sessions survive a restart of Nook: agents keep running, and their next hook may come much later.
+    private func restore() {
+        io.async { [weak self] in
+            guard let data = try? Data(contentsOf: Self.sessionsURL),
+                  let saved = try? JSONDecoder().decode([Session].self, from: data) else { return }
+            let now = Date()
+            let alive = saved.compactMap { session -> Session? in
+                guard now.timeIntervalSince(session.updated) < 6 * 3600 else { return nil }
+                if session.pid > 1 && !Self.isAgent(session.pid) { return nil }
+                var session = session
+                // The pending request died with the old process; the terminal asks instead.
+                if session.status == .waiting { session.status = .attention }
+                if session.status == .attention, Self.isIdleNote(session.note ?? "") { session.status = .done; session.note = nil }
+                return session
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                for session in alive where !self.sessions.contains(where: { $0.id == session.id }) {
+                    self.sessions.append(session)
+                    if session.pid > 1 { self.lookUpTerminal(for: session.id, pid: session.pid) }
+                }
+            }
+        }
+    }
+
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let snapshot = sessions
+        let work = DispatchWorkItem { [weak self] in
+            self?.io.async {
+                guard let data = try? JSONEncoder().encode(snapshot) else { return }
+                try? data.write(to: Self.sessionsURL, options: [.atomic])
+                // Prompts and replies are private: owner-only, like clipboard.json.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.sessionsURL.path)
+            }
+        }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    func checkHooks() {
+        io.async { [weak self] in
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let installed = [".claude/settings.json", ".codex/hooks.json"].contains { file in
+                (try? String(contentsOf: home.appendingPathComponent(file), encoding: .utf8))?.contains(Self.hookURL.path) == true
+            }
+            DispatchQueue.main.async { self?.hooksInstalled = installed }
+        }
     }
 
     // MARK: Socket server
@@ -81,11 +160,14 @@ final class AgentHub: ObservableObject {
         guard bound == 0 else { close(server); return }
         chmod(path, 0o600)
         Darwin.listen(server, 32)
+        // At most 32 readers at once; a flood of idle connections is dropped instead of exhausting threads.
+        let slots = DispatchSemaphore(value: 32)
         Thread.detachNewThread { [weak self] in
             while true {
                 let client = accept(server, nil, nil)
-                guard client >= 0 else { continue }
-                Thread.detachNewThread { self?.read(client) }
+                guard client >= 0 else { usleep(100_000); continue }
+                guard slots.wait(timeout: .now()) == .success else { close(client); continue }
+                Thread.detachNewThread { self?.read(client); slots.signal() }
             }
         }
     }
@@ -97,7 +179,8 @@ final class AgentHub: ObservableObject {
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 65536)
-        while data.count < 8_000_000 {
+        let started = Date()
+        while data.count < 8_000_000 && Date().timeIntervalSince(started) < 10 {
             let n = recv(fd, &buffer, buffer.count, 0)
             if n <= 0 { break }
             data.append(buffer, count: n)
@@ -106,6 +189,32 @@ final class AgentHub: ObservableObject {
         guard let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               message["token"] as? String == token,
               let event = message["event"] as? String else { close(fd); return }
+        if event == "Show" {
+            // `Nook --show …`, `--timer …`, `--prompt`: authenticated, unlike a broadcast notification.
+            close(fd)
+            let name = message["name"] as? String ?? "home"
+            DispatchQueue.main.async { self.onShow?(name) }
+            return
+        }
+        if event == "Answer" {
+            // `Nook --answer allow|always|deny|terminal`, authenticated like the hooks.
+            close(fd)
+            let decision: Decision? = switch message["decision"] as? String {
+            case "allow": .allow
+            case "always": .always
+            case "deny": .deny
+            default: nil
+            }
+            DispatchQueue.main.async { if let oldest = self.permissions.first { self.answer(oldest.id, with: decision) } }
+            return
+        }
+        if message["provider"] as? String == "shell" {
+            close(fd)
+            if event == "CommandDone", let raw = message["raw"] as? [String: Any] {
+                DispatchQueue.main.async { self.commandDone(raw) }
+            }
+            return
+        }
         let provider = Provider(rawValue: message["provider"] as? String ?? "") ?? .claude
         let pid = Self.agentProcess(from: (message["pid"] as? NSNumber)?.int32Value ?? 0)
         let raw = message["raw"] as? [String: Any] ?? [:]
@@ -127,8 +236,14 @@ final class AgentHub: ObservableObject {
         }
         if let i = index {
             sessions[i].updated = Date()
-            if !cwd.isEmpty { sessions[i].cwd = cwd }
-            if pid > 1 { sessions[i].pid = pid }
+            if !cwd.isEmpty && (sessions[i].cwd != cwd || !branchChecked.contains(cwd)) {
+                sessions[i].cwd = cwd
+                lookUpBranch(for: key, cwd: cwd)
+            }
+            if pid > 1 && (sessions[i].pid != pid || sessions[i].terminal == nil) {
+                sessions[i].pid = pid
+                lookUpTerminal(for: key, pid: pid)
+            }
         }
 
         switch event {
@@ -136,9 +251,32 @@ final class AgentHub: ObservableObject {
             index.map { sessions[$0].status = .idle }
         case "UserPromptSubmit":
             resolve(sessionKey: key)
-            index.map { sessions[$0].status = .working; sessions[$0].tool = nil; sessions[$0].turnStarted = Date() }
+            if let i = index {
+                sessions[i].status = .working
+                sessions[i].tool = nil
+                sessions[i].turnStarted = Date()
+                sessions[i].prompt = Self.firstLine(raw["prompt"] as? String, limit: 160)
+                sessions[i].action = nil
+                sessions[i].lastMessage = nil
+                sessions[i].note = nil
+                sessions[i].toolCount = 0
+                sessions[i].edited = []
+                lookUpBranch(for: key, cwd: sessions[i].cwd)
+            }
         case "PreToolUse":
-            index.map { sessions[$0].status = .working; sessions[$0].tool = raw["tool_name"] as? String }
+            if let i = index {
+                let tool = raw["tool_name"] as? String ?? ""
+                let input = raw["tool_input"] as? [String: Any] ?? [:]
+                sessions[i].status = .working
+                sessions[i].tool = tool
+                sessions[i].action = Self.describe(tool: tool, input: input)
+                sessions[i].toolCount += 1
+                if ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch"].contains(tool),
+                   let path = (input["file_path"] ?? input["notebook_path"] ?? input["path"]) as? String {
+                    let name = (path as NSString).lastPathComponent
+                    if !sessions[i].edited.contains(name) { sessions[i].edited.append(name) }
+                }
+            }
         case "PostToolUse":
             resolve(sessionKey: key)
             index.map { sessions[$0].status = .working }
@@ -147,7 +285,8 @@ final class AgentHub: ObservableObject {
             let request = Permission(sessionKey: key, provider: provider, tool: tool,
                                      summary: Self.summary(tool: tool, input: raw["tool_input"]),
                                      project: index.map { sessions[$0].project } ?? provider.title,
-                                     suggestions: raw["permission_suggestions"], fd: fd)
+                                     suggestions: raw["permission_suggestions"],
+                                     input: raw["tool_input"] as? [String: Any] ?? [:], fd: fd)
             permissions.append(request)
             index.map { sessions[$0].status = .waiting }
             onPermission?()
@@ -155,24 +294,34 @@ final class AgentHub: ObservableObject {
                 self?.answer(request.id, with: nil)
             }
         case "Notification":
+            // "idle_prompt" ("Claude is waiting for your input") means the turn is over, not that it needs you.
+            let text = raw["message"] as? String ?? ""
+            let idle = raw["notification_type"] as? String == "idle_prompt" || Self.isIdleNote(text)
             if let i = index, sessions[i].status != .working, permissions.allSatisfy({ $0.sessionKey != key }) {
-                sessions[i].status = .attention
+                if idle {
+                    if sessions[i].status != .done { sessions[i].status = .done }
+                    sessions[i].note = nil
+                } else {
+                    sessions[i].status = .attention
+                    sessions[i].note = Self.firstLine(text, limit: 120)
+                }
             }
         case "Stop":
             resolve(sessionKey: key)
             if let i = index {
                 sessions[i].status = .done
                 sessions[i].tool = nil
-                let message = (raw["last_assistant_message"] as? String ?? "")
-                    .replacingOccurrences(of: "\n", with: " ")
-                    .trimmingCharacters(in: .whitespaces)
+                let message = Self.plain(raw["last_assistant_message"] as? String ?? "")
                 let duration = sessions[i].turnStarted.map { Date().timeIntervalSince($0) }
                 sessions[i].turnStarted = nil
+                sessions[i].action = nil
+                sessions[i].lastMessage = message.isEmpty ? nil : String(message.prefix(220))
                 // Short turns (a quick answer you are watching anyway) do not need an island.
                 if (duration ?? 60) >= Settings.agentDoneMinSeconds {
                     onDone?(Island(kind: .agentDone(provider: provider.rawValue, project: sessions[i].project,
                                                     message: String(message.prefix(220)), duration: duration,
-                                                    pid: sessions[i].pid), seconds: 8))
+                                                    pid: sessions[i].pid, terminal: sessions[i].terminal ?? [:]),
+                                   seconds: 8))
                     if Settings.agentDoneSound { NSSound(named: "Glass")?.play() }
                 }
             }
@@ -185,13 +334,18 @@ final class AgentHub: ObservableObject {
     }
 
     /// Answers a pending request. `nil` closes it without a decision, so the terminal asks as usual.
-    func answer(_ id: UUID, with decision: Decision?) {
+    /// `updatedInput` carries answers to AskUserQuestion; `mode` switches the permission mode on approval
+    /// (e.g. "acceptEdits" after a plan); `message` explains a denial to the agent.
+    func answer(_ id: UUID, with decision: Decision?, updatedInput: [String: Any]? = nil,
+                mode: String? = nil, message: String? = nil) {
         guard let index = permissions.firstIndex(where: { $0.id == id }) else { return }
         let request = permissions.remove(at: index)
         if let decision {
             var body: [String: Any] = ["behavior": decision == .deny ? "deny" : "allow"]
-            if decision == .deny { body["message"] = "Отклонено в Nook" }
+            if decision == .deny { body["message"] = message ?? "Отклонено в Nook" }
             if decision == .always, let suggestions = request.suggestions { body["updatedPermissions"] = suggestions }
+            if decision != .deny, let mode { body["updatedPermissions"] = [["type": "setMode", "mode": mode, "destination": "session"]] }
+            if decision != .deny, let updatedInput { body["updatedInput"] = updatedInput }
             let output: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": body]]
             if var data = try? JSONSerialization.data(withJSONObject: output) {
                 data.append(UInt8(ascii: "\n"))
@@ -210,12 +364,31 @@ final class AgentHub: ObservableObject {
         permissions.filter { $0.sessionKey == sessionKey }.forEach { answer($0.id, with: nil) }
     }
 
+    /// Drops sessions whose agent exited, finished ones after a while (the next prompt brings them back),
+    /// and anything silent for six hours. Assigns only on a real change: no redraw or disk write every 5 s.
     private func prune() {
         let now = Date()
-        sessions.removeAll { session in
-            if session.pid > 1, kill(session.pid, 0) != 0, errno == ESRCH { return true }
-            return now.timeIntervalSince(session.updated) > 6 * 3600
+        let kept = sessions.filter { session in
+            if session.pid > 1, kill(session.pid, 0) != 0, errno == ESRCH { return false }
+            let quiet = now.timeIntervalSince(session.updated)
+            if session.status == .done || session.status == .idle { return quiet <= Settings.finishedSessionTTL }
+            return quiet <= 6 * 3600
         }
+        if kept.count != sessions.count { sessions = kept }
+    }
+
+    private static func processName(_ pid: Int32) -> String? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0, info.kp_proc.p_pid == pid else { return nil }
+        return withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }.lowercased()
+    }
+
+    /// The PID still belongs to an agent (and was not reused by another program).
+    private static func isAgent(_ pid: Int32) -> Bool {
+        guard let name = processName(pid) else { return false }
+        return name.contains("claude") || name.contains("codex") || name == "node"
     }
 
     /// Walks up from the hook's parent to the claude / codex process, so liveness checks survive
@@ -235,8 +408,296 @@ final class AgentHub: ObservableObject {
         return 0
     }
 
+    // MARK: Session details
+
+    /// One readable line from a markdown reply: no **, `, # or list dashes, single spaces.
+    static func plain(_ markdown: String) -> String {
+        var text = markdown
+        for mark in ["**", "__", "`"] { text = text.replacingOccurrences(of: mark, with: "") }
+        let lines = text.split(whereSeparator: \.isNewline).map { line -> String in
+            var l = line.trimmingCharacters(in: .whitespaces)
+            while l.hasPrefix("#") { l.removeFirst() }
+            if l.hasPrefix("- ") || l.hasPrefix("* ") { l.removeFirst(2) }
+            return l.trimmingCharacters(in: .whitespaces)
+        }
+        return lines.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    static func isIdleNote(_ text: String) -> Bool {
+        text.localizedCaseInsensitiveContains("waiting for your input")
+    }
+
+    private static func firstLine(_ text: String?, limit: Int) -> String? {
+        guard let line = text?.split(whereSeparator: \.isNewline).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        else { return nil }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.count > limit ? String(trimmed.prefix(limit)) + "…" : trimmed
+    }
+
+    /// "Edit · Views.swift", "Bash · npm test", "grifs · search_sections".
+    static func describe(tool: String, input: [String: Any]) -> String {
+        var name = tool
+        if tool.hasPrefix("mcp__") {
+            let parts = tool.dropFirst(5).components(separatedBy: "__")
+            name = parts.count >= 2 ? "\(parts[0].components(separatedBy: "_").last ?? parts[0]) · \(parts[1])" : tool
+            return name
+        }
+        func file(_ key: String) -> String? { (input[key] as? String).map { ($0 as NSString).lastPathComponent } }
+        let detail: String? = switch tool {
+        case "Bash": (input["description"] as? String) ?? firstLine(input["command"] as? String, limit: 60)
+        case "Read", "Edit", "Write", "MultiEdit": file("file_path")
+        case "NotebookEdit": file("notebook_path")
+        case "Grep", "Glob": (input["pattern"] as? String).map { "«\($0)»" }
+        case "WebFetch": (input["url"] as? String).flatMap { URL(string: $0)?.host }
+        case "WebSearch": input["query"] as? String
+        case "Task", "Agent": input["description"] as? String
+        default: nil
+        }
+        guard let detail, !detail.isEmpty else { return name }
+        return "\(name) · \(detail.count > 70 ? String(detail.prefix(70)) + "…" : detail)"
+    }
+
+    // MARK: Long shell commands
+
+    static let shellScriptURL = supportDir.appendingPathComponent("nook.zsh")
+
+    /// A finished long command from the zsh integration: island unless you are looking at that terminal.
+    private func commandDone(_ raw: [String: Any]) {
+        func decoded(_ key: String) -> String {
+            (raw[key] as? String).flatMap { Data(base64Encoded: $0) }.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        }
+        let command = decoded("cmd64").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else { return }
+        let seconds = (raw["seconds"] as? NSNumber)?.doubleValue ?? 0
+        let exit = (raw["exit"] as? NSNumber)?.intValue ?? 0
+        let shell = (raw["shell"] as? NSNumber)?.int32Value ?? 0
+        io.async { [weak self] in
+            let env = shell > 1 ? Self.environment(of: shell).filter { Self.terminalKeys.contains($0.key) && !$0.value.isEmpty } : [:]
+            let paneFocused = Self.herdrPaneFocused(env)
+            DispatchQueue.main.async {
+                let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                let terminalInFront = front != nil && front == env["__CFBundleIdentifier"]
+                // In front and (no herdr, or its pane is the one on screen): you saw it finish.
+                if terminalInFront && (paneFocused ?? true) { return }
+                self?.onDone?(Island(kind: .command(text: String(command.prefix(160)), seconds: seconds, exit: exit,
+                                                    pid: shell, terminal: env), seconds: 7))
+                if Settings.agentDoneSound { NSSound(named: exit == 0 ? "Glass" : "Basso")?.play() }
+            }
+        }
+    }
+
+    /// nil when the command did not run inside herdr.
+    private static func herdrPaneFocused(_ env: [String: String]) -> Bool? {
+        guard let pane = env["HERDR_PANE_ID"], let bin = herdrBinary else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: bin)
+        process.environment = childEnvironment
+        process.arguments = ["pane", "get", pane]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil, finish(process, within: 2) else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let paneInfo = (root?["result"] as? [String: Any])?["pane"] as? [String: Any]
+        return paneInfo?["focused"] as? Bool
+    }
+
+    static func writeShellScript() {
+        let script = #"""
+        # Nook: an island in the notch when a long command finishes. Sourced from ~/.zshrc; safe to remove.
+        [[ -o interactive ]] || return
+        zmodload zsh/datetime 2>/dev/null || return
+        typeset -g __nook_cmd __nook_start
+        __nook_preexec() { __nook_cmd=$1; __nook_start=$EPOCHREALTIME }
+        __nook_precmd() {
+          local code=$?
+          [[ -n $__nook_start ]] || return
+          local secs=$(( EPOCHREALTIME - __nook_start )) cmd=$__nook_cmd
+          __nook_start=
+          (( secs >= ${NOOK_MIN_SECONDS:-20} )) || return
+          # Interactive programs are not "waiting for a result".
+          local first=${${(z)cmd}[1]:t}
+          [[ " vim nvim vi nano emacs less more man top htop btop ssh mosh tmux herdr claude codex watch tail fzf lazygit tig " == *" $first "* ]] && return
+          local hook="$HOME/Library/Application Support/Nook/agent-hook.sh"
+          [[ -x $hook ]] || return
+          local c64=$(print -rn -- "$cmd" | /usr/bin/base64 | tr -d '\n') d64=$(print -rn -- "$PWD" | /usr/bin/base64 | tr -d '\n')
+          printf '{"cmd64":"%s","cwd64":"%s","seconds":%d,"exit":%d,"shell":%d}' "$c64" "$d64" "${secs%.*}" "$code" "$$" \
+            | "$hook" CommandDone shell &!
+        }
+        autoload -Uz add-zsh-hook
+        add-zsh-hook preexec __nook_preexec
+        add-zsh-hook precmd __nook_precmd
+
+        """#
+        try? script.write(to: shellScriptURL, atomically: true, encoding: .utf8)
+    }
+
+    /// Adds one `source` line to ~/.zshrc (after a backup). Runs only from the menu, on the user's click.
+    static func installShellIntegration() -> (ok: Bool, message: String) {
+        writeShellScript()
+        let rc = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".zshrc")
+        let existing = (try? String(contentsOf: rc, encoding: .utf8)) ?? ""
+        if existing.contains(shellScriptURL.path) { return (true, "Уже подключено. Новые вкладки терминала сообщают о долгих командах.") }
+        do {
+            if !existing.isEmpty {
+                let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+                try existing.write(to: rc.appendingPathExtension("bak-nook-\(stamp)"), atomically: true, encoding: .utf8)
+            }
+            let path = shellScriptURL.path
+            let line = "\n# Nook: island when a long command finishes\n[ -f \"\(path)\" ] && source \"\(path)\"\n"
+            let handle = try FileHandle(forWritingTo: rc)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line.utf8))
+            return (true, "Добавлено в ~/.zshrc (копия рядом). Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS.")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
+    // MARK: Terminal
+
+    /// Only identifiers are taken from an agent's environment, never a program path to run.
+    private static let terminalKeys: Set<String> = ["__CFBundleIdentifier", "TERM_PROGRAM",
+                                                    "HERDR_WORKSPACE_ID", "HERDR_TAB_ID", "HERDR_PANE_ID",
+                                                    "TMUX", "TMUX_PANE"]
+
+    /// herdr from its usual install locations only.
+    static var herdrBinary: String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return [home + "/.local/bin/herdr", "/opt/homebrew/bin/herdr", "/usr/local/bin/herdr"]
+            .first(where: FileManager.default.isExecutableFile(atPath:))
+    }
+
+    /// Children get a minimal environment, so variables like PERL5OPT or DYLD_* never reach them.
+    static var childEnvironment: [String: String] {
+        ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+         "LANG": "en_US.UTF-8"]
+    }
+
+    /// Reads, once, where the agent runs from its environment (own processes only; no prompt).
+    private func lookUpTerminal(for key: String, pid: Int32) {
+        io.async { [weak self] in
+            let env = Self.environment(of: pid).filter { Self.terminalKeys.contains($0.key) && !$0.value.isEmpty }
+            DispatchQueue.main.async {
+                guard let self, let i = self.sessions.firstIndex(where: { $0.id == key }) else { return }
+                if self.sessions[i].terminal != env { self.sessions[i].terminal = env }
+            }
+        }
+    }
+
+    /// Environment of a process via KERN_PROCARGS2: argc, executable path, arguments, then KEY=VALUE strings.
+    static func environment(of pid: Int32) -> [String: String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 0 else { return [:] }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [:] }
+        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
+        let strings = buffer[MemoryLayout<Int32>.size..<size].split(separator: 0, omittingEmptySubsequences: true)
+            .map { String(decoding: $0, as: UTF8.self) }
+        // strings[0] is the executable path, then argc arguments, then the environment.
+        var env: [String: String] = [:]
+        for entry in strings.dropFirst(1 + Int(argc)) {
+            guard let eq = entry.firstIndex(of: "=") else { continue }
+            env[String(entry[..<eq])] = String(entry[entry.index(after: eq)...])
+        }
+        return env
+    }
+
+    /// Brings back the exact place an agent runs: its herdr tab or tmux pane, then the terminal app.
+    static func focus(pid: Int32, terminal: [String: String]?) {
+        let t = terminal ?? [:]
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let workspace = t["HERDR_WORKSPACE_ID"], let tab = t["HERDR_TAB_ID"], let bin = herdrBinary {
+                run(bin, ["workspace", "focus", workspace])
+                run(bin, ["tab", "focus", tab])
+            } else if let pane = t["TMUX_PANE"], let socket = t["TMUX"]?.split(separator: ",").first.map(String.init),
+                      // Only the user's own tmux server directory: a socket elsewhere could be a fake server.
+                      ["/private/tmp/tmux-\(getuid())/", "/tmp/tmux-\(getuid())/"].contains(where: { socket.hasPrefix($0) }),
+                      let bin = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
+                        .first(where: FileManager.default.isExecutableFile(atPath:)) {
+                run(bin, ["-S", socket, "select-window", "-t", pane])
+                run(bin, ["-S", socket, "select-pane", "-t", pane])
+            }
+            DispatchQueue.main.async {
+                if let id = t["__CFBundleIdentifier"],
+                   let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
+                    app.activate()
+                } else {
+                    NotchModel.activateApp(owning: pid)
+                }
+            }
+        }
+    }
+
+    private static func run(_ path: String, _ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.environment = childEnvironment
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return }
+        _ = finish(process, within: 3)
+    }
+
+    /// Waits for a child with a deadline; a hung herdr or tmux is stopped instead of blocking a queue forever.
+    private static func finish(_ process: Process, within seconds: Double) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while process.isRunning && Date() < deadline { usleep(20_000) }
+        if process.isRunning { process.terminate(); return false }
+        return true
+    }
+
+    /// Branch of the repository the agent works in. Skips folders macOS guards with a permission prompt.
+    private func lookUpBranch(for key: String, cwd: String) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let guarded = ["/Desktop", "/Documents", "/Downloads", "/Library/Mobile Documents"].map { home + $0 }
+        branchChecked.insert(cwd)
+        guard !cwd.isEmpty, !guarded.contains(where: { cwd.hasPrefix($0) }) else { return }
+        io.async { [weak self] in
+            let branch = Self.gitBranch(at: cwd)
+            DispatchQueue.main.async {
+                guard let self, let i = self.sessions.firstIndex(where: { $0.id == key }) else { return }
+                if self.sessions[i].branch != branch { self.sessions[i].branch = branch }
+            }
+        }
+    }
+
+    private static func gitBranch(at path: String) -> String? {
+        let fm = FileManager.default
+        var dir = URL(fileURLWithPath: path)
+        for _ in 0..<12 {
+            let git = dir.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: git.path, isDirectory: &isDir) {
+                var gitDir = git
+                if !isDir.boolValue {
+                    // A worktree: ".git" is a file pointing at the real git dir.
+                    guard let text = try? String(contentsOf: git, encoding: .utf8),
+                          let line = text.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") }) else { return nil }
+                    let target = line.dropFirst(7).trimmingCharacters(in: .whitespaces)
+                    gitDir = URL(fileURLWithPath: target, relativeTo: dir).standardizedFileURL
+                }
+                guard let head = try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8) else { return nil }
+                let ref = head.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ref.hasPrefix("ref: refs/heads/") ? String(ref.dropFirst(16)) : String(ref.prefix(7))
+            }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { break }
+            dir = parent
+        }
+        return nil
+    }
+
     private static func summary(tool: String, input: Any?) -> String {
         guard let input = input as? [String: Any] else { return "" }
+        if tool == "AskUserQuestion", let first = (input["questions"] as? [[String: Any]])?.first?["question"] as? String {
+            return first
+        }
+        if tool == "ExitPlanMode", let plan = input["plan"] as? String { return firstLine(plan, limit: 200) ?? "План" }
         for key in ["command", "file_path", "path", "url", "pattern", "description", "prompt"] {
             if let value = input[key] as? String, !value.isEmpty { return value }
         }
@@ -244,6 +705,30 @@ final class AgentHub: ObservableObject {
             return String(s.prefix(300))
         }
         return ""
+    }
+
+    /// Client side of the command line (`--answer`, `--show`, `--timer`, `--prompt`):
+    /// one JSON line to the running app over the owner-only socket, with the token.
+    static func sendCommand(_ fields: [String: String]) -> Bool {
+        guard let token = try? String(contentsOf: tokenURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              let data = try? JSONSerialization.data(withJSONObject: fields.merging(["token": token]) { $1 })
+        else { return false }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(socketPath.utf8CString)
+        withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
+            bytes.withUnsafeBytes { buffer.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(buffer.count - 1))) }
+        }
+        let connected = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard connected == 0 else { return false }
+        var line = data
+        line.append(UInt8(ascii: "\n"))
+        return line.withUnsafeBytes { send(fd, $0.baseAddress, line.count, 0) } == line.count
     }
 
     // MARK: Hook installation
@@ -265,7 +750,7 @@ final class AgentHub: ObservableObject {
         #!/bin/sh
         # Nook agent hook: forwards Claude Code / Codex hook events to Nook over a local socket.
         e=$1
-        case "$2" in codex) p=codex ;; *) p=claude ;; esac
+        case "$2" in codex) p=codex ;; shell) p=shell ;; *) p=claude ;; esac
         s="\(socketPath)"
         t=$(cat "\(tokenURL.path)" 2>/dev/null)
         d=$(cat)
@@ -343,5 +828,28 @@ final class AgentHub: ObservableObject {
         let out = try JSONSerialization.data(withJSONObject: root,
                                              options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try out.write(to: url, options: [.atomic])
+    }
+}
+
+extension AgentHub.Session {
+    /// Tolerant decoding: fields added later may be missing in an older sessions.json.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        provider = try c.decode(AgentHub.Provider.self, forKey: .provider)
+        cwd = try c.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        status = try c.decodeIfPresent(AgentHub.Status.self, forKey: .status) ?? .idle
+        tool = try c.decodeIfPresent(String.self, forKey: .tool)
+        updated = try c.decodeIfPresent(Date.self, forKey: .updated) ?? Date()
+        pid = try c.decodeIfPresent(Int32.self, forKey: .pid) ?? 0
+        turnStarted = try c.decodeIfPresent(Date.self, forKey: .turnStarted)
+        prompt = try c.decodeIfPresent(String.self, forKey: .prompt)
+        action = try c.decodeIfPresent(String.self, forKey: .action)
+        lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        toolCount = try c.decodeIfPresent(Int.self, forKey: .toolCount) ?? 0
+        edited = try c.decodeIfPresent([String].self, forKey: .edited) ?? []
+        branch = try c.decodeIfPresent(String.self, forKey: .branch)
+        terminal = try c.decodeIfPresent([String: String].self, forKey: .terminal)
     }
 }

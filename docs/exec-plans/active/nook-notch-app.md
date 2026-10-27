@@ -62,3 +62,111 @@ panel ignoresMouseEvents is driven by pointer position. Stable signing to keep T
   `develop` (work). The old copy in the Sandbox worktree `choose/nook/` (commit d3f1e3a) is superseded.
 - Next concrete action: after the user grants Full Disk Access, read `notifications-debug.log` and confirm the
   notification DB format; then verify calendar data, AirPods island and Cuely voice follow.
+
+## Design refresh (requested 2026-10-26)
+Goal: a nicer-looking expanded panel. Decide on paper first, then build in SwiftUI.
+- [x] Figma "Sandbox" → page "Nook": https://www.figma.com/design/TKW5XTlfIPhx9RdAb4TVoA
+  Four directions, each with Home, Agents (permission request), collapsed notch and island on a desktop backdrop:
+  A «Остров» (black, no grey cards, one accent), B «Сияние» (glass over glow taken from artwork / agent state),
+  C «Бенто» (coloured widget tiles, activity rings), D «Терминал» (mono, key hints, lime accent).
+- Mockups use Inter / Nunito / Geist Mono: SF Pro is a local font and breaks text created through the Figma MCP.
+  Icons are SVG stand-ins for SF Symbols. Other sessions share this Figma file (page "Panegrip — …").
+- [x] USER picked B «Сияние» as is (2026-10-26).
+
+### Implementing B «Сияние»
+- `Sources/Theme.swift` (new): palette, glass card, pill buttons, glow bar, ring gauge, ambient glow,
+  artwork colour extraction. Glows are elliptical gradients (cheap), not blurred layers.
+- Glow colours: Home ← artwork (`NowPlaying.glow`, fallback pink/violet) + coral when Claude waits;
+  Agents ← coral; other tabs have fixed pairs; islands ← their kind; collapsed music ← underglow.
+- Header: two glass capsules around the camera with a sliding active pill (matchedGeometryEffect),
+  weather + battery in one chip (right side is only ~273 pt wide).
+- [x] Theme.swift, all tabs restyled, motion (materialize, staggered cards, sliding pills, numeric text,
+  ring fill, symbol replace); built and installed, Home / Clipboard / Shelf / Timer / Cuely captured 2026-10-26.
+- [x] Captured live 2026-10-27: Home with music (Spotify, then a Chrome video), Agents with sessions, collapsed
+  (cover + agent spinner), agent-done island, Notes, power card. Not captured: Calendar no-access, slow motion.
+- [x] User request: the band under the camera stays pure black; glow rises from below (`AmbientGlow(blackTop:)`);
+  islands have colour pairs per kind, app notifications take their icon's colours.
+
+### Functional pass (requested 2026-10-27)
+- [x] Agent sessions persist in `sessions.json` (mode 600, tolerant decoding) and come back after a restart
+  (only live agent PIDs; waiting → attention). Verified: sessions with no new hooks reappeared after reinstall.
+- [x] Clipboard image previews load off the main thread (ImageIO thumbnails); row context menu, full-text tooltip,
+  "включить вставку" button when Accessibility is missing; OCR "copy text from image" (Vision) for clipboard
+  images and shelf images.
+- [x] Shelf save / existence checks moved off the main thread; "Скопировать" in the tile menu.
+- [x] ⌘1–⌘9 tabs, Esc closes the panel, weather card opens Weather, "Подключить" hooks button in Agents,
+  menu toggle "Скрывать Nook при показе экрана" (`sharingType = .none`).
+- [x] Universal Now Playing: ObjC bridge dylib (`Sources/MediaRemote/`) loaded by `/usr/bin/perl`, JSON lines
+  on stdout, commands on stdin, exits on stdin EOF; AppleScript stays as fallback. Verified reading Spotify and
+  a Chrome video with artwork. Commands (toggle / next / previous / seek) NOT exercised: they would change
+  the user's playback — ask the user to try.
+- [x] Richer agents: prompt, current action (tool + target), turn time, git branch (skips TCC-guarded
+  folders), edited files, last message, Notification text; Home = compact player | agents | event + weather,
+  limit mini-rings on Home. Agents tab shows the roomy version.
+- [x] Notchy parity: Notes tab (`notes.json`), Mirror tab (camera only while open; NSCameraUsageDescription).
+  A camera prompt was triggered once by mistake during checks — the user has to answer it.
+- [x] Battery: power card under the header chip (`--show power`): %, held / charging / time left, health 96 %,
+  138 cycles, low-power state, button to the macOS charge limit. Research: macOS 26.4+ has a native
+  80–100 % limit; SMC writes are gated on this firmware (batt #152) — Nook does not write SMC.
+  This Mac already holds at 80 % (plugged, not charging, NotChargingReason ≠ 0).
+- Research summary (subagent, 2026-10-27, sources in the conversation): notchy.dev features, boring.notch,
+  Atoll, Alcove, DynamicLake, NotchDrop, MediaMate, agent-island apps (Vibe Island, Claude Island…).
+
+### Backlog (ranked, not started)
+1. AskUserQuestion answers and ExitPlanMode plan review in the notch (hook mechanics unverified).
+2. Jump to the exact terminal tab / pane (Ghostty, herdr, tmux) instead of only the app.
+3. Long-running shell command islands (zsh preexec/precmd; needs a ~/.zshrc line from the user).
+4. Synced lyrics for the player (LRCLIB, network call — opt-in).
+5. Camera / mic in-use indicator, global mic mute.
+6. Listening ports / dev servers, system stats.
+7. Shelf actions: zip, image convert, merge PDFs.
+8. Terminal tab (needs a vendored terminal emulator; swiftc-only build).
+9. Multi-display: follow the active display.
+
+Next concrete action: ask the user to try play/pause/next/seek from Nook, answer the camera prompt,
+then pick items from the backlog. Changes are uncommitted on `develop`.
+
+### Session 2026-10-27 (late) — stopped at usage limit
+- [x] Fixed: list first rows clipped (4 pt top inset in `ListScroll`), header pushed up (fixed tab height
+  `contentHeight`, panel 326 pt tall), calm indicators (white dots = working, still amber dot = needs you,
+  green ✓ = done; "waiting for your input" now counts as done), soft island backgrounds and glass badges,
+  limits card with reset times and even-pace marks.
+- [x] Ideas 1–3: AskUserQuestion / ExitPlanMode cards (answers via `updatedInput.answers`, plan approve /
+  acceptEdits / deny with note) — rendering verified with fake requests, real answer path NOT yet verified;
+  herdr / tmux jump (env via KERN_PROCARGS2) — terminal data verified, focus not executed; zsh long-command
+  islands — verified in a clean `zsh -f -i`, the user still has to click the menu item to add it to ~/.zshrc.
+- [x] Keyboard safety: `becomesKeyOnlyIfNeeded`, search focus only when key, destructive buttons not focusable;
+  clipboard undo (15 s), `.bak` on sudden drop, unreadable file set aside.
+- Clipboard history was found reduced to 2 items at 00:36 (cause unconfirmed; suspected keystrokes reaching the
+  panel). No Time Machine snapshot to restore from.
+- [x] Security and performance reviews rerun (2026-10-27, two independent reviewers) and acted on.
+
+### Hardening pass (2026-10-27, night)
+- [x] Security: CLI commands and `--answer` go over the owner-only socket with the token (the
+  `dev.nook.answer` broadcast is gone); hardened runtime + `Nook.entitlements`; request buttons armed after
+  0.7 s; plan links https only; herdr / tmux paths fixed (no binary from the agent's env); meeting links
+  strict hosts; weather coordinates rounded; socket 32 slots and 10 s read deadline.
+- [x] Energy: pointer polling only near the notch or while something is shown (global mouse-moved monitor
+  starts it); idle auto-close after 2 min (not while an unanswered request is shown); panel closes and
+  loops pause while screens sleep / are locked (also detected at launch); notification DB polled off the main
+  thread, a refused open retried once a minute; spinners 12 fps; Now Playing bridge polls every 10 s and only
+  real changes are assigned; Downloads, Battery, Calendar (5 min, off main), Codex limits (cached, YYYY/MM/DD
+  walk), timer (no redraw every 0.5 s), Cuely (debounced save) assign / write only on change.
+  Measured with the screen locked: 3.3–3.7 % CPU and ~52 wakeups/s before → 0.1–0.2 % and 0–1 after.
+- [x] Clipboard data: save after a failed load is disabled; hourly `.bak` plus one before an unexplained drop
+  below half of this session's peak; deleted entries are scrubbed from `.bak` too; clear removes it; image
+  PNG encode and all writes off main; text over 1 MB not stored; `clipboard-events.log` (counts and sources
+  only) to trace the next loss. Verified by a scratch harness compiled from `Clipboard.swift` (all pass).
+- [x] Single instance (a second launch or an unknown `--flag` exits); `install.sh` waits for the old process.
+- [x] Session auto-cleanup: done / idle sessions leave the list after 10 min.
+- [x] After unlock: Home / Agents / Clipboard screenshots fine; the paused loops restart after unlock.
+  Found ~4.5 % CPU and ~120 wakeups/s with agents working: `sample` showed every TimelineView frame of the
+  dots re-laying out the whole window. Dots and music bars moved to Core Animation (`LayerLoop`);
+  the screen locked again before this could be measured unlocked.
+- [ ] Not verified (screen locked all night): hover-to-open with the event-driven polling, file drag to the
+  shelf, idle auto-close, re-open on wake with a pending request, visuals of the request cards.
+- [ ] Remaining low-priority review items: DispatchSource instead of 2 s Desktop/Downloads scans; Downloads
+  `@Sendable` capture warning; follow the active display.
+
+Next concrete action: after the user unlocks, check hover-open, drag to shelf and Home/Agents screenshots;
+then commit on `develop` when the user asks.

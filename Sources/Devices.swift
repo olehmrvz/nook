@@ -33,6 +33,7 @@ final class AudioDevices: NSObject, ObservableObject {
     private static func batteryLevels(for name: String) -> [String: Int] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
+        process.environment = AgentHub.childEnvironment
         process.arguments = ["SPBluetoothDataType", "-json"]
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -126,7 +127,9 @@ final class Weather: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func fetch() {
         guard let c = coordinate else { return }
-        let s = "https://api.open-meteo.com/v1/forecast?latitude=\(c.latitude)&longitude=\(c.longitude)"
+        // About a kilometre is enough for weather; the exact position stays on the Mac.
+        let lat = (c.latitude * 100).rounded() / 100, lon = (c.longitude * 100).rounded() / 100
+        let s = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)"
             + "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto"
         guard let url = URL(string: s) else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in

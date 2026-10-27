@@ -11,9 +11,19 @@ enum Settings {
         get { d.object(forKey: "agentDoneMinSeconds") as? Double ?? 15 }
         set { d.set(newValue, forKey: "agentDoneMinSeconds") }
     }
+    /// How long a finished agent session stays in the lists (seconds).
+    static var finishedSessionTTL: Double {
+        get { d.object(forKey: "finishedSessionTTL") as? Double ?? 600 }
+        set { d.set(newValue, forKey: "finishedSessionTTL") }
+    }
     static var notificationIslands: Bool {
         get { d.object(forKey: "notificationIslands") as? Bool ?? true }
         set { d.set(newValue, forKey: "notificationIslands") }
+    }
+    /// Keep the notch out of screenshots, recordings and screen sharing.
+    static var hideFromCapture: Bool {
+        get { d.object(forKey: "hideFromCapture") as? Bool ?? false }
+        set { d.set(newValue, forKey: "hideFromCapture") }
     }
     static var mutedApps: Set<String> {
         get { Set(d.stringArray(forKey: "mutedApps") ?? []) }
@@ -65,10 +75,13 @@ final class CalendarStore: ObservableObject {
         NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in
             self?.reload()
         }
+        // Events reload every 5 min and on every Calendar change; the 5-minute-warning check is cheap.
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.reload()
-            self?.announceUpcoming()
+            guard let self else { return }
+            if Date().timeIntervalSince(self.lastReload) > 300 { self.reload() }
+            self.announceUpcoming()
         }
+        timer?.tolerance = 5
     }
 
     private func updateAccess() {
@@ -81,6 +94,8 @@ final class CalendarStore: ObservableObject {
         store.requestFullAccessToEvents { [weak self] _, _ in
             self?.store.requestFullAccessToReminders { _, _ in
                 DispatchQueue.main.async {
+                    // A store created before the grant may not list calendars until it refreshes.
+                    self?.store.refreshSourcesIfNecessary()
                     self?.updateAccess()
                     self?.reload()
                     if self?.calendarAccess == false {
@@ -91,22 +106,31 @@ final class CalendarStore: ObservableObject {
         }
     }
 
+    private var lastReload = Date.distantPast
+    private let queue = DispatchQueue(label: "nook.calendar")
+
     func reload() {
         updateAccess()
+        lastReload = Date()
         if calendarAccess {
-            let start = Calendar.current.startOfDay(for: Date())
-            let end = Calendar.current.date(byAdding: .day, value: 2, to: start)!
-            let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-            events = store.events(matching: predicate)
-                .filter { $0.endDate > Date() || $0.isAllDay }
-                .sorted { $0.startDate < $1.startDate }
-                .prefix(30)
-                .map { e in
-                    Event(id: e.eventIdentifier ?? UUID().uuidString, title: e.title ?? "Без названия",
-                          start: e.startDate, end: e.endDate, allDay: e.isAllDay,
-                          color: e.calendar.color ?? .systemBlue, location: e.location,
-                          meetingURL: Self.meetingURL(in: [e.url?.absoluteString, e.location, e.notes]))
-                }
+            // EventKit fetch and link detection in notes run off the main thread.
+            let store = store
+            queue.async { [weak self] in
+                let start = Calendar.current.startOfDay(for: Date())
+                let end = Calendar.current.date(byAdding: .day, value: 2, to: start)!
+                let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+                let found = store.events(matching: predicate)
+                    .filter { $0.endDate > Date() || $0.isAllDay }
+                    .sorted { $0.startDate < $1.startDate }
+                    .prefix(30)
+                    .map { e in
+                        Event(id: e.eventIdentifier ?? UUID().uuidString, title: e.title ?? "Без названия",
+                              start: e.startDate, end: e.endDate, allDay: e.isAllDay,
+                              color: e.calendar.color ?? .systemBlue, location: e.location,
+                              meetingURL: Self.meetingURL(in: [e.url?.absoluteString, e.location, e.notes]))
+                    }
+                DispatchQueue.main.async { if self?.events != Array(found) { self?.events = Array(found) } }
+            }
         }
         if remindersAccess {
             let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
@@ -161,7 +185,9 @@ final class CalendarStore: ObservableObject {
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
         for case let text? in fields {
             for match in detector.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                if let url = match.url, let host = url.host, hosts.contains(where: { host.hasSuffix($0) }) { return url }
+                // The exact host or a subdomain of it, over https: "evilzoom.us" is not Zoom.
+                if let url = match.url, url.scheme == "https", let host = url.host?.lowercased(),
+                   hosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return url }
             }
         }
         return nil

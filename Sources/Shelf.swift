@@ -38,21 +38,28 @@ final class Shelf: ObservableObject {
         }
     }
 
+    /// Newest first; beyond 200 the oldest leave (and their thumbnails with them).
     func add(_ urls: [URL]) {
         for url in urls where !items.contains(where: { $0.path == url.path }) {
             items.insert(ShelfItem(path: url.path), at: 0)
             makeThumbnail(for: url.path)
+        }
+        if items.count > 200 {
+            items.suffix(from: 200).forEach { thumbnails[$0.path] = nil }
+            items.removeLast(items.count - 200)
         }
         save()
     }
 
     func remove(_ item: ShelfItem) {
         items.removeAll { $0.id == item.id }
+        thumbnails[item.path] = nil
         save()
     }
 
     func clear() {
         items.removeAll()
+        thumbnails.removeAll()
         save()
     }
 
@@ -66,6 +73,13 @@ final class Shelf: ObservableObject {
 
     func open(_ item: ShelfItem) {
         NSWorkspace.shared.open(item.url)
+    }
+
+    /// Puts the file itself on the clipboard, ready to paste in Finder, Mail or a chat.
+    func copy(_ item: ShelfItem) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([item.url as NSURL])
     }
 
     // MARK: Screenshots
@@ -126,9 +140,16 @@ final class Shelf: ObservableObject {
         }
     }
 
+    /// Writes on the shelf queue; entries whose files were moved or deleted meanwhile are dropped.
     private func save() {
-        // Drop entries whose files were moved or deleted meanwhile.
-        items.removeAll { !FileManager.default.fileExists(atPath: $0.path) }
-        if let data = try? JSONEncoder().encode(items) { try? data.write(to: fileURL, options: [.atomic]) }
+        let snapshot = items
+        let url = fileURL
+        queue.async { [weak self] in
+            let existing = snapshot.filter { FileManager.default.fileExists(atPath: $0.path) }
+            if let data = try? JSONEncoder().encode(existing) { try? data.write(to: url, options: [.atomic]) }
+            let missing = Set(snapshot.map(\.id)).subtracting(existing.map(\.id))
+            guard !missing.isEmpty else { return }
+            DispatchQueue.main.async { self?.items.removeAll { missing.contains($0.id) } }
+        }
     }
 }

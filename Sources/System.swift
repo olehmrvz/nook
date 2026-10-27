@@ -1,6 +1,8 @@
 import AppKit
 import Carbon
+import IOKit
 import IOKit.ps
+import SwiftUI
 
 // MARK: Global hotkey (Carbon, needs no permission)
 
@@ -40,7 +42,15 @@ final class Battery: ObservableObject {
     @Published private(set) var charging = false
     @Published private(set) var pluggedIn = false
     @Published private(set) var hasBattery = false
+    @Published private(set) var minutesToFull: Int?
+    @Published private(set) var minutesToEmpty: Int?
+    /// Full-charge capacity against design capacity, like "Maximum Capacity" in Settings.
+    @Published private(set) var health: Int?
+    @Published private(set) var cycles: Int?
+    /// Plugged in but not charging below 100 %: the macOS charge limit or Optimized Charging holds it.
+    @Published private(set) var held = false
     private var timer: Timer?
+    private var detailsRead = Date.distantPast
 
     func start(onPlug: @escaping (Int) -> Void) {
         read()
@@ -58,12 +68,68 @@ final class Battery: ObservableObject {
         for source in list {
             guard let d = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
                   d[kIOPSTypeKey] as? String == kIOPSInternalBatteryType else { continue }
-            hasBattery = true
+            set(\.hasBattery, true)
             let current = d[kIOPSCurrentCapacityKey] as? Int ?? 0
             let max = d[kIOPSMaxCapacityKey] as? Int ?? 100
-            percent = max > 0 ? Int((Double(current) / Double(max) * 100).rounded()) : current
-            charging = d[kIOPSIsChargingKey] as? Bool ?? false
-            pluggedIn = d[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
+            set(\.percent, max > 0 ? Int((Double(current) / Double(max) * 100).rounded()) : current)
+            set(\.charging, d[kIOPSIsChargingKey] as? Bool ?? false)
+            set(\.pluggedIn, d[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue)
+            let full = d[kIOPSTimeToFullChargeKey] as? Int ?? -1
+            let empty = d[kIOPSTimeToEmptyKey] as? Int ?? -1
+            set(\.minutesToFull, charging && full > 0 ? full : nil)
+            set(\.minutesToEmpty, !pluggedIn && empty > 0 ? empty : nil)
+        }
+        if Date().timeIntervalSince(detailsRead) > 30 { readDetails() }
+        set(\.held, hasBattery && pluggedIn && !charging && percent < 100)
+    }
+
+    /// Health and cycles from the battery's registry entry (no special permission needed).
+    private func readDetails() {
+        detailsRead = Date()
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return }
+        defer { IOObjectRelease(service) }
+        var properties: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let dict = properties?.takeRetainedValue() as? [String: Any] else { return }
+        let data = dict["BatteryData"] as? [String: Any] ?? [:]
+        let design = data["DesignCapacity"] as? Int ?? dict["DesignCapacity"] as? Int
+        let nominal = data["NominalChargeCapacity"] as? Int ?? dict["NominalChargeCapacity"] as? Int
+        if let design, let nominal, design > 0 {
+            set(\.health, min(100, Int((Double(nominal) / Double(design) * 100).rounded())))
+        }
+        set(\.cycles, dict["CycleCount"] as? Int)
+    }
+
+    /// Assigns only real changes, so the panel does not redraw every three seconds.
+    private func set<T: Equatable>(_ key: ReferenceWritableKeyPath<Battery, T>, _ value: T) {
+        if self[keyPath: key] != value { self[keyPath: key] = value }
+    }
+
+    var headline: String {
+        if held { return "Держу заряд" }
+        if charging { return "Заряжается" }
+        if pluggedIn { return "От сети" }
+        return "От батареи"
+    }
+
+    var tint: Color {
+        if held || charging || pluggedIn { return Palette.green }
+        return percent <= 20 ? Palette.red : Color.white.opacity(0.75)
+    }
+
+    var detail: String {
+        if held { return "Адаптер подключён, зарядка на паузе: работает лимит заряда или оптимизированная зарядка." }
+        if let m = minutesToFull { return "Полная зарядка через " + Format.span(Double(m) * 60) + "." }
+        if let m = minutesToEmpty { return "Хватит примерно на " + Format.span(Double(m) * 60) + "." }
+        return pluggedIn ? "Адаптер подключён." : "Считаю оставшееся время…"
+    }
+
+    static func openChargeLimitSettings() {
+        let urls = ["x-apple.systempreferences:com.apple.Battery-Settings.extension",
+                    "x-apple.systempreferences:com.apple.preference.battery"]
+        for string in urls {
+            if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
         }
     }
 }
@@ -90,8 +156,11 @@ final class Limits: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
+    /// One read at a time: overlapping refreshes would race on the Codex cache.
+    private let queue = DispatchQueue(label: "nook.limits", qos: .utility)
+
     func refresh() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        queue.async { [weak self] in
             guard let self else { return }
             let claude = self.readClaude()
             let codex = self.readCodex()
@@ -147,16 +216,49 @@ final class Limits: ObservableObject {
         return (current(best.0), current(best.1), best.2)
     }
 
-    private func readCodex() -> (window: UsageWindow, minutes: Int)? {
-        let root = home.appendingPathComponent(".codex/sessions")
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey])
-        else { return nil }
+    private var codexCache: (path: String, modified: Date, result: (window: UsageWindow, minutes: Int)?)?
+
+    /// Newest session file. Sessions live in YYYY/MM/DD folders, so walk down the latest names
+    /// instead of listing hundreds of files every 30 s; fall back to a full scan for other layouts.
+    private func newestCodexFile(in root: URL) -> (URL, Date)? {
+        let fm = FileManager.default
+        func modified(_ url: URL) -> Date {
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        }
+        var dir = root
+        for _ in 0..<3 {
+            guard let last = (try? fm.contentsOfDirectory(atPath: dir.path))?.filter({ !$0.hasPrefix(".") }).sorted().last
+            else { break }
+            dir = dir.appendingPathComponent(last)
+        }
+        let files = ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .filter { $0.pathExtension == "jsonl" }
+        if let best = files.map({ ($0, modified($0)) }).max(by: { $0.1 < $1.1 }) { return best }
         var newest: (URL, Date)?
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-            let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey])
+        while let url = enumerator?.nextObject() as? URL {
+            guard url.pathExtension == "jsonl" else { continue }
+            let date = modified(url)
             if newest == nil || date > newest!.1 { newest = (url, date) }
         }
-        guard let file = newest?.0, let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        return newest
+    }
+
+    private func readCodex() -> (window: UsageWindow, minutes: Int)? {
+        let root = home.appendingPathComponent(".codex/sessions")
+        guard let newest = newestCodexFile(in: root) else { return nil }
+        // Same file, untouched since the last read: the answer cannot have changed (only a passed reset can).
+        if let cache = codexCache, cache.path == newest.0.path, cache.modified == newest.1,
+           cache.result?.window.resetsAt.map({ $0 > Date() }) ?? true {
+            return cache.result
+        }
+        let result = readCodexFile(newest.0)
+        codexCache = (newest.0.path, newest.1, result)
+        return result
+    }
+
+    private func readCodexFile(_ file: URL) -> (window: UsageWindow, minutes: Int)? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > 2_000_000 ? size - 2_000_000 : 0)

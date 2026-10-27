@@ -1,4 +1,6 @@
 import AppKit
+import ImageIO
+import Vision
 
 struct ClipItem: Codable, Identifiable, Equatable {
     enum Kind: String, Codable { case text, image, files }
@@ -25,6 +27,10 @@ final class ClipboardStore: ObservableObject {
     @Published private(set) var items: [ClipItem] = []
     @Published var query = ""
     @Published var selection = 0
+    /// Small previews of image entries, keyed by file name; loaded off the main thread.
+    @Published private(set) var thumbnails: [String: NSImage] = [:]
+    private var loadingThumbnails = Set<String>()
+    private let io = DispatchQueue(label: "nook.clipboard")
 
     private let maxUnpinned = 300
     private let fileURL = supportDir.appendingPathComponent("clipboard.json")
@@ -32,6 +38,10 @@ final class ClipboardStore: ObservableObject {
     private var changeCount = NSPasteboard.general.changeCount
     private var timer: Timer?
     private var ownChange = -1
+    /// Entries removed in the last few seconds, kept for "Вернуть"; their images are deleted after that.
+    @Published private(set) var removed: [ClipItem] = []
+    private var purgeWork: DispatchWorkItem?
+    var canUndo: Bool { !removed.isEmpty }
 
     private static let ignoredTypes: Set<String> = [
         "org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType",
@@ -46,10 +56,23 @@ final class ClipboardStore: ObservableObject {
         return base.filter { $0.preview.lowercased().contains(q) || ($0.sourceApp ?? "").lowercased().contains(q) }
     }
 
+    /// Text bigger than this is not kept: it would be re-encoded on every later change.
+    private static let maxTextBytes = 1_000_000
+    /// The file exists but could not be read: nothing is written, so the old history is never overwritten.
+    private var loadFailed = false
+    /// Largest history seen this session; a fall below half of it triggers a safety copy.
+    private var peakCount = 0
+    private var lastBackup = Date.distantPast
+    private var backupURL: URL { fileURL.appendingPathExtension("bak") }
+    private let eventsURL = supportDir.appendingPathComponent("clipboard-events.log")
+
     func start() {
-        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: imagesDir.path)
         load()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
+        timer?.tolerance = 0.15
     }
 
     private func poll() {
@@ -66,11 +89,18 @@ final class ClipboardStore: ObservableObject {
             add(ClipItem(kind: .files, files: urls.map(\.path), sourceApp: app))
         } else if let string = pb.string(forType: .string),
                   !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard string.utf8.count <= Self.maxTextBytes else { return }
             add(ClipItem(kind: .text, text: string, sourceApp: app))
-        } else if let image = NSImage(pasteboard: pb), let png = image.pngData {
+        } else if let image = NSImage(pasteboard: pb) {
+            // Encoding a large screenshot to PNG takes a while: it happens off the main thread.
             let name = UUID().uuidString + ".png"
-            try? png.write(to: imagesDir.appendingPathComponent(name))
-            add(ClipItem(kind: .image, imageFile: name, sourceApp: app))
+            let file = imagesDir.appendingPathComponent(name)
+            io.async { [weak self] in
+                guard let png = image.pngData else { return }
+                try? png.write(to: file)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+                DispatchQueue.main.async { self?.add(ClipItem(kind: .image, imageFile: name, sourceApp: app)) }
+            }
         }
     }
 
@@ -88,17 +118,41 @@ final class ClipboardStore: ObservableObject {
 
     private func trim() {
         var unpinned = 0
+        var dropped: [ClipItem] = []
         items.removeAll { item in
             guard !item.pinned else { return false }
             unpinned += 1
-            if unpinned > maxUnpinned { deleteImage(of: item); return true }
+            if unpinned > maxUnpinned { dropped.append(item); return true }
             return false
         }
+        dropped.forEach(deleteImage)
+    }
+
+    func imageURL(for item: ClipItem) -> URL? {
+        item.imageFile.map { imagesDir.appendingPathComponent($0) }
     }
 
     func image(for item: ClipItem) -> NSImage? {
         guard let name = item.imageFile else { return nil }
         return NSImage(contentsOf: imagesDir.appendingPathComponent(name))
+    }
+
+    /// Cached preview for list rows. The first call starts a background load and returns nil.
+    func thumbnail(for item: ClipItem) -> NSImage? {
+        guard let name = item.imageFile else { return nil }
+        if let cached = thumbnails[name] { return cached }
+        guard !loadingThumbnails.contains(name) else { return nil }
+        loadingThumbnails.insert(name)
+        let url = imagesDir.appendingPathComponent(name)
+        io.async { [weak self] in
+            let options = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                           kCGImageSourceThumbnailMaxPixelSize: 96] as CFDictionary
+            let image = CGImageSourceCreateWithURL(url as CFURL, nil)
+                .flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, options) }
+                .map { NSImage(cgImage: $0, size: .zero) }
+            DispatchQueue.main.async { if let image { self?.thumbnails[name] = image } }
+        }
+        return nil
     }
 
     func copyToPasteboard(_ item: ClipItem) {
@@ -125,32 +179,166 @@ final class ClipboardStore: ObservableObject {
         save()
     }
 
-    func delete(_ item: ClipItem) {
-        deleteImage(of: item)
+    /// `source` goes to the event log ("row", "menu"), to trace any unexpected loss.
+    func delete(_ item: ClipItem, source: String) {
+        guard items.contains(where: { $0.id == item.id }) else { return }
+        remember(items.filter { $0.id == item.id })
         items.removeAll { $0.id == item.id }
+        logEvent("delete source=\(source)")
+        scrubBackup(ids: [item.id])
+        save(requested: true)
+    }
+
+    /// What you clear is gone from disk too: no backup copy is kept of a history you chose to erase.
+    func clearUnpinned() {
+        let gone = items.filter { !$0.pinned }
+        guard !gone.isEmpty else { return }
+        remember(gone)
+        items.removeAll { !$0.pinned }
+        logEvent("clear removed=\(gone.count)")
+        let backup = backupURL
+        io.async { try? FileManager.default.removeItem(at: backup) }
+        save(requested: true)
+    }
+
+    /// Brings back what was deleted or cleared in the last 15 seconds.
+    func undoRemove() {
+        guard !removed.isEmpty else { return }
+        purgeWork?.cancel()
+        let back = removed.filter { old in !items.contains { $0.id == old.id } }
+        items = (items + back).sorted { $0.date > $1.date }
+        removed = []
+        logEvent("undo restored=\(back.count)")
         save()
     }
 
-    func clearUnpinned() {
-        items.filter { !$0.pinned }.forEach(deleteImage)
-        items.removeAll { !$0.pinned }
-        save()
+    private func remember(_ gone: [ClipItem]) {
+        purgeWork?.cancel()
+        removed = removed + gone
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.removed.forEach(self.deleteImage)
+            self.removed = []
+        }
+        purgeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: work)
     }
 
     private func deleteImage(of item: ClipItem) {
-        if let name = item.imageFile { try? FileManager.default.removeItem(at: imagesDir.appendingPathComponent(name)) }
+        guard let name = item.imageFile else { return }
+        let file = imagesDir.appendingPathComponent(name)
+        io.async { try? FileManager.default.removeItem(at: file) }
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([ClipItem].self, from: data) else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            loadFailed = true
+            logEvent("load-failed: file unreadable, saving disabled")
+            return
+        }
+        guard let decoded = try? JSONDecoder().decode([ClipItem].self, from: data) else {
+            // Never overwrite history Nook cannot read: set it aside (one copy, owner-only) and start fresh.
+            let aside = fileURL.appendingPathExtension("unreadable")
+            try? FileManager.default.removeItem(at: aside)
+            try? FileManager.default.moveItem(at: fileURL, to: aside)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: aside.path)
+            logEvent("load-failed: undecodable, set aside")
+            return
+        }
         items = decoded
+        peakCount = decoded.count
+        logEvent("load")
+        removeOrphanImages()
     }
 
-    private func save() {
-        guard let data = try? JSONEncoder().encode(items) else { return }
-        try? data.write(to: fileURL, options: [.atomic])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    /// Image files no entry points to (e.g. Nook quit during the undo window) are deleted in the background.
+    private func removeOrphanImages() {
+        let used = Set(items.compactMap(\.imageFile))
+        let dir = imagesDir
+        io.async {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            for name in names where !used.contains(name) {
+                let file = dir.appendingPathComponent(name)
+                // Skip anything written in the last minute: it may belong to an entry being added right now.
+                let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
+                if let modified, Date().timeIntervalSince(modified) > 60 { try? FileManager.default.removeItem(at: file) }
+            }
+        }
+    }
+
+    /// Writes on the `io` queue. Keeps `clipboard.json.bak`: refreshed hourly, and before an unexplained drop
+    /// below half of the largest history this session. `requested`: the user deleted or cleared on purpose.
+    private func save(requested: Bool = false) {
+        guard !loadFailed else { return }
+        let snapshot = items
+        let url = fileURL, backup = backupURL
+        let suddenDrop = !requested && peakCount > 20 && snapshot.count < peakCount / 2
+        let hourly = !requested && snapshot.count >= 20 && Date().timeIntervalSince(lastBackup) > 3600
+        if suddenDrop { logEvent("drop from=\(peakCount) to=\(snapshot.count), backup kept") }
+        if suddenDrop || hourly { lastBackup = Date() }
+        peakCount = requested ? snapshot.count : max(peakCount, snapshot.count)
+        io.async {
+            if suddenDrop || hourly, FileManager.default.fileExists(atPath: url.path) {
+                try? FileManager.default.removeItem(at: backup)
+                try? FileManager.default.copyItem(at: url, to: backup)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+            }
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: url, options: [.atomic])
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
+    }
+
+    /// Entries you delete also leave the safety copy.
+    private func scrubBackup(ids: Set<UUID>) {
+        let backup = backupURL
+        io.async {
+            guard let data = try? Data(contentsOf: backup),
+                  var saved = try? JSONDecoder().decode([ClipItem].self, from: data) else { return }
+            saved.removeAll { ids.contains($0.id) }
+            if let out = try? JSONEncoder().encode(saved) { try? out.write(to: backup, options: [.atomic]) }
+        }
+    }
+
+    /// Counts and sources only, never clipboard content. Kept under ~200 KB.
+    private func logEvent(_ text: String) {
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(text) count=\(items.count)\n"
+        let url = eventsURL
+        io.async {
+            let fm = FileManager.default
+            if !fm.fileExists(atPath: url.path) {
+                fm.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            }
+            guard let handle = try? FileHandle(forWritingTo: url) else { return }
+            defer { try? handle.close() }
+            let end = (try? handle.seekToEnd()) ?? 0
+            if end > 200_000, let old = try? Data(contentsOf: url) {
+                try? handle.truncate(atOffset: 0)
+                try? handle.write(contentsOf: old.suffix(100_000))
+            }
+            try? handle.write(contentsOf: Data(line.utf8))
+        }
+    }
+}
+
+/// Text from an image, recognised on the Mac (Vision); nothing leaves the computer.
+enum TextRecognizer {
+    static func copyText(from url: URL, done: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["ru-RU", "en-US", "de-DE", "uk-UA"]
+            try? VNImageRequestHandler(url: url).perform([request])
+            let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            DispatchQueue.main.async {
+                guard !text.isEmpty else { done(false); return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                done(true)
+            }
+        }
     }
 }
 

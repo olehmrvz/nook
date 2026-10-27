@@ -89,8 +89,8 @@ final class FocusTimer: ObservableObject {
         RunLoop.main.add(ticker!, forMode: .common)
     }
 
+    /// Views count down with their own TimelineView; this only notices the end (no redraw every 0.5 s).
     private func tick() {
-        objectWillChange.send()
         guard let endDate, endDate <= Date() else { return }
         ticker?.invalidate()
         self.endDate = nil

@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 enum Tab: String, CaseIterable, Identifiable {
-    case home, clipboard, shelf, ai, calendar, timer, cuely
+    case home, clipboard, shelf, ai, notes, mirror, calendar, timer, cuely
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -11,6 +11,8 @@ enum Tab: String, CaseIterable, Identifiable {
         case .clipboard: return "Буфер"
         case .shelf: return "Полка"
         case .ai: return "Агенты"
+        case .notes: return "Заметки"
+        case .mirror: return "Зеркало"
         case .calendar: return "Календарь"
         case .timer: return "Таймер"
         case .cuely: return "Cuely"
@@ -22,13 +24,20 @@ enum Tab: String, CaseIterable, Identifiable {
         case .clipboard: return "doc.on.clipboard.fill"
         case .shelf: return "tray.full.fill"
         case .ai: return "sparkles"
+        case .notes: return "note.text"
+        case .mirror: return "person.crop.square"
         case .calendar: return "calendar"
         case .timer: return "timer"
         case .cuely: return "text.alignleft"
         }
     }
+    /// ⌘1 … ⌘9 in header order (a tenth tab would get ⌘0).
+    var shortcut: KeyEquivalent {
+        KeyEquivalent(Character(String(((Tab.allCases.firstIndex(of: self) ?? 0) + 1) % 10)))
+    }
+
     /// Tabs drawn left of the camera; the rest go to the right.
-    static let leftSide: [Tab] = [.home, .clipboard, .shelf, .ai]
+    static let leftSide: [Tab] = [.home, .clipboard, .shelf, .ai, .notes, .mirror]
     static let rightSide: [Tab] = [.calendar, .timer, .cuely]
 }
 
@@ -37,18 +46,22 @@ enum Flash: Equatable {
     case charging(Int)
     case screenshot(URL)
     case copied
+    /// "Copy text from image" found nothing.
+    case noText
 }
 
 /// Medium pills that drop out of the notch for a few seconds.
 struct Island: Identifiable, Equatable {
     enum Kind: Equatable {
-        case agentDone(provider: String, project: String, message: String, duration: TimeInterval?, pid: Int32)
+        case agentDone(provider: String, project: String, message: String, duration: TimeInterval?, pid: Int32,
+                       terminal: [String: String])
         case notification(bundleID: String, app: String, title: String, body: String)
         case call(name: String, bundleID: String)
         case airpods(name: String, levels: [String: Int])
         case download(name: String, path: String)
         case timerDone(title: String, subtitle: String)
         case event(title: String, start: Date, url: URL?)
+        case command(text: String, seconds: Double, exit: Int, pid: Int32, terminal: [String: String])
     }
     let id = UUID()
     let kind: Kind
@@ -56,9 +69,9 @@ struct Island: Identifiable, Equatable {
 }
 
 enum NotchGeometry {
-    /// The built-in display with a camera housing, or the main display.
-    static var screen: NSScreen {
-        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens[0]
+    /// The built-in display with a camera housing, or the main display; nil for a moment during display changes.
+    static var screen: NSScreen? {
+        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens.first
     }
 
     static func notchSize(on screen: NSScreen) -> CGSize {
@@ -73,8 +86,8 @@ enum NotchGeometry {
 }
 
 final class NotchModel: ObservableObject {
-    static let expandedSize = CGSize(width: 780, height: 310)
-    static let windowSize = CGSize(width: 860, height: 340)
+    static let expandedSize = CGSize(width: 780, height: 326)
+    static let windowSize = CGSize(width: 860, height: 356)
     static let islandWidth: CGFloat = 460
     static let islandExtra: CGFloat = 78
     static let prompterSize = CGSize(width: 600, height: 190)
@@ -83,8 +96,14 @@ final class NotchModel: ObservableObject {
 
     @Published var expanded = false
     @Published var tab: Tab = .home
+    /// Battery details card under the header chip.
+    @Published var showPower = false
     @Published var notch = CGSize(width: 190, height: 32)
     @Published var flash: Flash?
+    /// Screens asleep or locked: the panel closes and the notch animations pause.
+    @Published private(set) var resting = false
+    /// Frame of the screen the notch lives on, set when the panel is placed (not looked up 30 times a second).
+    var screenFrame = NSScreen.screens.first?.frame ?? .zero
     @Published private(set) var island: Island?
 
     let nowPlaying = NowPlaying()
@@ -100,6 +119,8 @@ final class NotchModel: ObservableObject {
     let notifications = NotificationWatcher()
     let bluetooth = AudioDevices()
     let weather = Weather()
+    let notes = NotesStore()
+    let mirror = MirrorCamera()
 
     weak var panel: NotchPanel?
     /// Opened from the hotkey: stays open until Esc, a pick or a click outside.
@@ -150,14 +171,15 @@ final class NotchModel: ObservableObject {
         notifications.start { [weak self] island in self?.present(island) }
         bluetooth.start { [weak self] island in self?.present(island) }
         weather.start()
+        notes.start()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
-            if presenting { self.collapse() }
+            if presenting { self.collapse(); self.startTicks() }
             self.objectWillChange.send()
         }
         agents.start(
             onPermission: { [weak self] in
-                guard let self else { return }
+                guard let self, !self.resting else { return }   // shown when the screens wake
                 self.holdOpen = true
                 self.expand(tab: .ai)
             },
@@ -171,20 +193,92 @@ final class NotchModel: ObservableObject {
                 .store(in: &bag)
         }
 
-        tickTimer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.tick() }
-        RunLoop.main.add(tickTimer!, forMode: .common)
+        // No timer while the pointer is far away: moving the mouse near the notch starts fast polling,
+        // which stops again once nothing there needs it (about 2.6 million fewer wakeups a day).
+        NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            self?.pointerMoved()
+        }
+        NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            self?.pointerMoved()
+            return event
+        }
+        pointerMoved()
 
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self, self.expanded, self.sticky else { return }
             if !self.expandedRect.contains(NSEvent.mouseLocation) { self.collapse() }
         }
+
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.setResting(true)
+        }
+        ws.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.setResting(false)
+        }
+        let dnc = DistributedNotificationCenter.default()
+        dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            self?.setResting(true)
+        }
+        dnc.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            self?.setResting(false)
+        }
+        // Started while locked (e.g. reinstalled remotely): the lock notification has already passed.
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        if session?["CGSSessionScreenIsLocked"] as? Bool == true || CGDisplayIsAsleep(CGMainDisplayID()) != 0 {
+            setResting(true)
+        }
+    }
+
+    private func setResting(_ value: Bool) {
+        guard resting != value else { return }
+        resting = value
+        if value {
+            collapse()
+        } else if !agents.permissions.isEmpty {
+            // A request came in while you were away: it is the first thing you see.
+            holdOpen = true
+            expand(tab: .ai)
+        }
+    }
+
+    // MARK: Pointer polling
+
+    private var fastTicks: Bool { tickTimer != nil }
+
+    /// Something near the notch or on screen needs the pointer watched closely.
+    private func needsTicks(at point: NSPoint) -> Bool {
+        if expanded || island != nil || cuely.isPresenting { return true }
+        let f = screenFrame
+        return f.maxY - point.y < 110 && abs(point.x - f.midX) < max(collapsedWidth, 300) / 2 + 160
+    }
+
+    private func pointerMoved() {
+        guard !fastTicks, needsTicks(at: NSEvent.mouseLocation) else { return }
+        startTicks()
+    }
+
+    private func startTicks() {
+        guard tickTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.tick() }
+        timer.tolerance = 0.006
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
+    }
+
+    private func stopTicks() {
+        tickTimer?.invalidate()
+        tickTimer = nil
+    }
+
+    /// Seconds since the last keyboard or mouse input anywhere (any event type).
+    private var idleSeconds: Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
 
     private var bag = Set<AnyCancellable>()
 
     // MARK: Geometry in screen coordinates
-
-    private var screenFrame: NSRect { NotchGeometry.screen.frame }
 
     private func topRect(width: CGFloat, height: CGFloat) -> NSRect {
         let f = screenFrame
@@ -212,6 +306,12 @@ final class NotchModel: ObservableObject {
 
     private func tick() {
         let point = NSEvent.mouseLocation
+        if !needsTicks(at: point) && NSEvent.pressedMouseButtons == 0 {
+            if let panel, !panel.ignoresMouseEvents { panel.ignoresMouseEvents = true }
+            hoverStart = nil
+            stopTicks()
+            return
+        }
         let pressed = NSEvent.pressedMouseButtons & 1 != 0
         let dragCount = NSPasteboard(name: .drag).changeCount
         if !pressed {
@@ -242,6 +342,11 @@ final class NotchModel: ObservableObject {
         hoverStart = nil
         let inside = expandedRect.insetBy(dx: -10, dy: -10).contains(point)
         if inside { holdOpen = false }
+        // The request it was opened for is answered or timed out: no reason to stay open.
+        if holdOpen && agents.permissions.isEmpty { holdOpen = false }
+        // Nobody at the Mac for two minutes: close, even if opened by the hotkey. An unanswered request
+        // stays (it times out on its own after about two minutes, which then lets the panel close).
+        if !holdOpen && idleSeconds > 120 { collapse(); return }
         if inside || sticky || holdOpen {
             leaveStart = nil
         } else {
@@ -255,10 +360,12 @@ final class NotchModel: ObservableObject {
         guard !expanded else { return }
         if island != nil { dismissIsland(showNext: false) }
         expanded = true
+        startTicks()
     }
 
     func collapse() {
         guard expanded else { return }
+        showPower = false
         let wasSticky = sticky
         sticky = false
         holdOpen = false
@@ -351,7 +458,9 @@ final class NotchModel: ObservableObject {
     }
 
     private func showIsland(_ new: Island) {
+        guard !resting else { return }
         island = new
+        startTicks()
         scheduleIslandDismiss(after: new.seconds)
     }
 
@@ -413,8 +522,14 @@ final class NotchPanel: NSPanel {
         isMovable = false
         isReleasedWhenClosed = false
         ignoresMouseEvents = true
+        sharingType = Settings.hideFromCapture ? .none : .readOnly
+        // Only text fields take the keyboard; clicking tabs or buttons leaves typing in the terminal.
+        becomesKeyOnlyIfNeeded = true
         let host = NSHostingView(rootView: RootView(model: model))
         host.sizingOptions = []
+        // The panel overlaps the camera housing; macOS would report that as a safe area and shift
+        // scroll views inside it by a few points, clipping their first row.
+        host.safeAreaRegions = []
         contentView = host
         reposition()
     }
@@ -423,8 +538,9 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func reposition() {
-        let screen = NotchGeometry.screen
+        guard let screen = NotchGeometry.screen else { return }
         model.notch = NotchGeometry.notchSize(on: screen)
+        model.screenFrame = screen.frame
         let size = NotchModel.windowSize
         setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                         width: size.width, height: size.height), display: true)

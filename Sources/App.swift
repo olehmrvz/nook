@@ -27,16 +27,26 @@ enum NookMain {
         if let t = value(after: "--timer") { command = t == "stop" ? "timer-stop" : (t == "pomodoro" ? "pomodoro" : "timer:\(t)") }
         if args.contains("--prompt") { command = "prompt" }
         if let command {
-            let tab = command.isEmpty ? "home" : command
-            DistributedNotificationCenter.default().postNotificationName(
-                .init("dev.nook.show"), object: tab, userInfo: nil, deliverImmediately: true)
-            exit(0)
+            exit(AgentHub.sendCommand(["event": "Show", "name": command.isEmpty ? "home" : command]) ? 0 : 1)
         }
         // `Nook --answer allow|always|deny|terminal` answers the oldest pending agent request.
+        // Goes through the owner-only socket with the token: a broadcast notification could be sent
+        // (and approve an agent's request) by any process on the Mac.
         if let i = CommandLine.arguments.firstIndex(of: "--answer") {
             let answer = CommandLine.arguments.indices.contains(i + 1) ? CommandLine.arguments[i + 1] : "allow"
-            DistributedNotificationCenter.default().postNotificationName(
-                .init("dev.nook.answer"), object: answer, userInfo: nil, deliverImmediately: true)
+            exit(AgentHub.sendCommand(["event": "Answer", "decision": answer]) ? 0 : 1)
+        }
+        // Only "--" options are Nook's; macOS itself may pass "-psn_…" or "-NS…" ones at launch.
+        if let unknown = args.dropFirst().first(where: { $0.hasPrefix("--") }) {
+            // A typo must not start a second Nook: two copies would overwrite each other's files.
+            print("Nook: unknown option \(unknown)")
+            print("Usage: Nook --show <tab|power|close> | --timer <min|stop|pomodoro> | --prompt | --answer <allow|always|deny|terminal> | --install-hooks")
+            exit(2)
+        }
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.nook.app")
+            .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+        if !others.isEmpty {
+            print("Nook is already running")
             exit(0)
         }
         let app = NSApplication.shared
@@ -67,32 +77,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                object: nil, queue: .main) { [weak self] _ in
             self?.panel.reposition()
         }
-        DistributedNotificationCenter.default().addObserver(forName: .init("dev.nook.show"), object: nil,
-                                                            queue: .main) { [weak self] note in
-            guard let self else { return }
-            let name = note.object as? String ?? "home"
-            if name == "close" { self.model.collapse(); self.model.cuely.stop(); return }
-            if name == "prompt" { self.model.cuely.present(); self.model.focusPanel(); return }
-            if name.hasPrefix("timer:"), let minutes = Double(name.dropFirst(6)) {
-                self.model.timer.pomodoro = false
-                self.model.timer.start(minutes: minutes)
-                return
-            }
-            if name == "pomodoro" { self.model.timer.startPomodoro(); return }
-            if name == "timer-stop" { self.model.timer.reset(); return }
-            self.model.open(tab: Tab(rawValue: name) ?? .home)
+        model.agents.onShow = { [weak self] name in self?.handle(command: name) }
+    }
+
+    /// Commands from the `Nook` command line, delivered over the authenticated socket.
+    private func handle(command name: String) {
+        if name == "close" { model.collapse(); model.cuely.stop(); return }
+        if name == "prompt" { model.cuely.present(); model.focusPanel(); return }
+        if name.hasPrefix("timer:"), let minutes = Double(name.dropFirst(6)) {
+            model.timer.pomodoro = false
+            model.timer.start(minutes: minutes)
+            return
         }
-        DistributedNotificationCenter.default().addObserver(forName: .init("dev.nook.answer"), object: nil,
-                                                            queue: .main) { [weak self] note in
-            guard let agents = self?.model.agents, let oldest = agents.permissions.first else { return }
-            let decision: AgentHub.Decision? = switch note.object as? String {
-            case "allow": .allow
-            case "always": .always
-            case "deny": .deny
-            default: nil
-            }
-            agents.answer(oldest.id, with: decision)
-        }
+        if name == "pomodoro" { model.timer.startPomodoro(); return }
+        if name == "power" { model.open(tab: .home); model.showPower = true; return }
+        if name == "timer-stop" { model.timer.reset(); return }
+        model.open(tab: Tab(rawValue: name) ?? .home)
     }
 
     private func setupStatusItem() {
@@ -108,6 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         paste.target = self
         let hooks = menu.addItem(withTitle: "Подключить Claude Code и Codex", action: #selector(installHooks), keyEquivalent: "")
         hooks.target = self
+        let shell = menu.addItem(withTitle: "Острова для долгих команд (zsh)…", action: #selector(installShell), keyEquivalent: "")
+        shell.target = self
         let sound = menu.addItem(withTitle: "Звук, когда агент закончил", action: #selector(toggleAgentSound(_:)), keyEquivalent: "")
         sound.target = self
         sound.state = Settings.agentDoneSound ? .on : .off
@@ -116,6 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         islands.state = Settings.notificationIslands ? .on : .off
         let disk = menu.addItem(withTitle: "Полный доступ к диску (для уведомлений)…", action: #selector(openDiskAccess), keyEquivalent: "")
         disk.target = self
+        let capture = menu.addItem(withTitle: "Скрывать Nook при показе экрана", action: #selector(toggleHideFromCapture(_:)), keyEquivalent: "")
+        capture.target = self
+        capture.state = Settings.hideFromCapture ? .on : .off
         let unmute = menu.addItem(withTitle: "Снова показывать скрытые приложения", action: #selector(unmuteApps), keyEquivalent: "")
         unmute.target = self
         menu.addItem(.separator())
@@ -140,6 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.state = Settings.notificationIslands ? .on : .off
     }
 
+    @objc private func toggleHideFromCapture(_ sender: NSMenuItem) {
+        Settings.hideFromCapture.toggle()
+        sender.state = Settings.hideFromCapture ? .on : .off
+        panel.sharingType = Settings.hideFromCapture ? .none : .readOnly
+    }
+
     @objc private func openDiskAccess() { NotificationWatcher.openSettings() }
     @objc private func unmuteApps() { Settings.mutedApps = [] }
 
@@ -148,8 +159,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
     }
 
+    @objc private func installShell() {
+        let result = AgentHub.installShellIntegration()
+        let alert = NSAlert()
+        alert.messageText = result.ok ? "Терминал подключён" : "Не удалось подключить терминал"
+        alert.informativeText = result.message
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     @objc private func installHooks() {
         let result = AgentHub.installHooks()
+        model.agents.checkHooks()
         let alert = NSAlert()
         alert.messageText = result.ok ? "Хуки подключены" : "Не удалось подключить хуки"
         alert.informativeText = result.message

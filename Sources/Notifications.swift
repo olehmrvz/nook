@@ -13,6 +13,9 @@ final class NotificationWatcher: ObservableObject {
     private var onIsland: ((Island) -> Void)?
     private let logURL = supportDir.appendingPathComponent("notifications-debug.log")
     private var logged = 0
+    /// sqlite and file access stay off the main thread: a refused open used to stall the UI 15–25 ms every 1.2 s.
+    private let queue = DispatchQueue(label: "nook.notifications")
+    private var nextOpenAttempt = Date.distantPast
 
     private static var databasePaths: [String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -27,8 +30,19 @@ final class NotificationWatcher: ObservableObject {
 
     func start(onIsland: @escaping (Island) -> Void) {
         self.onIsland = onIsland
-        timer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in self?.poll() }
-        poll()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            self?.queue.async { self?.poll() }
+        }
+        timer?.tolerance = 0.3
+        queue.async { [weak self] in self?.poll() }
+    }
+
+    private func setAccess(_ value: Bool) {
+        DispatchQueue.main.async { if self.hasAccess != value { self.hasAccess = value } }
+    }
+
+    private func show(_ island: Island) {
+        DispatchQueue.main.async { self.onIsland?(island) }
     }
 
     static func openSettings() {
@@ -37,10 +51,14 @@ final class NotificationWatcher: ObservableObject {
 
     private func openDatabase() -> Bool {
         if db != nil { return true }
+        // Without Full Disk Access every attempt is refused (and logged by macOS): try once a minute.
+        guard Date() >= nextOpenAttempt else { return false }
+        nextOpenAttempt = Date().addingTimeInterval(60)
         for path in Self.databasePaths where FileManager.default.isReadableFile(atPath: path) {
             var handle: OpaquePointer?
             if sqlite3_open_v2(path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
                 db = handle
+                nextOpenAttempt = .distantPast
                 return true
             }
             sqlite3_close(handle)
@@ -48,12 +66,13 @@ final class NotificationWatcher: ObservableObject {
         return false
     }
 
+    /// Runs on `queue`.
     private func poll() {
         guard openDatabase() else {
-            if hasAccess { hasAccess = false }
+            setAccess(false)
             return
         }
-        if !hasAccess { hasAccess = true }
+        setAccess(true)
         if lastID < 0 {
             lastID = scalar("SELECT IFNULL(MAX(rec_id), 0) FROM record") ?? 0
             return
@@ -94,11 +113,11 @@ final class NotificationWatcher: ObservableObject {
         let appName = Self.appName(for: bundleID)
 
         if Self.callApps.contains(bundleID) || bundleID.lowercased().contains("facetime") {
-            onIsland?(Island(kind: .call(name: title.isEmpty ? body : title, bundleID: bundleID), seconds: 20))
+            show(Island(kind: .call(name: title.isEmpty ? body : title, bundleID: bundleID), seconds: 20))
             return
         }
         let heading = subtitle.isEmpty ? title : "\(title) · \(subtitle)"
-        onIsland?(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading, body: body), seconds: 6))
+        show(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading, body: body), seconds: 6))
     }
 
     private func scalar(_ sql: String) -> Int64? {

@@ -246,10 +246,20 @@ final class Cuely: ObservableObject {
         language = s.language
     }
 
+    /// Debounced and written off the main thread: typing or dragging a slider no longer writes on every change.
     private func save() {
         guard !loading else { return }
+        saveWork?.cancel()
         let s = Stored(scripts: scripts, currentID: currentID, wpm: wordsPerMinute, fontSize: fontSize,
                        voiceFollow: voiceFollow, language: language)
-        if let data = try? JSONEncoder().encode(s) { try? data.write(to: fileURL, options: [.atomic]) }
+        let url = fileURL
+        let work = DispatchWorkItem {
+            DispatchQueue.global(qos: .utility).async {
+                if let data = try? JSONEncoder().encode(s) { try? data.write(to: url, options: [.atomic]) }
+            }
+        }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
+    private var saveWork: DispatchWorkItem?
 }

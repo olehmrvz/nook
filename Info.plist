@@ -32,6 +32,8 @@
 	<string>Nook показывает ваши ближайшие события и напоминает о встречах.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Nook показывает напоминания и отмечает их выполненными.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Вкладка «Зеркало» показывает камеру, только пока она открыта. Ничего не записывается.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cuely слушает вашу речь, чтобы прокручивать текст. Звук не сохраняется.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

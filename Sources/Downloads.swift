@@ -81,7 +81,8 @@ final class Downloads: ObservableObject {
     private func apply(_ names: [String]) {
         let partial = names.first { Self.partialExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
         if tracked.isEmpty {
-            active = partial.map { Active(name: Self.cleanName($0), fraction: nil) }
+            let next = partial.map { Active(name: Self.cleanName($0), fraction: nil) }
+            if next != active { active = next }
         }
         let fresh = names.filter { !known.contains($0) && !Self.partialExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
         known = Set(names)
