@@ -187,3 +187,12 @@ Done and checked:
 
 Not checked: the menu itself (needs a click), the coffee button click, hiding the icon, and a first launch
 on a Mac without Nook (the brother's).
+
+## Security pass (2026-10-27, late)
+
+Three independent reviews (agents/IPC, updates/build, data/privacy); findings checked against the code, fixed in
+f30a460. Verified: masking rules on 7 sample commands; .git reads refuse a /dev/zero link and a FIFO; TOML edit
+with comment/space headers, arrays, duplicate tables; a changed bridge dylib fails the seal check; a permission
+card shows hidden fields; `Nook --answer allow` from under an agent is ignored; data folder is 0700.
+Not released yet (v6 is the latest release). Open, by design or for later: the signing key on the dev Mac is the
+single root of trust for updates (no offline key, no Developer ID); `hideFromCapture` stays off by default.
