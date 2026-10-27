@@ -42,7 +42,8 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Clipboard (⌃⌘V): 300 items, pins, search, text from images. Password-manager items are never saved.
 - Shelf: drop a file on the notch, drag it out later or AirDrop it. Screenshots land there by themselves.
 - Calendar and reminders, a "Join" button 5 minutes before a meeting.
-- Timer and Pomodoro, notes, mirror (camera), teleprompter for video.
+- Timer and Pomodoro, notes, mirror (camera), teleprompter for video (`Nook --prompt`).
+- ⌨︎ Keyboard lock for 30 seconds to wipe it clean. The trackpad keeps working.
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
 - Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
 - Weather, battery, choice of display for the notch.
@@ -90,7 +91,7 @@ Each release lists the SHA-256 of the zip. Found a vulnerability? See [SECURITY.
 ```sh
 xcode-select --install   # once: build tools
 ./make-cert.sh           # once: a certificate, so macOS keeps permissions across builds
-./install.sh             # build, install to ~/Applications and start
+./install.sh             # build, install to /Applications and start
 ```
 Details: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

@@ -5,7 +5,7 @@ User-facing overview: [README.md](../README.md). Project rules for coding agents
 
 ## Build and install
 
-`./install.sh` builds with the Swift compiler from Command Line Tools, installs `~/Applications/Nook.app`
+`./install.sh` builds with the Swift compiler from Command Line Tools, installs `/Applications/Nook.app`
 (signed with "Nook Local Signing" from `make-cert.sh`, ad-hoc without it) and starts it. The version is the
 number of commits (`1.<count>`). `./release.sh` publishes the current commit as a GitHub release; every
 installed Nook picks it up within 6 hours, checks that it is signed with the same certificate, and installs it

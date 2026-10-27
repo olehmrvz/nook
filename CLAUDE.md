@@ -15,7 +15,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 ## Build and run
 
 - `./install.sh` — compiles `Sources/*.swift` with `swiftc` (Command Line Tools only), installs
-  `~/Applications/Nook.app`, signs it, restarts it. Add new system frameworks to the `swiftc` line there.
+  `/Applications/Nook.app`, signs it, restarts it. Add new system frameworks to the `swiftc` line there.
 - Releases: `./release.sh` (clean tree) builds, checks the signature and publishes GitHub release `v<commit count>`
   with `Nook.zip`; installed copies update themselves (`Sources/Updater.swift`). The repo is public so the
   updater can read releases without a token. Release only after the user has checked the build. Never publish an
@@ -26,7 +26,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 
 ## Checking changes
 
-- Open tabs without the mouse: `~/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close`.
+- Open tabs without the mouse: `/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close`.
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
   Also `--timer <min>|stop|pomodoro`, `--prompt`, `--answer allow|always|deny|terminal`.
 - Screenshots: the built-in display is 1800 pt wide, notch centred at x = 900:

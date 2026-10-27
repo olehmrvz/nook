@@ -309,6 +309,7 @@ struct CollapsedView: View {
             .padding(.leading, 10)
         case nil:
             switch model.live {
+            case .keyLock: Image(systemName: "keyboard").foregroundStyle(Palette.orange)
             case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
             case .timer: Image(systemName: "timer").foregroundStyle(model.timer.phase.color)
             case .download: Image(systemName: "arrow.down.circle.fill").foregroundStyle(Palette.blue)
@@ -350,6 +351,7 @@ struct CollapsedView: View {
                 .padding(.trailing, 12)
         case nil:
             switch model.live {
+            case .keyLock: LockCountdown(lock: model.keyboardLock).font(.rounded(12)).foregroundStyle(Palette.orange)
             case .permission: Circle().fill(Palette.orange.opacity(0.9)).frame(width: 6, height: 6)
             case .timer:
                 TimelineView(.periodic(from: .now, by: 0.5)) { context in
@@ -365,6 +367,62 @@ struct CollapsedView: View {
             case .music: Bars(color: model.nowPlaying.glowColors[0])
             case .prompter, nil: EmptyView()
             }
+        }
+    }
+}
+
+/// Header button in place of the old prompter tab: locks the keyboard for 30 s to clean it.
+struct KeyLockPill: View {
+    @ObservedObject var lock: KeyboardLock
+    @State private var hover = false
+    @State private var denied = false
+
+    var body: some View {
+        Button {
+            denied = !lock.lock()
+        } label: {
+            Image(systemName: "keyboard").font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 7).padding(.vertical, 4)
+                .background { if hover { Capsule().fill(Color.white.opacity(0.07)) } }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(lock.isLocked ? Palette.orange : (hover ? Color.white : Color.white.opacity(0.6)))
+        .animation(Motion.quick, value: hover)
+        .onHover { hover = $0 }
+        .help(denied ? "Нужен Универсальный доступ: разрешите Nook в Настройках и нажмите ещё раз"
+                     : "Заблокировать клавиатуру на 30 секунд, чтобы её протереть")
+    }
+}
+
+/// Over the panel while the keyboard is locked: countdown and a way out with the trackpad.
+struct KeyLockCard: View {
+    @ObservedObject var lock: KeyboardLock
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black.opacity(0.82))
+            VStack(spacing: 10) {
+                Image(systemName: "keyboard").font(.system(size: 34, weight: .light)).foregroundStyle(Palette.orange)
+                Text("Клавиатура заблокирована").font(.system(size: 17, weight: .semibold))
+                Text("Можно протирать. Трекпад работает.").font(.system(size: 12.5)).foregroundStyle(muted)
+                LockCountdown(lock: lock).font(.system(size: 30, weight: .semibold, design: .rounded))
+                Button("Разблокировать") { lock.unlock() }.buttonStyle(.pill(.primary))
+            }
+        }
+        .padding(.top, 34)
+    }
+}
+
+/// Seconds left of the keyboard lock, ticking once a second (only while locked).
+struct LockCountdown: View {
+    @ObservedObject var lock: KeyboardLock
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let left = max(0, Int(ceil((lock.until ?? context.date).timeIntervalSince(context.date))))
+            Text("0:\(String(format: "%02d", left))").monospacedDigit()
+                .contentTransition(.numericText(countsDown: true))
+                .animation(Motion.quick, value: left)
         }
     }
 }
@@ -702,6 +760,10 @@ struct ExpandedView: View {
             .frame(height: contentHeight, alignment: .top)
             .clipped()
         }
+        .overlay {
+            if model.keyboardLock.isLocked { KeyLockCard(lock: model.keyboardLock).transition(.opacity) }
+        }
+        .animation(Motion.smooth, value: model.keyboardLock.isLocked)
         .overlay(alignment: .topTrailing) {
             if model.showPower {
                 ZStack(alignment: .topTrailing) {
@@ -736,25 +798,31 @@ struct ExpandedView: View {
         HStack(spacing: 6) {
             tabGroup(Tab.leftSide)
             Spacer(minLength: model.notch.width + 8)
-            tabGroup(Tab.rightSide)
-            statusChip
-            HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
-                         active: caffeine.on, tint: Palette.orange,
-                         help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
-                                           : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
-                withAnimation(Motion.quick) { caffeine.toggle() }
+            tabGroup(Tab.rightSide, keyLock: true)
+            // One capsule for status and quick actions, like the tab groups: even gaps on the right.
+            HStack(spacing: 1) {
+                statusChip
+                HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
+                             active: caffeine.on, tint: Palette.orange,
+                             help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
+                                               : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
+                    withAnimation(Motion.quick) { caffeine.toggle() }
+                }
+                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenMenu?() }
             }
-            HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenMenu?() }
+            .padding(2)
+            .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
         }
         .frame(height: headerHeight)
     }
 
-    private func tabGroup(_ tabs: [Tab]) -> some View {
+    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false) -> some View {
         HStack(spacing: 1) {
             ForEach(tabs) { tab in
                 TabPill(tab: tab, active: model.tab == tab, badge: tab == .ai && !agents.permissions.isEmpty,
                         space: tabSpace) { model.select(tab) }
             }
+            if keyLock { KeyLockPill(lock: model.keyboardLock) }
         }
         .padding(2)
         .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
@@ -793,8 +861,7 @@ struct ExpandedView: View {
                 }
             }
             .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(Color.white.opacity(model.showPower ? 0.16 : 0.07))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
+            .background { if model.showPower { Capsule().fill(Color.white.opacity(0.18)) } }
             .contentShape(Capsule())
             .help([hasWeather ? "\(weather.place): \(weather.summary)" : nil,
                    battery.hasBattery ? "Батарея \(battery.percent)% · нажмите для подробностей" : nil]
@@ -827,9 +894,10 @@ struct HeaderButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(active ? tint.lifted() : Color.white.opacity(hover ? 1 : 0.7))
-                .frame(width: 26, height: 24)
-                .background(Capsule().fill(active ? tint.opacity(0.22) : Color.white.opacity(hover ? 0.12 : 0.07))
-                    .overlay(Capsule().strokeBorder(active ? tint.opacity(0.35) : Color.white.opacity(0.08))))
+                .frame(width: 28, height: 22)
+                .background {
+                    if active { Capsule().fill(tint.opacity(0.22)) } else if hover { Capsule().fill(Color.white.opacity(0.07)) }
+                }
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

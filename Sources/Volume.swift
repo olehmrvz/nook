@@ -10,6 +10,8 @@ final class VolumeControl {
     /// Built-in display brightness 0…1 after a brightness key (automatic brightness changes show nothing).
     var onBrightness: ((Float) -> Void)?
     private var keyMonitor: Any?
+    /// The keyboard lock is on: volume and brightness keys do nothing.
+    var isPaused: () -> Bool = { false }
 
     private var device = AudioObjectID(kAudioObjectUnknown)
     private var last: (level: Float, muted: Bool)?
@@ -137,6 +139,8 @@ final class VolumeControl {
             }
             let key = Int32((ns.data1 & 0xFFFF0000) >> 16)
             let down = (ns.data1 & 0xFF00) >> 8 == 0x0A
+            let media = [NX_KEYTYPE_SOUND_UP, NX_KEYTYPE_SOUND_DOWN, NX_KEYTYPE_MUTE, NX_KEYTYPE_BRIGHTNESS_UP, NX_KEYTYPE_BRIGHTNESS_DOWN]
+            if control.isPaused() && media.contains(key) { return nil }
             let fine = ns.modifierFlags.contains([.option, .shift])
             if [NX_KEYTYPE_SOUND_UP, NX_KEYTYPE_SOUND_DOWN, NX_KEYTYPE_MUTE].contains(key) {
                 if down { control.press(key, fine: fine) }

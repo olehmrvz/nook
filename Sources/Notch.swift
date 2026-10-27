@@ -38,7 +38,8 @@ enum Tab: String, CaseIterable, Identifiable {
 
     /// Tabs drawn left of the camera; the rest go to the right.
     static let leftSide: [Tab] = [.home, .clipboard, .shelf, .ai, .notes, .mirror]
-    static let rightSide: [Tab] = [.calendar, .timer, .cuely]
+    /// Cuely has no button (it opens with `Nook --prompt`); the keyboard lock sits in its place.
+    static let rightSide: [Tab] = [.calendar, .timer]
 }
 
 /// Tiny flashes in the side slots of the collapsed notch.
@@ -148,6 +149,7 @@ final class NotchModel: ObservableObject {
     let caffeine = Caffeine()
     let volume = VolumeControl()
     let focus = FocusWatcher()
+    let keyboardLock = KeyboardLock()
     let updater = Updater()
     /// Opens Nook's menu (the gear in the panel), set by the app delegate.
     var onOpenMenu: (() -> Void)?
@@ -171,9 +173,10 @@ final class NotchModel: ObservableObject {
     var hasLiveActivity: Bool { flash != nil || live != nil }
 
     /// What the collapsed notch shows on its sides, by priority.
-    enum Live: Equatable { case permission, prompter, timer, download, agents, music }
+    enum Live: Equatable { case keyLock, permission, prompter, timer, download, agents, music }
 
     var live: Live? {
+        if keyboardLock.isLocked { return .keyLock }
         if !agents.permissions.isEmpty { return .permission }
         if cuely.isPresenting { return .prompter }
         if timer.isRunning || timer.isPaused { return .timer }
@@ -225,6 +228,7 @@ final class NotchModel: ObservableObject {
             guard let self, !self.resting, !self.expanded else { return }
             self.show(.brightness(level), for: 1.6)
         }
+        volume.isPaused = { [weak self] in self?.keyboardLock.isLocked ?? false }
         volume.start()
         focus.onChange = { [weak self] on, name, symbol in
             guard let self, !self.resting, Settings.focusHUD else { return }
@@ -247,7 +251,7 @@ final class NotchModel: ObservableObject {
 
         // Re-render the collapsed notch when any live source changes.
         for source in [nowPlaying.objectWillChange, agents.objectWillChange, timer.objectWillChange,
-                       downloads.objectWillChange, cuely.objectWillChange] {
+                       downloads.objectWillChange, cuely.objectWillChange, keyboardLock.objectWillChange] {
             source.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &bag)
         }

@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.orderFrontRegardless()
         model.start()
         setupStatusItem()
+        LoginItem.followApp()
 
         HotKey.register(id: 1, keyCode: 9 /* V */, modifiers: HotKey.control | HotKey.command) { [weak self] in
             self?.model.toggleClipboardFromHotkey()
@@ -310,6 +311,13 @@ enum LoginItem {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(label).plist")
     }
     static var isEnabled: Bool { FileManager.default.fileExists(atPath: plistURL.path) }
+
+    /// The app moved (e.g. ~/Applications → /Applications): point the login item at the current copy.
+    static func followApp() {
+        guard isEnabled, let plist = NSDictionary(contentsOf: plistURL),
+              let arguments = plist["ProgramArguments"] as? [String], arguments.last != Bundle.main.bundlePath else { return }
+        setEnabled(true)
+    }
 
     static func setEnabled(_ on: Bool) {
         if on {
