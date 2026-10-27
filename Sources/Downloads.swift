@@ -74,11 +74,18 @@ final class Downloads: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             let names = self.listing()
-            DispatchQueue.main.async { self.apply(names) }
+            // File attributes are read here, off the main thread. Files still being written and links are skipped.
+            let recent = Set(names.filter { name in
+                guard let attrs = try? FileManager.default.attributesOfItem(atPath: self.folder.appendingPathComponent(name).path),
+                      attrs[.type] as? FileAttributeType != .typeSymbolicLink,
+                      let modified = attrs[.modificationDate] as? Date else { return false }
+                return Date().timeIntervalSince(modified) < 120
+            })
+            DispatchQueue.main.async { self.apply(names, recent: recent) }
         }
     }
 
-    private func apply(_ names: [String]) {
+    private func apply(_ names: [String], recent: Set<String>) {
         let partial = names.first { Self.partialExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
         if tracked.isEmpty {
             let next = partial.map { Active(name: Self.cleanName($0), fraction: nil) }
@@ -86,13 +93,20 @@ final class Downloads: ObservableObject {
         }
         let fresh = names.filter { !known.contains($0) && !Self.partialExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
         known = Set(names)
-        for name in fresh {
+        for name in fresh where recent.contains(name) {
             let path = folder.appendingPathComponent(name).path
-            // Skip files that are still being written.
-            guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-                  let modified = attrs[.modificationDate] as? Date, Date().timeIntervalSince(modified) < 120 else { continue }
             onIsland?(Island(kind: .download(name: name, path: path), seconds: 7))
         }
+    }
+
+    /// Programs, installers, scripts and link files: a downloaded one is shown in Finder, never opened
+    /// with one click from an island that looks like part of the system.
+    static func isRunnable(_ path: String) -> Bool {
+        let ext = (path as NSString).pathExtension.lowercased()
+        if ["app", "pkg", "mpkg", "command", "tool", "terminal", "sh", "zsh", "bash", "workflow", "scpt",
+            "applescript", "fileloc", "webloc", "inetloc", "jar", "dmg", "action", "prefpane", "mobileconfig"].contains(ext) { return true }
+        return FileManager.default.isExecutableFile(atPath: path)
+            && !FileManager.default.fileExists(atPath: path + "/Contents") // a plain executable file, not a document
     }
 
     private static func cleanName(_ name: String) -> String {

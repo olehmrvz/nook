@@ -297,7 +297,10 @@ final class ClipboardStore: ObservableObject {
             guard let data = try? Data(contentsOf: backup),
                   var saved = try? JSONDecoder().decode([ClipItem].self, from: data) else { return }
             saved.removeAll { ids.contains($0.id) }
-            if let out = try? JSONEncoder().encode(saved) { try? out.write(to: backup, options: [.atomic]) }
+            if let out = try? JSONEncoder().encode(saved) {
+                try? out.write(to: backup, options: [.atomic])
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+            }
         }
     }
 
@@ -343,8 +346,22 @@ enum TextRecognizer {
 }
 
 extension NSImage {
+    /// PNG at most 3000 px on the long side: any app can put a huge image on the clipboard, and 300 of them
+    /// at full size would fill gigabytes.
     var pngData: Data? {
         guard let tiff = tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .png, properties: [:])
+        let longest = max(rep.pixelsWide, rep.pixelsHigh)
+        guard longest > 3000 else { return rep.representation(using: .png, properties: [:]) }
+        let scale = 3000 / Double(longest)
+        let width = Int(Double(rep.pixelsWide) * scale), height = Int(Double(rep.pixelsHigh) * scale)
+        guard let small = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+                                           samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                           bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: small) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        rep.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+        return small.representation(using: .png, properties: [:])
     }
 }

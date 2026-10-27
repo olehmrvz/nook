@@ -117,7 +117,9 @@ final class NotificationWatcher: ObservableObject {
             return
         }
         let heading = subtitle.isEmpty ? title : "\(title) · \(subtitle)"
-        show(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading, body: body), seconds: 6))
+        let text = Settings.notificationText ? body : ""
+        show(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading.isEmpty ? "Новое уведомление" : heading,
+                                        body: text), seconds: 6))
     }
 
     private func scalar(_ sql: String) -> Int64? {

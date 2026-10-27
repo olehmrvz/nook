@@ -161,10 +161,16 @@ final class Cuely: ObservableObject {
             startTicker()
             return
         }
+        // Only on the Mac: without an on-device model the speech would go to Apple's servers.
+        guard recognizer.supportsOnDeviceRecognition else {
+            status = "Распознавание на этом Mac для языка недоступно — автопрокрутка"
+            startTicker()
+            return
+        }
         stopListening()
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+        request.requiresOnDeviceRecognition = true
         self.request = request
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)

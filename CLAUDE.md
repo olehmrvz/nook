@@ -61,7 +61,8 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 - The panel takes the keyboard only for text fields (`becomesKeyOnlyIfNeeded`). Do not make it key on open:
   the user's ⌘1–9 and typing would land in Nook instead of the terminal (this once switched tabs by itself).
 - Test questions / plans / permissions by piping a PermissionRequest JSON into `agent-hook.sh` in the
-  background, capture, then release with `Nook --answer terminal` and send SessionEnd for the fake session.
+  background, capture, then send SessionEnd for the fake session (it releases the request). `Nook --answer` from a
+  process under an agent (this session included) is ignored on purpose: an agent must not approve its own requests.
 - Pointer polling is event-driven: a global mouse-moved monitor starts the 30 Hz `tick`, which stops itself
   when nothing near the notch needs it. Anything new that needs hover (a new floating mode) must call
   `startTicks()` and be listed in `needsTicks`, or it will not react to the pointer.

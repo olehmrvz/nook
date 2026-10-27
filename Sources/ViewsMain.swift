@@ -467,8 +467,14 @@ struct IslandView: View {
                 .buttonStyle(.pill(small: true))
         case .download(_, let path):
             HStack(spacing: 6) {
-                Button("Открыть") { NSWorkspace.shared.open(URL(fileURLWithPath: path)); model.dismissIsland() }
-                    .buttonStyle(.pill(small: true))
+                if Downloads.isRunnable(path) {
+                    Button("В Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]); model.dismissIsland() }
+                        .buttonStyle(.pill(small: true))
+                        .help("Программы и скрипты из интернета Nook не открывает сам — проверьте файл в Finder")
+                } else {
+                    Button("Открыть") { NSWorkspace.shared.open(URL(fileURLWithPath: path)); model.dismissIsland() }
+                        .buttonStyle(.pill(small: true))
+                }
                 Button("На полку") { model.shelf.add([URL(fileURLWithPath: path)]); model.dismissIsland() }
                     .buttonStyle(.pill(small: true))
             }

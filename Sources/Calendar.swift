@@ -20,6 +20,12 @@ enum Settings {
         get { d.object(forKey: "notificationIslands") as? Bool ?? true }
         set { d.set(newValue, forKey: "notificationIslands") }
     }
+    /// Show the text of app notifications, not just the app and title. Off by default: the notch ignores
+    /// the per-app "Show previews" setting, so message texts and codes would be readable by anyone nearby.
+    static var notificationText: Bool {
+        get { d.object(forKey: "notificationText") as? Bool ?? false }
+        set { d.set(newValue, forKey: "notificationText") }
+    }
     /// Keep the notch out of screenshots, recordings and screen sharing.
     static var hideFromCapture: Bool {
         get { d.object(forKey: "hideFromCapture") as? Bool ?? false }

@@ -225,8 +225,13 @@ final class AgentHub: ObservableObject {
             return
         }
         if event == "Answer" {
-            // `Nook --answer allow|always|deny|terminal`, authenticated like the hooks.
+            // `Nook --answer allow|always|deny|terminal`, authenticated like the hooks. Never from a process an
+            // agent started: an agent could otherwise approve its own request with `Nook --answer always`.
+            var peer: pid_t = 0
+            var length = socklen_t(MemoryLayout<pid_t>.size)
+            let known = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer, &length) == 0
             close(fd)
+            guard known, !Self.runsUnderAgent(peer) else { return }
             let decision: Decision? = switch message["decision"] as? String {
             case "allow": .allow
             case "always": .always
@@ -419,6 +424,22 @@ final class AgentHub: ObservableObject {
         return name.contains("claude") || name.contains("codex") || name == "node"
     }
 
+    /// The process or one of its ancestors is an agent (claude, codex, node).
+    private static func runsUnderAgent(_ start: pid_t) -> Bool {
+        var pid = start
+        for _ in 0..<64 where pid > 1 {
+            var info = kinfo_proc()
+            var size = MemoryLayout<kinfo_proc>.size
+            var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+            guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return true }
+            let name = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+                .lowercased()
+            if name.contains("claude") || name.contains("codex") || name == "node" { return true }
+            pid = info.kp_eproc.e_ppid
+        }
+        return false
+    }
+
     /// Walks up from the hook's parent to the claude / codex process, so liveness checks survive
     /// an intermediate shell. Returns 0 when no agent process is found (then only age prunes the session).
     private static func agentProcess(from start: Int32) -> Int32 {
@@ -489,6 +510,22 @@ final class AgentHub: ObservableObject {
 
     static let shellScriptURL = supportDir.appendingPathComponent("nook.zsh")
 
+    /// The notch can be seen by others (screen sharing, people nearby): values after "=" or ":" of
+    /// secret-looking names, Authorization headers and long token-like words are shown as •••.
+    static func masked(_ command: String) -> String {
+        var text = command
+        let rules = [
+            #"(?i)(authorization:\s*(?:bearer|basic|token)?\s*)("[^"]*"|'[^']*'|[^\s"']+)"#,
+            #"(?i)(--?(?:password|passwd|pass|token|secret|api-?key|key|auth)\s+)("[^"]*"|'[^']*'|\S+)"#,
+            #"(?i)((?:token|secret|password|passwd|pwd|api[_-]?key|key|bearer|credential)[A-Za-z0-9_-]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)"#,
+            #"(?i)(://[^:/\s]+:)([^@\s]+)(?=@)"#,
+        ]
+        for rule in rules {
+            text = text.replacingOccurrences(of: rule, with: "$1•••", options: .regularExpression)
+        }
+        return text.replacingOccurrences(of: #"\b[A-Za-z0-9_\-+/]{32,}={0,2}"#, with: "•••", options: .regularExpression)
+    }
+
     /// A finished long command from the zsh integration: island unless you are looking at that terminal.
     private func commandDone(_ raw: [String: Any]) {
         func decoded(_ key: String) -> String {
@@ -507,7 +544,7 @@ final class AgentHub: ObservableObject {
                 let terminalInFront = front != nil && front == env["__CFBundleIdentifier"]
                 // In front and (no herdr, or its pane is the one on screen): you saw it finish.
                 if terminalInFront && (paneFocused ?? true) { return }
-                self?.onDone?(Island(kind: .command(text: String(command.prefix(160)), seconds: seconds, exit: exit,
+                self?.onDone?(Island(kind: .command(text: String(Self.masked(command).prefix(160)), seconds: seconds, exit: exit,
                                                     pid: shell, terminal: env), seconds: 7))
                 if Settings.agentDoneSound { NSSound(named: exit == 0 ? "Glass" : "Basso")?.play() }
             }
@@ -570,7 +607,9 @@ final class AgentHub: ObservableObject {
         do {
             if !existing.isEmpty {
                 let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-                try existing.write(to: rc.appendingPathExtension("bak-nook-\(stamp)"), atomically: true, encoding: .utf8)
+                let copy = rc.appendingPathExtension("bak-nook-\(stamp)")
+                try existing.write(to: copy, atomically: true, encoding: .utf8)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: copy.path)
             }
             let path = shellScriptURL.path
             let line = "\n# Nook: island when a long command finishes\n[ -f \"\(path)\" ] && source \"\(path)\"\n"
@@ -635,6 +674,15 @@ final class AgentHub: ObservableObject {
     }
 
     /// Brings back the exact place an agent runs: its herdr tab or tmux pane, then the terminal app.
+    /// In the user's own tmux directory (after resolving "..") and owned by the user: a socket elsewhere could
+    /// be a fake server.
+    private static func ownTmuxSocket(_ path: String) -> Bool {
+        let resolved = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+        guard resolved.hasPrefix("/private/tmp/tmux-\(getuid())/") else { return false }
+        var info = stat()
+        return lstat(resolved, &info) == 0 && info.st_uid == getuid() && info.st_mode & S_IFMT == S_IFSOCK
+    }
+
     static func focus(pid: Int32, terminal: [String: String]?) {
         let t = terminal ?? [:]
         DispatchQueue.global(qos: .userInitiated).async {
@@ -643,7 +691,7 @@ final class AgentHub: ObservableObject {
                 run(bin, ["tab", "focus", tab])
             } else if let pane = t["TMUX_PANE"], let socket = t["TMUX"]?.split(separator: ",").first.map(String.init),
                       // Only the user's own tmux server directory: a socket elsewhere could be a fake server.
-                      ["/private/tmp/tmux-\(getuid())/", "/tmp/tmux-\(getuid())/"].contains(where: { socket.hasPrefix($0) }),
+                      Self.ownTmuxSocket(socket),
                       let bin = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
                         .first(where: FileManager.default.isExecutableFile(atPath:)) {
                 run(bin, ["-S", socket, "select-window", "-t", pane])
@@ -704,14 +752,14 @@ final class AgentHub: ObservableObject {
                 var gitDir = git
                 if !isDir.boolValue {
                     // A worktree: ".git" is a file pointing at the real git dir.
-                    guard let text = try? String(contentsOf: git, encoding: .utf8),
+                    guard let text = smallFile(git),
                           let line = text.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") }) else { return nil }
                     let target = line.dropFirst(7).trimmingCharacters(in: .whitespaces)
                     gitDir = URL(fileURLWithPath: target, relativeTo: dir).standardizedFileURL
                 }
-                guard let head = try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8) else { return nil }
+                guard let head = smallFile(gitDir.appendingPathComponent("HEAD")) else { return nil }
                 let ref = head.trimmingCharacters(in: .whitespacesAndNewlines)
-                return ref.hasPrefix("ref: refs/heads/") ? String(ref.dropFirst(16)) : String(ref.prefix(7))
+                return ref.hasPrefix("ref: refs/heads/") ? String(ref.dropFirst(16).prefix(100)) : String(ref.prefix(7))
             }
             let parent = dir.deletingLastPathComponent()
             if parent.path == dir.path { break }
@@ -720,19 +768,38 @@ final class AgentHub: ObservableObject {
         return nil
     }
 
+    /// A project folder is untrusted: ".git" or "HEAD" could be a link to /dev/zero or a pipe that never ends.
+    /// Reads only a regular file of at most 4 KB.
+    private static func smallFile(_ url: URL) -> String? {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= 4096,
+              let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: 4096)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     private static func summary(tool: String, input: Any?) -> String {
         guard let input = input as? [String: Any] else { return "" }
         if tool == "AskUserQuestion", let first = (input["questions"] as? [[String: Any]])?.first?["question"] as? String {
             return first
         }
         if tool == "ExitPlanMode", let plan = input["plan"] as? String { return firstLine(plan, limit: 200) ?? "План" }
+        // The main field first, then every other field in full: what you approve is exactly what you can read.
+        // (A tool could put a harmless "description" first and the real action in another field.)
+        var rest = input
+        var head = ""
         for key in ["command", "file_path", "path", "url", "pattern", "description", "prompt"] {
-            if let value = input[key] as? String, !value.isEmpty { return value }
+            if let value = input[key] as? String, !value.isEmpty { head = value; rest.removeValue(forKey: key); break }
         }
-        if let data = try? JSONSerialization.data(withJSONObject: input), let s = String(data: data, encoding: .utf8) {
-            return String(s.prefix(300))
-        }
-        return ""
+        guard !rest.isEmpty else { return head }
+        let details = rest.keys.sorted().map { key -> String in
+            let value = rest[key]!
+            if let text = value as? String { return "\(key): \(text)" }
+            if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed]),
+               let text = String(data: data, encoding: .utf8) { return "\(key): \(text)" }
+            return "\(key): \(value)"
+        }.joined(separator: "\n")
+        return head.isEmpty ? details : "\(head)\n\n\(details)"
     }
 
     /// Client side of the command line (`--answer`, `--show`, `--timer`, `--prompt`):
@@ -829,15 +896,30 @@ final class AgentHub: ObservableObject {
 
     /// Codex runs hooks only with `[features] hooks = true` in ~/.codex/config.toml. Changes just that key
     /// (after a backup); a config that sets features in another form is left alone.
+    /// One copy per file (`<name>.bak-nook`), owner-only: these configs can hold tokens.
+    private static func backup(_ data: Data, of url: URL) throws {
+        let copy = url.appendingPathExtension("bak-nook")
+        try data.write(to: copy, options: [.atomic])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: copy.path)
+    }
+
     static func enableCodexHooks() throws {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml").resolvingSymlinksInPath()
         let original = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         var lines = original.components(separatedBy: "\n")
         func trimmed(_ i: Int) -> String { lines[i].trimmingCharacters(in: .whitespaces) }
         func key(_ i: Int) -> String { trimmed(i).components(separatedBy: "=").first?.trimmingCharacters(in: .whitespaces) ?? "" }
-        if let start = lines.indices.first(where: { trimmed($0) == "[features]" }) {
+        func header(_ i: Int) -> String? {
+            let line = trimmed(i).components(separatedBy: "#").first!.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("["), line.hasSuffix("]"), !line.hasPrefix("[[") || line.hasSuffix("]]") else { return nil }
+            return line.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+        }
+        // Several [features] tables, or anything unusual: leave the file to the person.
+        let featureTables = lines.indices.filter { header($0) == "features" }
+        if featureTables.count > 1 { return }
+        if let start = featureTables.first {
             var end = start + 1
-            while end < lines.count, !trimmed(end).hasPrefix("[") { end += 1 }
+            while end < lines.count, header(end) == nil { end += 1 }
             if let i = (start + 1 ..< end).first(where: { key($0) == "hooks" }) {
                 if trimmed(i).replacingOccurrences(of: " ", with: "").hasPrefix("hooks=true") { return }
                 lines[i] = "hooks = true"
@@ -850,22 +932,20 @@ final class AgentHub: ObservableObject {
             if let last = lines.last, last.isEmpty { lines.removeLast() }
             lines += ["", "[features]", "hooks = true", ""]
         }
-        if !original.isEmpty {
-            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-            try original.write(to: url.appendingPathExtension("bak-nook-\(stamp)"), atomically: true, encoding: .utf8)
-        }
+        if !original.isEmpty { try backup(Data(original.utf8), of: url) }
         try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private static func patch(_ url: URL, provider: String) throws {
+    private static func patch(_ link: URL, provider: String) throws {
+        // Dotfile managers keep settings as links: write the real file, not over the link.
+        let url = link.resolvingSymlinksInPath()
         var root: [String: Any] = [:]
         if let data = try? Data(contentsOf: url), !data.isEmpty {
             guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw NSError(domain: "Nook", code: 1, userInfo: [NSLocalizedDescriptionKey: "не JSON-объект"])
             }
             root = parsed
-            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-            try data.write(to: url.appendingPathExtension("bak-nook-\(stamp)"))
+            try backup(data, of: url)
         }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         let suffix = provider == "codex" ? " codex" : ""

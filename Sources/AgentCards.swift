@@ -182,7 +182,17 @@ struct PlanCard: View {
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .textSelection(.enabled)
                     // Plan text comes from the agent: only web links open, never file:// or other schemes.
-                    .environment(\.openURL, OpenURLAction { url in url.scheme == "https" ? .systemAction : .discarded })
+                    .environment(\.openURL, OpenURLAction { url in
+                        // The link text can differ from where it leads: show the real address first.
+                        guard url.scheme == "https" else { return .discarded }
+                        let alert = NSAlert()
+                        alert.messageText = "Открыть ссылку из плана?"
+                        alert.informativeText = url.absoluteString
+                        alert.addButton(withTitle: "Открыть")
+                        alert.addButton(withTitle: "Отмена")
+                        NSApp.activate(ignoringOtherApps: true)
+                        return alert.runModal() == .alertFirstButtonReturn ? .systemAction : .discarded
+                    })
             }
             .frame(height: revising ? 76 : 112)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.35)))

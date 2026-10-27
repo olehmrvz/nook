@@ -12,7 +12,13 @@ AppleScript fallback, Spotify cover art.
    Privacy & Security → "Open Anyway". If it says the app is damaged:
    `xattr -dr com.apple.quarantine /Applications/Nook.app`, then open it again.
 
-Claude Code and Codex connect by themselves on first launch (Codex may ask once to trust Nook's hooks).
+Claude Code and Codex connect by themselves on first launch: Nook adds its hook to `~/.claude/settings.json`
+and `~/.codex/hooks.json` (and turns on hooks in `~/.codex/config.toml`), keeping a `.bak-nook` copy of each.
+Codex may ask once to trust Nook's hooks.
+
+Check that your copy is genuine: `codesign -dvv /Applications/Nook.app` must show `Authority=Nook Local Signing`,
+and `codesign -d -r- /Applications/Nook.app` must end with `certificate leaf = H"76a699582536149bb53212178f4a1b2a2dc15cc1"`.
+Each release lists the SHA-256 of `Nook.zip`. Updates are accepted only with this same certificate.
 Agents already running need a restart. Updates install by themselves (menu ⚙︎ → Обновления).
 
 Look: "Сияние" — black notch, glass cards over a soft glow tinted by what happens now (the cover of the
@@ -73,7 +79,7 @@ Hooks: connected automatically on first launch for each agent found (`~/.claude`
 removed later are not put back. By hand: menu → Агенты → "Подключить", or `Nook --install-hooks`. For Codex,
 Nook also sets `[features] hooks = true` in `~/.codex/config.toml`. This adds Nook's hook to
 `~/.claude/settings.json` and `~/.codex/hooks.json`, removes Notchy's hooks, keeps all other hooks and saves
-a `*.bak-nook-<time>` copy first.
+a `*.bak-nook` copy (owner-only) first.
 
 ## Permissions
 
@@ -88,7 +94,8 @@ is ad-hoc signed and macOS may ask again.
 `Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
 app (`power` opens Home with the battery card).
 `Nook --timer 25|stop|pomodoro` and `Nook --prompt` (start Cuely) for Raycast / Shortcuts.
-`Nook --answer allow|always|deny|terminal` answers the oldest pending agent request.
+`Nook --answer allow|always|deny|terminal` answers the oldest pending agent request. It works from your own
+terminal, not from a process an agent started (an agent must not approve its own request).
 
 ## Notes
 

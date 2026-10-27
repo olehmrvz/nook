@@ -5,6 +5,9 @@ let supportDir: URL = {
     let url = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Nook", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    // Owner only: clipboard history, notes and agent sessions live here; some files are rewritten
+    // atomically and would otherwise come back readable by other users of the Mac.
+    try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     return url
 }()
 
@@ -177,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let notes = submenu("Уведомления", symbol: "bell")
         item("Показывать уведомления приложений в вырезе", #selector(toggleNotificationIslands(_:)),
              on: Settings.notificationIslands, to: notes)
+        item("Показывать текст уведомлений", #selector(toggleNotificationText), on: Settings.notificationText, to: notes)
         item("Дать полный доступ к диску…", #selector(openDiskAccess), to: notes)
         let muted = Settings.mutedApps.count
         item(muted > 0 ? "Снова показывать скрытые приложения (\(muted))" : "Скрытых приложений нет",
@@ -217,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleLogin(_ sender: NSMenuItem) { LoginItem.setEnabled(!LoginItem.isEnabled) }
     @objc private func toggleAgentSound(_ sender: NSMenuItem) { Settings.agentDoneSound.toggle() }
     @objc private func toggleNotificationIslands(_ sender: NSMenuItem) { Settings.notificationIslands.toggle() }
+    @objc private func toggleNotificationText() { Settings.notificationText.toggle() }
     @objc private func toggleAutoUpdate(_ sender: NSMenuItem) { Settings.autoUpdate.toggle() }
 
     @objc private func toggleHideFromCapture(_ sender: NSMenuItem) {

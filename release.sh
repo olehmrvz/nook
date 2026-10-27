@@ -25,6 +25,10 @@ export GH_TOKEN="$(gh auth token --user olehmrvz)"
 git push -q origin HEAD
 PREVIOUS="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || true)"
 NOTES="$(git log --pretty='- %s' ${PREVIOUS:+$PREVIOUS..}HEAD | head -30)"
+NOTES="$NOTES
+
+SHA-256 of Nook.zip: $(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+Signing certificate (SHA-1): 76A699582536149BB53212178F4A1B2A2DC15CC1"
 gh release create "$TAG" "$ZIP" --repo "$REPO" --target "$(git rev-parse HEAD)" \
   --title "Nook 1.$BUILD_NUMBER" --notes "${NOTES:-Nook 1.$BUILD_NUMBER}"
 echo "Released $TAG: installed copies update within 6 hours (or menu → Обновления → Проверить сейчас)."

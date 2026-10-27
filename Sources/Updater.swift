@@ -19,6 +19,9 @@ final class Updater {
     /// A downloaded and verified Nook.app waiting for an idle moment.
     private var staged: (app: URL, version: Int)?
 
+    /// Nook.zip is about 1–2 MB; anything far larger is not a real build.
+    static let maxDownload = 50_000_000
+
     static var build: Int { Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0 }
     static var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?" }
 
@@ -47,7 +50,8 @@ final class Updater {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tag = json["tag_name"] as? String, let version = Int(tag.drop { !$0.isNumber }),
                   let asset = (json["assets"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == "Nook.zip" }),
-                  let link = asset["browser_download_url"] as? String, let url = URL(string: link)
+                  let link = asset["browser_download_url"] as? String, let url = URL(string: link),
+                  (asset["size"] as? Int ?? 0) < Self.maxDownload
             else {
                 self.finish("Не удалось проверить обновления. Попробую позже.", done)
                 return
@@ -63,7 +67,8 @@ final class Updater {
     private func download(_ url: URL, version: Int, done: ((String) -> Void)?) {
         URLSession.shared.downloadTask(with: url) { [weak self] file, response, _ in
             guard let self else { return }
-            guard let file, (response as? HTTPURLResponse)?.statusCode == 200 else {
+            let size = (try? file?.resourceValues(forKeys: [.fileSizeKey]))??.fileSize ?? 0
+            guard let file, (response as? HTTPURLResponse)?.statusCode == 200, size < Self.maxDownload else {
                 self.finish("Не удалось скачать обновление. Попробую позже.", done)
                 return
             }
@@ -117,6 +122,14 @@ final class Updater {
         let target = Bundle.main.bundleURL
         let pid = ProcessInfo.processInfo.processIdentifier
         queue.async {
+            // Checked again right before it replaces Nook: the copy waited in a temporary folder.
+            guard Self.sameSigner(staged.app) else {
+                DispatchQueue.main.async {
+                    self.staged = nil
+                    self.status = "Обновление изменилось после скачивания и не установлено."
+                }
+                return
+            }
             do {
                 _ = try FileManager.default.replaceItemAt(target, withItemAt: staged.app)
             } catch {
@@ -138,7 +151,7 @@ final class Updater {
 
     /// The new build must satisfy the running Nook's designated requirement: same bundle id and the
     /// same signing certificate. A tampered or foreign download fails here.
-    private static func sameSigner(_ app: URL) -> Bool {
+    static func sameSigner(_ app: URL) -> Bool {
         var me: SecCode?
         var mine: SecStaticCode?
         var requirement: SecRequirement?
