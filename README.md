@@ -1,7 +1,19 @@
 # Nook
 
 Own notch app for macOS that replaces Notchy. Native Swift/SwiftUI, no analytics, no account, no network
-calls except weather (Open-Meteo) and, in the AppleScript fallback, Spotify cover art.
+calls except weather (Open-Meteo), the update check (GitHub releases of this repository) and, in the
+AppleScript fallback, Spotify cover art.
+
+## Install (Apple Silicon, macOS 14+)
+
+1. Download `Nook.zip` from the latest release: https://github.com/olehmrvz/nook/releases/latest
+2. Unpack it and move `Nook.app` to «Программы» (Applications), then open it.
+3. macOS says it cannot check the developer (the app is not notarized by Apple): System Settings →
+   Privacy & Security → "Open Anyway". If it says the app is damaged:
+   `xattr -dr com.apple.quarantine /Applications/Nook.app`, then open it again.
+
+Claude Code and Codex connect by themselves on first launch (Codex may ask once to trust Nook's hooks).
+Agents already running need a restart. Updates install by themselves (menu ⚙︎ → Обновления).
 
 Look: "Сияние" — black notch, glass cards over a soft glow tinted by what happens now (the cover of the
 playing track, Claude waiting, an island's own colours). The band under the camera always stays pure black.
@@ -51,10 +63,15 @@ playing track, Claude waiting, an island's own colours). The band under the came
 ## Build and install
 
 `./install.sh` builds with the Swift compiler from Command Line Tools, installs `~/Applications/Nook.app`
-(ad-hoc signed) and starts it. Menu bar icon → "Запускать при входе" adds a LaunchAgent
+(signed with "Nook Local Signing" from `make-cert.sh`, ad-hoc without it) and starts it. The version is the
+number of commits (`1.<count>`). `./release.sh` publishes the current commit as a GitHub release; every
+installed Nook picks it up within 6 hours, checks that it is signed with the same certificate, and installs it
+when the panel is closed. Menu bar icon → "Запускать при входе" adds a LaunchAgent
 `~/Library/LaunchAgents/dev.nook.app.plist`.
 
-Hooks: menu bar icon → "Подключить Claude Code и Codex", or `Nook --install-hooks`. This adds Nook's hook to
+Hooks: connected automatically on first launch for each agent found (`~/.claude`, `~/.codex`), once — hooks
+removed later are not put back. By hand: menu → Агенты → "Подключить", or `Nook --install-hooks`. For Codex,
+Nook also sets `[features] hooks = true` in `~/.codex/config.toml`. This adds Nook's hook to
 `~/.claude/settings.json` and `~/.codex/hooks.json`, removes Notchy's hooks, keeps all other hooks and saves
 a `*.bak-nook-<time>` copy first.
 
@@ -79,5 +96,8 @@ app (`power` opens Home with the battery card).
   `clipboard.json.bak` is a safety copy (hourly, and before an unexplained large drop); entries you delete
   leave it too. `clipboard-events.log` records loads, deletes and clears with counts only, never content.
 - The panel closes by itself after 2 minutes without input and while the screen is locked or asleep.
+- Menu: the menu bar icon, or ⚙︎ in the panel header (the icon can be hidden; opening Nook.app again brings it
+  back). Экран: pick the display for the notch (on a display without a notch it is a small pill).
+- ☕ in the header: "coffee" keeps the Mac awake while idle (agents left working). The display still sleeps.
 - `notifications-debug.log` in the data folder records bundle ids and key names (never message text) of the
   first 40 notifications, to check the database format on new macOS versions.

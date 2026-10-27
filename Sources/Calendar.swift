@@ -29,6 +29,25 @@ enum Settings {
         get { Set(d.stringArray(forKey: "mutedApps") ?? []) }
         set { d.set(Array(newValue), forKey: "mutedApps") }
     }
+    /// The display the notch lives on (its UUID); nil follows the built-in display with a camera housing.
+    static var screenID: String? {
+        get { d.string(forKey: "screenID") }
+        set { d.set(newValue, forKey: "screenID") }
+    }
+    static var showMenuIcon: Bool {
+        get { d.object(forKey: "showMenuIcon") as? Bool ?? true }
+        set { d.set(newValue, forKey: "showMenuIcon") }
+    }
+    static var autoUpdate: Bool {
+        get { d.object(forKey: "autoUpdate") as? Bool ?? true }
+        set { d.set(newValue, forKey: "autoUpdate") }
+    }
+    /// Agents whose hooks Nook already connected by itself once ("claude", "codex"): if the person later
+    /// removes them, Nook does not put them back on its own.
+    static var hooksAutoConnected: Set<String> {
+        get { Set(d.stringArray(forKey: "hooksAutoConnected") ?? []) }
+        set { d.set(Array(newValue), forKey: "hooksAutoConnected") }
+    }
 }
 
 /// Today's and tomorrow's events plus open reminders, from the system Calendar and Reminders.

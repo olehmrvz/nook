@@ -14,6 +14,10 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 
 - `./install.sh` — compiles `Sources/*.swift` with `swiftc` (Command Line Tools only), installs
   `~/Applications/Nook.app`, signs it, restarts it. Add new system frameworks to the `swiftc` line there.
+- Releases: `./release.sh` (clean tree) builds, checks the signature and publishes GitHub release `v<commit count>`
+  with `Nook.zip`; installed copies update themselves (`Sources/Updater.swift`). The repo is public so the
+  updater can read releases without a token. Release only after the user has checked the build. Never publish an
+  ad-hoc build: the updater rejects builds not signed with the same certificate.
 - Signing: identity "Nook Local Signing" (created once by `make-cert.sh`) keeps macOS permissions across
   rebuilds; without it the build is ad-hoc and macOS asks for permissions again.
 - New permission? Add its usage string to `Info.plist`, or macOS kills the app on first use.

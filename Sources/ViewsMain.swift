@@ -596,6 +596,7 @@ struct ExpandedView: View {
     @ObservedObject var agents: AgentHub
     @ObservedObject var battery: Battery
     @ObservedObject var weather: Weather
+    @ObservedObject var caffeine: Caffeine
     @Namespace private var tabSpace
 
     init(model: NotchModel) {
@@ -603,6 +604,7 @@ struct ExpandedView: View {
         agents = model.agents
         battery = model.battery
         weather = model.weather
+        caffeine = model.caffeine
     }
 
     var body: some View {
@@ -670,6 +672,13 @@ struct ExpandedView: View {
             Spacer(minLength: model.notch.width + 8)
             tabGroup(Tab.rightSide)
             statusChip
+            HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
+                         active: caffeine.on, tint: Palette.orange,
+                         help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
+                                           : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
+                withAnimation(Motion.quick) { caffeine.toggle() }
+            }
+            HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenMenu?() }
         }
         .frame(height: headerHeight)
     }
@@ -732,6 +741,32 @@ struct ExpandedView: View {
         case ..<88: return "battery.75percent"
         default: return "battery.100percent"
         }
+    }
+}
+
+/// A round icon button at the right end of the header (coffee, settings).
+struct HeaderButton: View {
+    let symbol: String
+    var active = false
+    var tint: Color = .white
+    let help: String
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(active ? tint.lifted() : Color.white.opacity(hover ? 1 : 0.7))
+                .frame(width: 26, height: 24)
+                .background(Capsule().fill(active ? tint.opacity(0.22) : Color.white.opacity(hover ? 0.12 : 0.07))
+                    .overlay(Capsule().strokeBorder(active ? tint.opacity(0.35) : Color.white.opacity(0.08))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(Motion.quick, value: hover)
+        .onHover { hover = $0 }
+        .help(help)
     }
 }
 

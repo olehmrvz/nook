@@ -46,6 +46,8 @@ enum NookMain {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.nook.app")
             .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
         if !others.isEmpty {
+            // Opened again from Finder or Spotlight: the running copy shows itself (and its menu bar icon).
+            _ = AgentHub.sendCommand(["event": "Show", "name": "reveal"])
             print("Nook is already running")
             exit(0)
         }
@@ -57,7 +59,7 @@ enum NookMain {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let model = NotchModel()
     var panel: NotchPanel!
     var statusItem: NSStatusItem!
@@ -83,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Commands from the `Nook` command line, delivered over the authenticated socket.
     private func handle(command name: String) {
         if name == "close" { model.collapse(); model.cuely.stop(); return }
+        if name == "reveal" { reveal(); return }
         if name == "prompt" { model.cuely.present(); model.focusPanel(); return }
         if name.hasPrefix("timer:"), let minutes = Double(name.dropFirst(6)) {
             model.timer.pomodoro = false
@@ -99,56 +102,157 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Nook")
         let menu = NSMenu()
-        menu.addItem(withTitle: "Открыть буфер обмена  ⌃⌘V", action: #selector(openClipboard), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        let login = menu.addItem(withTitle: "Запускать при входе", action: #selector(toggleLogin(_:)), keyEquivalent: "")
-        login.target = self
-        login.state = LoginItem.isEnabled ? .on : .off
-        let paste = menu.addItem(withTitle: "Автовставка из буфера (Универсальный доступ)…", action: #selector(askAccessibility), keyEquivalent: "")
-        paste.target = self
-        let hooks = menu.addItem(withTitle: "Подключить Claude Code и Codex", action: #selector(installHooks), keyEquivalent: "")
-        hooks.target = self
-        let shell = menu.addItem(withTitle: "Острова для долгих команд (zsh)…", action: #selector(installShell), keyEquivalent: "")
-        shell.target = self
-        let sound = menu.addItem(withTitle: "Звук, когда агент закончил", action: #selector(toggleAgentSound(_:)), keyEquivalent: "")
-        sound.target = self
-        sound.state = Settings.agentDoneSound ? .on : .off
-        let islands = menu.addItem(withTitle: "Уведомления приложений в вырезе", action: #selector(toggleNotificationIslands(_:)), keyEquivalent: "")
-        islands.target = self
-        islands.state = Settings.notificationIslands ? .on : .off
-        let disk = menu.addItem(withTitle: "Полный доступ к диску (для уведомлений)…", action: #selector(openDiskAccess), keyEquivalent: "")
-        disk.target = self
-        let capture = menu.addItem(withTitle: "Скрывать Nook при показе экрана", action: #selector(toggleHideFromCapture(_:)), keyEquivalent: "")
-        capture.target = self
-        capture.state = Settings.hideFromCapture ? .on : .off
-        let unmute = menu.addItem(withTitle: "Снова показывать скрытые приложения", action: #selector(unmuteApps), keyEquivalent: "")
-        unmute.target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Выйти из Nook", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.delegate = self
         statusItem.menu = menu
+        statusItem.isVisible = Settings.showMenuIcon
+        model.onOpenMenu = { [weak self] in self?.popUpMenu() }
     }
 
+    /// The same menu from the gear in the panel: the only way in when the menu bar icon is hidden.
+    private func popUpMenu() {
+        let menu = NSMenu()
+        fill(menu)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    /// Built fresh on every opening, so ticks, displays and the update status are current.
+    func menuNeedsUpdate(_ menu: NSMenu) { fill(menu) }
+
+    private func fill(_ menu: NSMenu) {
+        menu.removeAllItems()
+        menu.autoenablesItems = false
+        @discardableResult func item(_ title: String, _ action: Selector, on: Bool? = nil, key: String = "", to parent: NSMenu? = nil) -> NSMenuItem {
+            let entry = (parent ?? menu).addItem(withTitle: title, action: action, keyEquivalent: key)
+            entry.target = self
+            if let on { entry.state = on ? .on : .off }
+            return entry
+        }
+        func submenu(_ title: String, symbol: String) -> NSMenu {
+            let entry = menu.addItem(withTitle: title, action: nil, keyEquivalent: "")
+            entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            let sub = NSMenu()
+            sub.autoenablesItems = false
+            entry.submenu = sub
+            return sub
+        }
+        func header(_ title: String, in parent: NSMenu) {
+            parent.addItem(NSMenuItem.sectionHeader(title: title))
+        }
+
+        item("Открыть Nook", #selector(openHome)).image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: nil)
+        item("Буфер обмена  ⌃⌘V", #selector(openClipboard)).image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
+        let coffee = item(model.caffeine.on ? "Кофеин включён — Mac не засыпает" : "Кофеин: не давать Mac засыпать",
+                          #selector(toggleCaffeine), on: model.caffeine.on)
+        coffee.image = NSImage(systemSymbolName: "cup.and.saucer", accessibilityDescription: nil)
+        menu.addItem(.separator())
+
+        // Display
+        let screens = submenu("Экран", symbol: "display")
+        let builtIn = NSScreen.screens.first { $0.safeAreaInsets.top > 0 }
+        item("Автоматически" + (builtIn != nil ? " (экран с вырезом)" : ""), #selector(chooseScreen(_:)),
+             on: Settings.screenID == nil, to: screens).representedObject = nil
+        screens.addItem(.separator())
+        for screen in NSScreen.screens {
+            guard let id = NotchGeometry.uuid(of: screen) else { continue }
+            let entry = item(screen.localizedName, #selector(chooseScreen(_:)), on: Settings.screenID == id, to: screens)
+            entry.representedObject = id
+        }
+
+        // Agents
+        let agents = submenu("Агенты", symbol: "sparkles")
+        header(model.agents.hooksInstalled ? "Claude Code и Codex подключены" : "Claude Code и Codex не подключены", in: agents)
+        item(model.agents.hooksInstalled ? "Подключить заново" : "Подключить Claude Code и Codex", #selector(installHooks), to: agents)
+        item("Звук, когда агент закончил", #selector(toggleAgentSound(_:)), on: Settings.agentDoneSound, to: agents)
+        agents.addItem(.separator())
+        header("Убирать завершённые сессии через", in: agents)
+        for minutes in [2, 10, 30, 60] {
+            let entry = item("\(minutes) мин", #selector(chooseSessionTTL(_:)),
+                             on: Int(Settings.finishedSessionTTL / 60) == minutes, to: agents)
+            entry.tag = minutes
+        }
+        agents.addItem(.separator())
+        item("Острова для долгих команд (zsh)…", #selector(installShell), to: agents)
+
+        // Notifications
+        let notes = submenu("Уведомления", symbol: "bell")
+        item("Показывать уведомления приложений в вырезе", #selector(toggleNotificationIslands(_:)),
+             on: Settings.notificationIslands, to: notes)
+        item("Дать полный доступ к диску…", #selector(openDiskAccess), to: notes)
+        let muted = Settings.mutedApps.count
+        item(muted > 0 ? "Снова показывать скрытые приложения (\(muted))" : "Скрытых приложений нет",
+             #selector(unmuteApps), to: notes).isEnabled = muted > 0
+
+        // Privacy and access
+        let privacy = submenu("Доступ и приватность", symbol: "lock")
+        item("Скрывать Nook в скриншотах и при показе экрана", #selector(toggleHideFromCapture(_:)),
+             on: Settings.hideFromCapture, to: privacy)
+        item("Автовставка из буфера (Универсальный доступ)…", #selector(askAccessibility), to: privacy)
+
+        menu.addItem(.separator())
+        item("Запускать при входе", #selector(toggleLogin(_:)), on: LoginItem.isEnabled)
+        item("Значок в строке меню", #selector(toggleMenuIcon), on: Settings.showMenuIcon)
+
+        // Updates
+        let updates = submenu("Обновления · версия \(Updater.version)", symbol: "arrow.down.circle")
+        if !model.updater.status.isEmpty { header(model.updater.status, in: updates) }
+        item("Проверить сейчас", #selector(checkUpdates), to: updates)
+        item("Обновлять автоматически", #selector(toggleAutoUpdate(_:)), on: Settings.autoUpdate, to: updates)
+
+        menu.addItem(.separator())
+        item("Выйти из Nook", #selector(NSApplication.terminate(_:)), key: "q").target = NSApp
+    }
+
+    @objc private func openHome() { model.open(tab: .home) }
     @objc private func openClipboard() { model.toggleClipboardFromHotkey() }
+    @objc private func toggleCaffeine() { model.caffeine.toggle() }
 
-    @objc private func toggleLogin(_ sender: NSMenuItem) {
-        LoginItem.setEnabled(!LoginItem.isEnabled)
-        sender.state = LoginItem.isEnabled ? .on : .off
+    @objc private func chooseScreen(_ sender: NSMenuItem) {
+        Settings.screenID = sender.representedObject as? String
+        model.collapse()
+        panel.reposition()
     }
 
-    @objc private func toggleAgentSound(_ sender: NSMenuItem) {
-        Settings.agentDoneSound.toggle()
-        sender.state = Settings.agentDoneSound ? .on : .off
-    }
+    @objc private func chooseSessionTTL(_ sender: NSMenuItem) { Settings.finishedSessionTTL = Double(sender.tag * 60) }
 
-    @objc private func toggleNotificationIslands(_ sender: NSMenuItem) {
-        Settings.notificationIslands.toggle()
-        sender.state = Settings.notificationIslands ? .on : .off
-    }
+    @objc private func toggleLogin(_ sender: NSMenuItem) { LoginItem.setEnabled(!LoginItem.isEnabled) }
+    @objc private func toggleAgentSound(_ sender: NSMenuItem) { Settings.agentDoneSound.toggle() }
+    @objc private func toggleNotificationIslands(_ sender: NSMenuItem) { Settings.notificationIslands.toggle() }
+    @objc private func toggleAutoUpdate(_ sender: NSMenuItem) { Settings.autoUpdate.toggle() }
 
     @objc private func toggleHideFromCapture(_ sender: NSMenuItem) {
         Settings.hideFromCapture.toggle()
-        sender.state = Settings.hideFromCapture ? .on : .off
         panel.sharingType = Settings.hideFromCapture ? .none : .readOnly
+    }
+
+    @objc private func toggleMenuIcon() {
+        if Settings.showMenuIcon {
+            let alert = NSAlert()
+            alert.messageText = "Убрать значок Nook из строки меню?"
+            alert.informativeText = "Меню останется под шестерёнкой ⚙︎ в панели Nook. Значок вернётся, если снова открыть Nook из папки «Программы» или через Spotlight."
+            alert.addButton(withTitle: "Убрать")
+            alert.addButton(withTitle: "Отмена")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        Settings.showMenuIcon.toggle()
+        statusItem.isVisible = Settings.showMenuIcon
+    }
+
+    /// Nook opened again while it runs (Finder, Spotlight): bring the icon back and show the panel.
+    func reveal() {
+        Settings.showMenuIcon = true
+        statusItem.isVisible = true
+        model.open(tab: .home)
+    }
+
+    @objc private func checkUpdates() {
+        model.updater.check(manual: true) { text in
+            let alert = NSAlert()
+            alert.messageText = "Nook \(Updater.version)"
+            alert.informativeText = text
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
     }
 
     @objc private func openDiskAccess() { NotificationWatcher.openSettings() }
@@ -172,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let result = AgentHub.installHooks()
         model.agents.checkHooks()
         let alert = NSAlert()
-        alert.messageText = result.ok ? "Хуки подключены" : "Не удалось подключить хуки"
+        alert.messageText = result.ok ? "Агенты подключены" : "Не удалось подключить агентов"
         alert.informativeText = result.message
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()

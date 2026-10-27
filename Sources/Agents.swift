@@ -85,7 +85,7 @@ final class AgentHub: ObservableObject {
         Self.writeShellScript()
         listen()
         restore()
-        checkHooks()
+        autoConnect()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.prune() }
     }
 
@@ -131,10 +131,38 @@ final class AgentHub: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
+    /// Agents Nook can connect: the folder that shows the agent is installed, and its hooks file.
+    private static let agentConfigs = [(dir: ".claude", file: ".claude/settings.json", provider: "claude"),
+                                       (dir: ".codex", file: ".codex/hooks.json", provider: "codex")]
+
+    /// On a new Mac (or when an agent is installed later) Nook connects Claude Code and Codex by itself,
+    /// once per agent: no trip to the menu, and hooks the person removed on purpose stay removed.
+    private func autoConnect() {
+        io.async { [weak self] in
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            var done = Settings.hooksAutoConnected
+            for agent in Self.agentConfigs where !done.contains(agent.provider) {
+                guard FileManager.default.fileExists(atPath: home.appendingPathComponent(agent.dir).path) else { continue }
+                let url = home.appendingPathComponent(agent.file)
+                do {
+                    if (try? String(contentsOf: url, encoding: .utf8))?.contains(Self.hookURL.path) != true {
+                        try Self.patch(url, provider: agent.provider)
+                    }
+                    if agent.provider == "codex" { try Self.enableCodexHooks() }
+                    done.insert(agent.provider)
+                } catch {
+                    NSLog("Nook: could not connect \(agent.provider): \(error.localizedDescription)")
+                }
+            }
+            Settings.hooksAutoConnected = done
+            self?.checkHooks()
+        }
+    }
+
     func checkHooks() {
         io.async { [weak self] in
             let home = FileManager.default.homeDirectoryForCurrentUser
-            let installed = [".claude/settings.json", ".codex/hooks.json"].contains { file in
+            let installed = Self.agentConfigs.map(\.file).contains { file in
                 (try? String(contentsOf: home.appendingPathComponent(file), encoding: .utf8))?.contains(Self.hookURL.path) == true
             }
             DispatchQueue.main.async { self?.hooksInstalled = installed }
@@ -779,18 +807,54 @@ final class AgentHub: ObservableObject {
         let home = FileManager.default.homeDirectoryForCurrentUser
         var notes: [String] = []
         var ok = true
-        for (file, provider) in [(".claude/settings.json", "claude"), (".codex/hooks.json", "codex")] {
-            let url = home.appendingPathComponent(file)
-            guard FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path) else { continue }
+        for agent in agentConfigs {
+            let url = home.appendingPathComponent(agent.file)
+            guard FileManager.default.fileExists(atPath: home.appendingPathComponent(agent.dir).path) else { continue }
             do {
-                try patch(url, provider: provider)
-                notes.append("✓ ~/\(file)")
+                try patch(url, provider: agent.provider)
+                if agent.provider == "codex" { try enableCodexHooks() }
+                notes.append("✓ ~/\(agent.file)")
             } catch {
                 ok = false
-                notes.append("✗ ~/\(file): \(error.localizedDescription)")
+                notes.append("✗ ~/\(agent.file): \(error.localizedDescription)")
             }
         }
+        if notes.isEmpty { return (false, "Claude Code и Codex не найдены: нет папок ~/.claude и ~/.codex.") }
+        if agentConfigs.contains(where: { $0.provider == "codex" && FileManager.default.fileExists(atPath: home.appendingPathComponent($0.dir).path) }) {
+            notes.append("Codex может один раз спросить, доверять ли хукам Nook — разреши.")
+        }
+        notes.append("Уже запущенные агенты перезапусти, чтобы они подхватили хуки.")
         return (ok, notes.joined(separator: "\n"))
+    }
+
+    /// Codex runs hooks only with `[features] hooks = true` in ~/.codex/config.toml. Changes just that key
+    /// (after a backup); a config that sets features in another form is left alone.
+    static func enableCodexHooks() throws {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
+        let original = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        var lines = original.components(separatedBy: "\n")
+        func trimmed(_ i: Int) -> String { lines[i].trimmingCharacters(in: .whitespaces) }
+        func key(_ i: Int) -> String { trimmed(i).components(separatedBy: "=").first?.trimmingCharacters(in: .whitespaces) ?? "" }
+        if let start = lines.indices.first(where: { trimmed($0) == "[features]" }) {
+            var end = start + 1
+            while end < lines.count, !trimmed(end).hasPrefix("[") { end += 1 }
+            if let i = (start + 1 ..< end).first(where: { key($0) == "hooks" }) {
+                if trimmed(i).replacingOccurrences(of: " ", with: "").hasPrefix("hooks=true") { return }
+                lines[i] = "hooks = true"
+            } else {
+                lines.insert("hooks = true", at: start + 1)
+            }
+        } else if lines.indices.contains(where: { key($0).hasPrefix("features") }) {
+            return
+        } else {
+            if let last = lines.last, last.isEmpty { lines.removeLast() }
+            lines += ["", "[features]", "hooks = true", ""]
+        }
+        if !original.isEmpty {
+            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            try original.write(to: url.appendingPathExtension("bak-nook-\(stamp)"), atomically: true, encoding: .utf8)
+        }
+        try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
     private static func patch(_ url: URL, provider: String) throws {

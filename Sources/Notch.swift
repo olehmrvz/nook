@@ -69,9 +69,18 @@ struct Island: Identifiable, Equatable {
 }
 
 enum NotchGeometry {
-    /// The built-in display with a camera housing, or the main display; nil for a moment during display changes.
+    /// The display chosen in the menu, else the built-in display with a camera housing, else the main display;
+    /// nil for a moment during display changes. A chosen display that is disconnected falls back to the default.
     static var screen: NSScreen? {
-        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens.first
+        if let id = Settings.screenID, let chosen = NSScreen.screens.first(where: { uuid(of: $0) == id }) { return chosen }
+        return NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.screens.first
+    }
+
+    /// Stable across restarts and reconnects, unlike the display number.
+    static func uuid(of screen: NSScreen) -> String? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
     }
 
     static func notchSize(on screen: NSScreen) -> CGSize {
@@ -87,7 +96,9 @@ enum NotchGeometry {
 
 final class NotchModel: ObservableObject {
     static let expandedSize = CGSize(width: 780, height: 326)
-    static let windowSize = CGSize(width: 860, height: 356)
+    /// Larger than the open panel on every side: its shadow must fade out inside the window, or the
+    /// window edge cuts it into a visible band.
+    static let windowSize = CGSize(width: 900, height: 400)
     static let islandWidth: CGFloat = 460
     static let islandExtra: CGFloat = 78
     static let prompterSize = CGSize(width: 600, height: 190)
@@ -121,6 +132,10 @@ final class NotchModel: ObservableObject {
     let weather = Weather()
     let notes = NotesStore()
     let mirror = MirrorCamera()
+    let caffeine = Caffeine()
+    let updater = Updater()
+    /// Opens Nook's menu (the gear in the panel), set by the app delegate.
+    var onOpenMenu: (() -> Void)?
 
     weak var panel: NotchPanel?
     /// Opened from the hotkey: stays open until Esc, a pick or a click outside.
@@ -172,6 +187,11 @@ final class NotchModel: ObservableObject {
         bluetooth.start { [weak self] island in self?.present(island) }
         weather.start()
         notes.start()
+        updater.isIdle = { [weak self] in
+            guard let self else { return false }
+            return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
+        }
+        updater.start()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }
@@ -272,6 +292,7 @@ final class NotchModel: ObservableObject {
     }
 
     /// Seconds since the last keyboard or mouse input anywhere (any event type).
+    private var openedAt = Date.distantPast
     private var idleSeconds: Double {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
@@ -346,7 +367,9 @@ final class NotchModel: ObservableObject {
         if holdOpen && agents.permissions.isEmpty { holdOpen = false }
         // Nobody at the Mac for two minutes: close, even if opened by the hotkey. An unanswered request
         // stays (it times out on its own after about two minutes, which then lets the panel close).
-        if !holdOpen && idleSeconds > 120 { collapse(); return }
+        // Idle for two minutes since it opened: a panel opened by a script while the person was away
+        // must not close in the same second.
+        if !holdOpen && Date().timeIntervalSince(openedAt) > 120 && idleSeconds > 120 { collapse(); return }
         if inside || sticky || holdOpen {
             leaveStart = nil
         } else {
@@ -360,6 +383,7 @@ final class NotchModel: ObservableObject {
         guard !expanded else { return }
         if island != nil { dismissIsland(showNext: false) }
         expanded = true
+        openedAt = Date()
         startTicks()
     }
 

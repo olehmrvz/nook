@@ -1,0 +1,29 @@
+#!/bin/bash
+# Publishes the current commit as a GitHub release. Every installed Nook checks the latest release every
+# 6 hours, downloads it and installs it by itself (Sources/Updater.swift). Run from a clean tree.
+set -euo pipefail
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="olehmrvz/nook"
+cd "$PROJECT_DIR"
+
+[ -z "$(git status --porcelain)" ] || { echo "Commit your changes first." >&2; exit 1; }
+"$PROJECT_DIR/install.sh" --build-only
+APP="$PROJECT_DIR/.build/Nook.app"
+# The updater accepts only builds signed like the installed ones: never publish an ad-hoc build.
+codesign -dvv "$APP" 2>&1 | grep -q "Authority=Nook Local Signing" \
+  || { echo "Not signed with \"Nook Local Signing\" (run make-cert.sh); release cancelled." >&2; exit 1; }
+
+BUILD_NUMBER="$(git rev-list --count HEAD)"
+TAG="v$BUILD_NUMBER"
+ZIP="$PROJECT_DIR/.build/Nook.zip"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+
+# The active gh account may belong to another project: use olehmrvz's token for this call only.
+export GH_TOKEN="$(gh auth token --user olehmrvz)"
+git push -q origin HEAD
+PREVIOUS="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || true)"
+NOTES="$(git log --pretty='- %s' ${PREVIOUS:+$PREVIOUS..}HEAD | head -30)"
+gh release create "$TAG" "$ZIP" --repo "$REPO" --target "$(git rev-parse HEAD)" \
+  --title "Nook 1.$BUILD_NUMBER" --notes "${NOTES:-Nook 1.$BUILD_NUMBER}"
+echo "Released $TAG: installed copies update within 6 hours (or menu → Обновления → Проверить сейчас)."
