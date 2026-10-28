@@ -1,7 +1,7 @@
 # Nook — project guidance
 
 Own macOS notch app (Swift/SwiftUI, no Xcode project). It replaced Notchy. Public repo (MIT).
-User-facing docs: `README.md` (Russian) and `README.en.md` — keep both in step. Developer docs: `docs/DEVELOPMENT.md`.
+User-facing docs: `README.md` (English only; GitHub pages, issue templates and release notes are English too). Developer docs: `docs/DEVELOPMENT.md`.
 Screenshots for the README use demo sessions only (no real prompts, music, city, clipboard).
 Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 

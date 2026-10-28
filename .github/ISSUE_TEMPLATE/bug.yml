@@ -1,31 +1,31 @@
-name: Ошибка / Bug
-description: Что-то работает не так / Something does not work
+name: Bug
+description: Something does not work
 labels: [bug]
 body:
   - type: textarea
     id: what
     attributes:
-      label: Что случилось / What happened
-      description: Что делал, что ожидал, что получил. Скриншот очень помогает (без личных данных).
+      label: What happened
+      description: What you did, what you expected, what you got. A screenshot helps a lot (no personal data, please).
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Версия Nook / Nook version
-      description: ⚙︎ → Обновления → «версия 1.…»
-      placeholder: "1.10"
+      label: Nook version
+      description: ⚙︎ → Updates → "version 1.…"
+      placeholder: "1.15"
     validations:
       required: true
   - type: input
     id: mac
     attributes:
-      label: Mac и macOS / Mac and macOS
+      label: Mac and macOS
       placeholder: "MacBook Air M2, macOS 15.5"
     validations:
       required: true
   - type: dropdown
     id: area
     attributes:
-      label: Часть / Area
-      options: [Агенты / Agents, Музыка / Music, Буфер обмена / Clipboard, Полка / Shelf, Уведомления / Notifications, Обновления / Updates, Другое / Other]
+      label: Area
+      options: [Agents, Music, Clipboard, Shelf, Notifications, Volume and brightness, Updates, Other]

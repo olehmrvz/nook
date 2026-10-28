@@ -33,4 +33,4 @@ SHA-256 of Nook.zip: $(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 Signing certificate (SHA-1): 76A699582536149BB53212178F4A1B2A2DC15CC1"
 gh release create "$TAG" "$ZIP" --repo "$REPO" --target "$(git rev-parse HEAD)" \
   --title "Nook 1.$BUILD_NUMBER" --notes "${NOTES:-Nook 1.$BUILD_NUMBER}"
-echo "Released $TAG: installed copies update within 6 hours (or menu → Обновления → Проверить сейчас)."
+echo "Released $TAG: installed copies update within 6 hours (or menu → Updates → Check now)."

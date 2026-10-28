@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Уязвимость / Security vulnerability
+  - name: Security vulnerability
     url: https://github.com/olehmrvz/nook/security/advisories/new
-    about: Сообщай приватно, не публичным issue. / Report privately, not as a public issue.
+    about: Report privately, not as a public issue.

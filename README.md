@@ -2,97 +2,100 @@
 
 # Nook
 
-**Вырез MacBook, который работает на тебя.**
-Агенты Claude Code и Codex, музыка, буфер обмена, файлы, календарь и таймер — прямо под камерой.
+**A MacBook notch that works for you.**
+Claude Code and Codex agents, music, clipboard, files, calendar and timer — right under the camera.
 
-[![Последняя версия](https://img.shields.io/github/v/release/olehmrvz/nook?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F)](https://github.com/olehmrvz/nook/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/olehmrvz/nook?label=release)](https://github.com/olehmrvz/nook/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%E2%80%93M4-black)
-[![Лицензия MIT](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-blue)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[**Скачать**](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) · [English](README.en.md) · [Для разработчиков](docs/DEVELOPMENT.md)
+[**Download**](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) · [Development](docs/DEVELOPMENT.md)
 
-<img src="docs/images/request.jpg" alt="Nook: агент просит разрешение прямо в вырезе" width="820">
+<img src="docs/images/request.jpg" alt="Nook: an agent asks for permission right in the notch" width="820">
 
 </div>
 
-## Зачем
+> The app interface is in Russian for now. Menu names below are given in English with the Russian label in brackets.
 
-Ты запустил несколько агентов и ушёл в браузер. Nook показывает в вырезе, кто из них работает, кто закончил,
-а кто ждёт твоего ответа. Разрешить, отклонить или ответить на вопрос агента можно прямо там — не ища
-нужную вкладку терминала. Всё остальное, что обычно разбросано по углам экрана, тоже живёт в вырезе.
+## Why
 
-<p align="center"><img src="docs/images/sessions.jpg" alt="Список сессий агентов и лимиты Claude" width="820"></p>
+You started a few agents and switched to the browser. Nook shows in the notch which of them is working, which
+is done and which is waiting for you. Allow, deny or answer an agent's question right there, without hunting
+for the terminal tab. Everything else usually scattered around the screen lives in the notch too.
 
-## Что умеет
+<p align="center"><img src="docs/images/sessions.jpg" alt="Agent sessions and Claude limits" width="820"></p>
 
-**Агенты**
-- Сессии Claude Code и Codex: что делает, какой запрос, ветка, сколько идёт, какие файлы изменены.
-- Запросы на разрешение в вырезе: «Разрешить», «Всегда», «Отклонить» или «В терминале». Видно всё,
-  что одобряешь, а не только описание.
-- Вопросы агента с вариантами и проверка плана: одобрить, одобрить с авто-правками или вернуть с комментарием.
-- Остров «Готово», когда агент закончил. Клик — и открыта нужная вкладка терминала (herdr, tmux).
-- Лимиты Claude (5 ч и неделя) и Codex с временем сброса.
-- ☕ Кофеин: Mac не засыпает, пока агенты работают ночью.
+## Features
 
-**Каждый день**
-- Музыка из любого приложения: Spotify, Музыка, вкладка браузера, подкасты.
-- Буфер обмена (⌃⌘V): 300 записей, закреп, поиск, текст с картинки. Пароли из менеджеров паролей не сохраняются.
-- Полка: брось файл на вырез, потом перетащи куда нужно или отправь по AirDrop. Скриншоты попадают туда сами.
-- Календарь и напоминания, кнопка «Подключиться» за 5 минут до встречи.
-- Таймер и Помодоро, заметки, зеркало (камера), суфлёр для видео (`Nook --prompt`).
-- ⌨︎ Блокировка клавиатуры на 30 секунд, чтобы её протереть. Трекпад при этом работает.
-- Острова: уведомления, звонки, AirPods, загрузки, долгие команды терминала.
-- Громкость, яркость и «Не беспокоить» прямо в вырезе вместо системного окошка.
-- Погода, батарея, выбор монитора для выреза.
+**Agents**
+- Claude Code and Codex sessions: current action, your request, branch, duration, edited files.
+- Permission requests in the notch: Allow, Always, Deny or "in terminal". You see everything you approve,
+  not only the description.
+- Agent questions with options and plan review: approve, approve with auto-accepted edits, or send back a note.
+- A "done" island when an agent finishes; one click brings back its terminal tab (herdr, tmux).
+- Claude (5 h and week) and Codex limits with reset times.
+- ☕ Coffee: keeps the Mac awake while agents work overnight.
 
-## Установка
+**Every day**
+- Music from any app: Spotify, Music, a browser tab, podcasts.
+- Clipboard (⌃⌘V): 300 items, pins, search, text from images. Password-manager items are never saved.
+- Shelf: drop a file on the notch, drag it out later or AirDrop it. Screenshots land there by themselves.
+- Calendar and reminders, a "Join" button 5 minutes before a meeting.
+- Timer and Pomodoro, notes, mirror (camera), teleprompter for video (`Nook --prompt`).
+- ⌨︎ Keyboard lock for 30 seconds to wipe it clean. The trackpad keeps working.
+- Islands: notifications, calls, AirPods, downloads, long terminal commands.
+- Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
+- Weather, battery, choice of display for the notch.
 
-1. Скачай [Nook.zip](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) и распакуй.
-2. Перетащи `Nook.app` в папку «Программы» и открой.
-3. macOS скажет, что не может проверить разработчика: у Nook нет платной подписи Apple.
-   Открой **Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»**.
-   Если macOS пишет, что приложение повреждено, выполни в Терминале и открой снова:
+## Install
+
+1. Download [Nook.zip](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) and unpack it.
+2. Move `Nook.app` to Applications and open it.
+3. macOS says it cannot verify the developer: Nook is not notarized by Apple.
+   Open **System Settings → Privacy & Security → "Open Anyway"**.
+   If macOS says the app is damaged, run this in Terminal and open it again:
    ```sh
    xattr -dr com.apple.quarantine /Applications/Nook.app
    ```
-4. Наведи курсор на вырез — откроется панель. Настройки — ⚙︎ в панели или значок в строке меню.
+4. Hover the notch to open the panel. Settings: ⚙︎ in the panel or the menu bar icon.
 
-Claude Code и Codex подключатся сами при первом запуске. Уже запущенные агенты перезапусти.
-Codex может один раз спросить, доверять ли хукам Nook, — разреши.
+Claude Code and Codex connect by themselves on first launch. Restart agents that are already running.
+Codex may ask once whether to trust Nook's hooks — allow it.
 
-Нужен Mac на Apple Silicon с macOS 14 или новее. На Mac без выреза Nook рисует небольшую «таблетку» сверху.
+Requires an Apple Silicon Mac with macOS 14 or later. On a Mac without a notch, Nook draws a small pill at the top.
 
-## Обновления
+## Updates
 
-Nook сам проверяет новые версии раз в 6 часов и ставит их, когда панель закрыта. Проверить вручную:
-⚙︎ → Обновления → «Проверить сейчас». Выключить: там же, «Обновлять автоматически».
+Nook checks for a new version every 6 hours and installs it when the panel is closed. Check by hand:
+⚙︎ → Updates (Обновления) → Check now (Проверить сейчас). Turn off: same menu, Update automatically
+(Обновлять автоматически).
 
-## Безопасность и приватность
+## Security and privacy
 
-- Нет аналитики, аккаунта и рекламы. В сеть Nook ходит только за погодой (Open-Meteo, город с точностью ~1 км)
-  и за обновлениями (GitHub).
-- Все данные лежат на твоём Mac в `~/Library/Application Support/Nook`, доступ только у твоей учётной записи.
-- Обновление ставится, только если подписано тем же сертификатом, что и твоя копия.
-- Агент не может сам одобрить свой запрос: ответ принимается только от тебя.
-- Текст уведомлений в вырезе скрыт, пока ты сам его не включишь.
+- No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km) and
+  updates (GitHub).
+- All data stays on your Mac in `~/Library/Application Support/Nook`, readable only by your user account.
+- An update is installed only if it is signed with the same certificate as your copy.
+- An agent cannot approve its own request: only your answer counts.
+- Notification text is hidden in the notch until you turn it on.
 
-Проверить, что копия настоящая:
+Check that your copy is genuine:
 ```sh
 codesign -d -r- /Applications/Nook.app
-# должно заканчиваться на: certificate leaf = H"76a699582536149bb53212178f4a1b2a2dc15cc1"
+# must end with: certificate leaf = H"76a699582536149bb53212178f4a1b2a2dc15cc1"
 ```
-У каждого выпуска в описании есть SHA-256 архива. Нашёл уязвимость — см. [SECURITY.md](SECURITY.md).
+Each release lists the SHA-256 of the zip. Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
-## Сборка из исходников
+## Build from source
 
 ```sh
-xcode-select --install   # один раз: инструменты сборки
-./make-cert.sh           # один раз: сертификат, чтобы macOS не спрашивал разрешения после каждой сборки
-./install.sh             # собрать, установить в «Программы» и запустить
+xcode-select --install   # once: build tools
+./make-cert.sh           # once: a certificate, so macOS keeps permissions across builds
+./install.sh             # build, install to /Applications and start
 ```
-Подробности — в [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Details: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-## Лицензия
+## License
 
 [MIT](LICENSE) © 2026 Oleh Yaitsov

@@ -9,11 +9,11 @@ User-facing overview: [README.md](../README.md). Project rules for coding agents
 (signed with "Nook Local Signing" from `make-cert.sh`, ad-hoc without it) and starts it. The version is the
 number of commits (`1.<count>`). `./release.sh` publishes the current commit as a GitHub release; every
 installed Nook picks it up within 6 hours, checks that it is signed with the same certificate, and installs it
-when the panel is closed. Menu bar icon → "Запускать при входе" adds a LaunchAgent
+when the panel is closed. Menu bar icon → Launch at login (Запускать при входе) adds a LaunchAgent
 `~/Library/LaunchAgents/dev.nook.app.plist`.
 
 Hooks: connected automatically on first launch for each agent found (`~/.claude`, `~/.codex`), once — hooks
-removed later are not put back. By hand: menu → Агенты → "Подключить", or `Nook --install-hooks`. For Codex,
+removed later are not put back. By hand: menu → Agents (Агенты) → Connect (Подключить), or `Nook --install-hooks`. For Codex,
 Nook also sets `[features] hooks = true` in `~/.codex/config.toml`. This adds Nook's hook to
 `~/.claude/settings.json` and `~/.codex/hooks.json`, removes Notchy's hooks, keeps all other hooks and saves
 a `*.bak-nook` copy (owner-only) first.
@@ -41,7 +41,7 @@ terminal, not from a process an agent started (an agent must not approve its own
   leave it too. `clipboard-events.log` records loads, deletes and clears with counts only, never content.
 - The panel closes by itself after 2 minutes without input and while the screen is locked or asleep.
 - Menu: the menu bar icon, or ⚙︎ in the panel header (the icon can be hidden; opening Nook.app again brings it
-  back). Экран: pick the display for the notch (on a display without a notch it is a small pill).
+  back). Display (Экран): pick the display for the notch (on a display without a notch it is a small pill).
 - ☕ in the header: "coffee" keeps the Mac awake while idle (agents left working). The display still sleeps.
 - `notifications-debug.log` in the data folder records bundle ids and key names (never message text) of the
   first 40 notifications, to check the database format on new macOS versions.
