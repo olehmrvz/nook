@@ -16,7 +16,7 @@ Hooks: connected automatically on first launch for each agent found (`~/.claude`
 removed later are not put back. By hand: menu → Agents (Агенты) → Connect (Подключить), or `Nook --install-hooks`. For Codex,
 Nook also sets `[features] hooks = true` in `~/.codex/config.toml`. This adds Nook's hook to
 `~/.claude/settings.json` and `~/.codex/hooks.json`, removes Notchy's hooks, keeps all other hooks and saves
-a `*.bak-nook` copy (owner-only) first.
+`*.bak-nook` (the original, kept) and `*.bak-nook-prev` (before the latest change), owner-only, first.
 
 ## Permissions
 

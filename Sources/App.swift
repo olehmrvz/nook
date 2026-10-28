@@ -311,15 +311,23 @@ enum LoginItem {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(label).plist")
     }
     static var isEnabled: Bool { FileManager.default.fileExists(atPath: plistURL.path) }
+    /// The plist is read and written off the main thread.
+    private static let queue = DispatchQueue(label: "nook.loginitem")
 
     /// The app moved (e.g. ~/Applications → /Applications): point the login item at the current copy.
     static func followApp() {
-        guard isEnabled, let plist = NSDictionary(contentsOf: plistURL),
-              let arguments = plist["ProgramArguments"] as? [String], arguments.last != Bundle.main.bundlePath else { return }
-        setEnabled(true)
+        queue.async {
+            guard isEnabled, let plist = NSDictionary(contentsOf: plistURL),
+                  let arguments = plist["ProgramArguments"] as? [String], arguments.last != Bundle.main.bundlePath else { return }
+            write(true)
+        }
     }
 
     static func setEnabled(_ on: Bool) {
+        queue.async { write(on) }
+    }
+
+    private static func write(_ on: Bool) {
         if on {
             let plist: [String: Any] = [
                 "Label": label,

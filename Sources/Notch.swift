@@ -217,7 +217,9 @@ final class NotchModel: ObservableObject {
         notes.start()
         updater.isIdle = { [weak self] in
             guard let self else { return false }
+            // A restart would drop coffee mode (the Mac sleeps, agents stop), a running timer and the keyboard lock.
             return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
+                && !self.caffeine.on && !self.timer.isRunning && !self.timer.isPaused && !self.keyboardLock.isLocked
         }
         updater.start()
         volume.onChange = { [weak self] level, muted in

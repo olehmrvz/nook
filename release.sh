@@ -7,6 +7,12 @@ REPO="olehmrvz/nook"
 cd "$PROJECT_DIR"
 
 [ -z "$(git status --porcelain)" ] || { echo "Commit your changes first." >&2; exit 1; }
+# The active gh account may belong to another project: use olehmrvz's token for this script only.
+export GH_TOKEN="$(gh auth token --user olehmrvz)"
+# Only what is on main (stable) goes out to every installed copy: push develop:main first.
+git fetch -q origin main
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
+  || { echo "HEAD is not origin/main: merge and push to main first; release cancelled." >&2; exit 1; }
 "$PROJECT_DIR/install.sh" --build-only
 APP="$PROJECT_DIR/.build/Nook.app"
 # The updater accepts only builds signed like the installed ones: never publish an ad-hoc build.
@@ -20,9 +26,6 @@ ZIP="$PROJECT_DIR/.build/Nook.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
-# The active gh account may belong to another project: use olehmrvz's token for this call only.
-export GH_TOKEN="$(gh auth token --user olehmrvz)"
-git push -q origin HEAD
 # Tags of earlier releases are made on GitHub: fetch them for the change list.
 git fetch -q --tags origin
 PREVIOUS="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || true)"

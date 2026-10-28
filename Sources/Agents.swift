@@ -894,14 +894,18 @@ final class AgentHub: ObservableObject {
         return (ok, notes.joined(separator: "\n"))
     }
 
-    /// Codex runs hooks only with `[features] hooks = true` in ~/.codex/config.toml. Changes just that key
-    /// (after a backup); a config that sets features in another form is left alone.
-    /// One copy per file (`<name>.bak-nook`), owner-only: these configs can hold tokens.
+    /// Two copies per file, owner-only (these configs can hold tokens): `<name>.bak-nook` is the file as it was
+    /// before Nook first changed it and is never overwritten; `<name>.bak-nook-prev` is the state before the
+    /// latest change.
     private static func backup(_ data: Data, of url: URL) throws {
-        let copy = url.appendingPathExtension("bak-nook")
+        let first = url.appendingPathExtension("bak-nook")
+        let copy = FileManager.default.fileExists(atPath: first.path) ? url.appendingPathExtension("bak-nook-prev") : first
         try data.write(to: copy, options: [.atomic])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: copy.path)
     }
+
+    /// Codex runs hooks only with `[features] hooks = true` in ~/.codex/config.toml. Changes just that key
+    /// (after a backup); a config that sets features in another form is left alone.
 
     static func enableCodexHooks() throws {
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml").resolvingSymlinksInPath()
