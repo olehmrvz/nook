@@ -70,13 +70,6 @@ extension NotchModel {
          Glow(color: b, x: 0.78, y: 0.88, size: 460, opacity: opacity * 0.75)]
     }
 
-    /// A quiet, deep wash rising from below the island; the top under the camera stays black.
-    /// Colours are muted and the spots sit past the bottom edge, so only their soft tails show.
-    func glows(for island: Island) -> [Glow] {
-        let c = island.colors.map { $0.muted() }
-        return [Glow(color: c[0], x: 0.22, y: 1.22, size: 620, opacity: 0.55),
-                Glow(color: c[1], x: 0.8, y: 1.28, size: 520, opacity: 0.32)]
-    }
 }
 
 extension Island {
@@ -220,7 +213,7 @@ struct RootView: View {
         case .island:
             if let island = model.island {
                 ZStack(alignment: .top) {
-                    AmbientGlow(glows: model.glows(for: island), blackTop: model.notch.height)
+                    IslandBackdrop(colors: island.colors, blackTop: model.notch.height)
                     IslandView(model: model, island: island)
                         .padding(.horizontal, NotchModel.ear + 14)
                         .padding(.top, model.notch.height + 4)

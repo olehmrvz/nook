@@ -445,6 +445,43 @@ struct AmbientGlow: View {
     }
 }
 
+/// Island background: black glass with one clean halo behind the icon.
+/// Full-saturation colour at low opacity: a muted colour over black turns into a brown smudge.
+struct IslandBackdrop: View {
+    var colors: [Color]
+    /// Height of the band under the camera that stays pure black.
+    var blackTop: CGFloat = 0
+    @State private var breathe = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = max(geo.size.height, 1)
+            // The icon's centre: island padding (ear + 14) plus half the 40 pt icon, middle of the content row.
+            let icon = UnitPoint(x: (NotchModel.ear + 34) / max(geo.size.width, 1), y: (blackTop + 4 + (h - blackTop - 16) / 2) / h)
+            ZStack {
+                // Neutral glass depth, not a coloured wash: tinted black reads as brown or mud.
+                LinearGradient(colors: [.clear, Color.white.opacity(0.05)], startPoint: .top, endPoint: .bottom)
+                RadialGradient(stops: [.init(color: colors[0].opacity(0.32), location: 0),
+                                       .init(color: colors[0].opacity(0.1), location: 0.5),
+                                       .init(color: .clear, location: 1)],
+                               center: icon, startRadius: 0, endRadius: 110)
+                    .opacity(breathe ? 1 : 0.75)
+            }
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
+                                         .init(color: .clear, location: min(1, blackTop / h)),
+                                         .init(color: .black, location: min(1, (blackTop + 30) / h)),
+                                         .init(color: .black, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
+        }
+        .animation(.easeInOut(duration: 0.8).speed(Motion.speed), value: colors)
+        .allowsHitTesting(false)
+        .onAppear {
+            guard !Motion.reduce else { return }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breathe = true }
+        }
+    }
+}
+
 // MARK: Artwork colours
 
 extension NSImage {
