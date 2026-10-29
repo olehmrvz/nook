@@ -43,6 +43,17 @@ terminal, not from a process an agent started (an agent must not approve its own
 - Menu: the menu bar icon, or ⚙︎ in the panel header (the icon can be hidden; opening Nook.app again brings it
   back). Display (Экран): pick the display for the notch (on a display without a notch it is a small pill).
 - ☕ in the header: "coffee" keeps the Mac awake while idle (agents left working). The display still sleeps.
+- Reply to an agent (`ReplyField`, `AgentHub.reply`): only for sessions in herdr (`pane send-text` + `send-keys enter`)
+  or tmux (`send-keys -l`), and only when the session is done or idle — never while a request or a terminal dialog
+  may be open. One line; no command-line flag for it (an agent must not type into another agent through Nook).
+- Turn summary: edited files, test runs and `git commit` / `git push` from `PreToolUse` Bash commands, with the
+  result from `PostToolUse` / `PostToolUseFailure` (Claude only; Nook adds that event to an existing hook setup).
+- Usage (`Sources/Usage.swift`): Claude transcripts changed today, read incrementally in 4 MB chunks, deduplicated by
+  message id + request id; cost at API list prices (table in the file). Codex sessions show no tokens yet.
+- Process watch (`Sources/Processes.swift`): own processes, sampled every 10 s; island at ≥ 90 % CPU for 2 min or
+  ≥ 4 GB memory, once per process per hour. "Завершить" needs a second click; it checks the start time first.
+- Focus mode (Timer tab or `Nook --timer focus`): Pomodoro + coffee; notification islands are dropped during focus
+  phases (calls still show); `--timer stop` ends it and restores coffee.
 - `notifications-debug.log` in the data folder records bundle ids and key names (never message text) of the
   first 40 notifications, to check the database format on new macOS versions.
 

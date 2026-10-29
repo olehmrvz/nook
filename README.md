@@ -33,8 +33,13 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Permission requests in the notch: Allow, Always, Deny or "in terminal". You see everything you approve,
   not only the description.
 - Agent questions with options and plan review: approve, approve with auto-accepted edits, or send back a note.
-- A "done" island when an agent finishes; one click brings back its terminal tab (herdr, tmux).
-- Claude (5 h and week) and Codex limits with reset times.
+- A "done" island when an agent finishes, with what the turn did: files edited, tests passed or failed,
+  commit, push. One click brings back its terminal tab (herdr, tmux).
+- Reply to an agent from the notch: the text goes straight into its herdr or tmux pane.
+- Claude (5 h and week) and Codex limits with reset times, and a warning when the 5 h window runs low.
+- Tokens and API-price cost per Claude session and for today (read from local transcripts).
+- A warning when one of your processes loads the Mac for minutes (a dev server an agent left running),
+  with a button to end it.
 - ☕ Coffee: keeps the Mac awake while agents work overnight.
 
 **Every day**
@@ -43,6 +48,7 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Shelf: drop a file on the notch, drag it out later or AirDrop it. Screenshots land there by themselves.
 - Calendar and reminders, a "Join" button 5 minutes before a meeting.
 - Timer and Pomodoro, notes, mirror (camera), teleprompter for video (`Nook --prompt`).
+- Focus mode: Pomodoro with coffee on, and no notification islands while a focus block runs.
 - ⌨︎ Keyboard lock for 30 seconds to wipe it clean. The trackpad keeps working.
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
 - Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.

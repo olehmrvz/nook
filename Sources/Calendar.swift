@@ -61,6 +61,16 @@ enum Settings {
         get { d.object(forKey: "autoUpdate") as? Bool ?? true }
         set { d.set(newValue, forKey: "autoUpdate") }
     }
+    /// Islands for own processes that load the Mac for a long time.
+    static var processWatch: Bool {
+        get { d.object(forKey: "processWatch") as? Bool ?? true }
+        set { d.set(newValue, forKey: "processWatch") }
+    }
+    /// Process names the person chose not to be warned about.
+    static var ignoredProcesses: Set<String> {
+        get { Set(d.stringArray(forKey: "ignoredProcesses") ?? []) }
+        set { d.set(Array(newValue), forKey: "ignoredProcesses") }
+    }
     /// Agents whose hooks Nook already connected by itself once ("claude", "codex"): if the person later
     /// removes them, Nook does not put them back on its own.
     static var hooksAutoConnected: Set<String> {

@@ -29,6 +29,12 @@ final class AgentHub: ObservableObject {
         var toolCount = 0
         /// File names edited in this turn, in order.
         var edited: [String] = []
+        /// Shell commands of this turn worth reporting (tests, git), by tool_use_id, until their result comes.
+        var pendingChecks: [String: String] = [:]
+        /// Result of the last test run in this turn; nil when no tests ran (or the result is unknown).
+        var testsPassed: Bool?
+        var committed = false
+        var pushed = false
         var branch: String?
         /// Where the agent runs: terminal app, herdr workspace / tab, tmux pane (from its environment).
         var terminal: [String: String]?
@@ -141,6 +147,17 @@ final class AgentHub: ObservableObject {
         io.async { [weak self] in
             let home = FileManager.default.homeDirectoryForCurrentUser
             var done = Settings.hooksAutoConnected
+            // Connected before: a newer Nook may need more events. Only while Nook's hook is still there
+            // (hooks the person removed on purpose stay removed).
+            for agent in Self.agentConfigs where done.contains(agent.provider) {
+                let url = home.appendingPathComponent(agent.file)
+                if (try? String(contentsOf: url, encoding: .utf8))?.contains(Self.hookURL.path) == true,
+                   Self.lacksEvents(url, provider: agent.provider) {
+                    do { try Self.patch(url, provider: agent.provider) } catch {
+                        NSLog("Nook: could not update \(agent.provider) hooks: \(error.localizedDescription)")
+                    }
+                }
+            }
             for agent in Self.agentConfigs where !done.contains(agent.provider) {
                 guard FileManager.default.fileExists(atPath: home.appendingPathComponent(agent.dir).path) else { continue }
                 let url = home.appendingPathComponent(agent.file)
@@ -294,6 +311,10 @@ final class AgentHub: ObservableObject {
                 sessions[i].note = nil
                 sessions[i].toolCount = 0
                 sessions[i].edited = []
+                sessions[i].pendingChecks = [:]
+                sessions[i].testsPassed = nil
+                sessions[i].committed = false
+                sessions[i].pushed = false
                 lookUpBranch(for: key, cwd: sessions[i].cwd)
             }
         case "PreToolUse":
@@ -309,10 +330,26 @@ final class AgentHub: ObservableObject {
                     let name = (path as NSString).lastPathComponent
                     if !sessions[i].edited.contains(name) { sessions[i].edited.append(name) }
                 }
+                let checks = Self.checks(tool: tool, input: input)
+                if !checks.isEmpty {
+                    sessions[i].pendingChecks[raw["tool_use_id"] as? String ?? "last"] = checks.joined(separator: ",")
+                }
             }
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
             resolve(sessionKey: key)
-            index.map { sessions[$0].status = .working }
+            if let i = index {
+                sessions[i].status = .working
+                let ok = event == "PostToolUse"
+                for check in (sessions[i].pendingChecks.removeValue(forKey: raw["tool_use_id"] as? String ?? "last") ?? "")
+                    .split(separator: ",") {
+                    switch check {
+                    case "test": sessions[i].testsPassed = ok
+                    case "commit": if ok { sessions[i].committed = true }
+                    case "push": if ok { sessions[i].pushed = true }
+                    default: break
+                    }
+                }
+            }
         case "PermissionRequest":
             let tool = raw["tool_name"] as? String ?? "Инструмент"
             let request = Permission(sessionKey: key, provider: provider, tool: tool,
@@ -351,10 +388,10 @@ final class AgentHub: ObservableObject {
                 sessions[i].lastMessage = message.isEmpty ? nil : String(message.prefix(220))
                 // Short turns (a quick answer you are watching anyway) do not need an island.
                 if (duration ?? 60) >= Settings.agentDoneMinSeconds {
-                    onDone?(Island(kind: .agentDone(provider: provider.rawValue, project: sessions[i].project,
-                                                    message: String(message.prefix(220)), duration: duration,
-                                                    pid: sessions[i].pid, terminal: sessions[i].terminal ?? [:]),
-                                   seconds: 8))
+                    let turn = AgentTurn(provider: provider.rawValue, session: key, project: sessions[i].project,
+                                         message: String(message.prefix(220)), duration: duration, pid: sessions[i].pid,
+                                         terminal: sessions[i].terminal ?? [:], summary: Self.facts(sessions[i]))
+                    onDone?(Island(kind: .agentDone(turn), seconds: 8))
                     if Settings.agentDoneSound { NSSound(named: "Glass")?.play() }
                 }
             }
@@ -470,6 +507,43 @@ final class AgentHub: ObservableObject {
             return l.trimmingCharacters(in: .whitespaces)
         }
         return lines.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// One thing a turn did, for the done island and the session card.
+    struct TurnFact: Equatable, Hashable {
+        let text: String
+        let symbol: String
+        /// nil: neutral; true: good (tests passed); false: bad (tests failed).
+        let good: Bool?
+    }
+
+    static func facts(_ s: Session) -> [TurnFact] {
+        var facts: [TurnFact] = []
+        if !s.edited.isEmpty {
+            facts.append(TurnFact(text: Format.count(s.edited.count, "файл", "файла", "файлов"), symbol: "pencil", good: nil))
+        }
+        if let passed = s.testsPassed {
+            // The mark and the colour carry the result; the word stays short for the island.
+            facts.append(TurnFact(text: "тесты", symbol: passed ? "checkmark" : "xmark", good: passed))
+        }
+        if s.committed { facts.append(TurnFact(text: "коммит", symbol: "smallcircle.filled.circle", good: nil)) }
+        if s.pushed { facts.append(TurnFact(text: "push", symbol: "arrow.up", good: nil)) }
+        return facts
+    }
+
+    /// What a shell command does that is worth reporting: a test run, `git commit`, `git push` (one command can do several).
+    static func checks(tool: String, input: [String: Any]) -> [String] {
+        guard ["Bash", "shell", "exec_command", "local_shell"].contains(tool) else { return [] }
+        let command = (input["command"] as? String) ?? (input["command"] as? [String])?.joined(separator: " ") ?? (input["cmd"] as? String) ?? ""
+        var found: [String] = []
+        let git = #"\bgit\s+(?:-[Cc]\s+\S+\s+)*"#
+        if command.range(of: git + "commit\\b", options: .regularExpression) != nil { found.append("commit") }
+        if command.range(of: git + "push\\b", options: .regularExpression) != nil { found.append("push") }
+        let tests = [#"\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b"#, #"\b(?:swift|cargo|go|dotnet|deno|mix|flutter)\s+test\b"#,
+                     #"\b(?:pytest|jest|vitest|mocha|rspec|phpunit|ctest|tox)\b"#, #"\bmake\s+(?:test|check)\b"#,
+                     #"\bxcodebuild\b.*\btest\b"#, #"\bgradlew?\s+test\b"#, #"\bpython3?\s+-m\s+(?:pytest|unittest)\b"#]
+        if tests.contains(where: { command.range(of: $0, options: .regularExpression) != nil }) { found.append("test") }
+        return found
     }
 
     static func isIdleNote(_ text: String) -> Bool {
@@ -691,9 +765,7 @@ final class AgentHub: ObservableObject {
                 run(bin, ["tab", "focus", tab])
             } else if let pane = t["TMUX_PANE"], let socket = t["TMUX"]?.split(separator: ",").first.map(String.init),
                       // Only the user's own tmux server directory: a socket elsewhere could be a fake server.
-                      Self.ownTmuxSocket(socket),
-                      let bin = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
-                        .first(where: FileManager.default.isExecutableFile(atPath:)) {
+                      Self.ownTmuxSocket(socket), let bin = Self.tmuxBinary {
                 run(bin, ["-S", socket, "select-window", "-t", pane])
                 run(bin, ["-S", socket, "select-pane", "-t", pane])
             }
@@ -708,15 +780,57 @@ final class AgentHub: ObservableObject {
         }
     }
 
-    private static func run(_ path: String, _ arguments: [String]) {
+    @discardableResult
+    private static func run(_ path: String, _ arguments: [String]) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.environment = childEnvironment
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return }
-        _ = finish(process, within: 3)
+        guard (try? process.run()) != nil, finish(process, within: 3) else { return false }
+        return process.terminationStatus == 0
+    }
+
+    private static var tmuxBinary: String? {
+        ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].first(where: FileManager.default.isExecutableFile(atPath:))
+    }
+
+    // MARK: Reply
+
+    /// Nook can type into the session's terminal (its herdr pane or tmux pane) and the agent waits for a prompt.
+    /// Never while a request or a terminal dialog may be open (waiting, attention): typed text and Enter could
+    /// pick an option there.
+    func canReply(_ session: Session) -> Bool {
+        guard session.status == .done || session.status == .idle,
+              permissions.allSatisfy({ $0.sessionKey != session.id }) else { return false }
+        let t = session.terminal ?? [:]
+        return (t["HERDR_PANE_ID"] != nil && Self.herdrBinary != nil) || (t["TMUX_PANE"] != nil && t["TMUX"] != nil)
+    }
+
+    /// Types `text` into the agent's terminal and presses Enter. One line: a newline would send the text early.
+    /// The answer comes on the main thread.
+    func reply(to key: String, text: String, done: @escaping (Bool) -> Void) {
+        let line = text.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty, let session = sessions.first(where: { $0.id == key }), canReply(session) else { done(false); return }
+        let t = session.terminal ?? [:]
+        let message = String(line.prefix(4000))
+        DispatchQueue.global(qos: .userInitiated).async {
+            var ok = false
+            if let pane = t["HERDR_PANE_ID"], let bin = Self.herdrBinary {
+                // herdr takes everything after the pane id literally (also text that starts with "-").
+                ok = Self.run(bin, ["pane", "send-text", pane, message])
+                // The agent's input reads fast typing as a paste; Enter right after it can land inside the paste.
+                usleep(300_000)
+                ok = ok && Self.run(bin, ["pane", "send-keys", pane, "enter"])
+            } else if let pane = t["TMUX_PANE"], let socket = t["TMUX"]?.split(separator: ",").first.map(String.init),
+                      Self.ownTmuxSocket(socket), let bin = Self.tmuxBinary {
+                ok = Self.run(bin, ["-S", socket, "send-keys", "-t", pane, "-l", "--", message])
+                usleep(300_000)
+                ok = ok && Self.run(bin, ["-S", socket, "send-keys", "-t", pane, "Enter"])
+            }
+            DispatchQueue.main.async { done(ok) }
+        }
     }
 
     /// Waits for a child with a deadline; a hung herdr or tmux is stopped instead of blocking a queue forever.
@@ -868,6 +982,23 @@ final class AgentHub: ObservableObject {
     static let hookEvents = ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                              "PermissionRequest", "Notification", "Stop"]
 
+    /// Claude Code also reports failed tools (failed tests in the turn summary). Codex may not know this event.
+    static func events(for provider: String) -> [String] {
+        provider == "claude" ? hookEvents + ["PostToolUseFailure"] : hookEvents
+    }
+
+    /// Nook's hook is in the file but some event Nook needs now is missing (added in a newer Nook).
+    private static func lacksEvents(_ url: URL, provider: String) -> Bool {
+        guard let data = try? Data(contentsOf: url),
+              let hooks = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["hooks"] as? [String: Any]
+        else { return false }
+        return events(for: provider).contains { event in
+            !(hooks[event] as? [[String: Any]] ?? []).contains { group in
+                (group["hooks"] as? [[String: Any]] ?? []).contains { ($0["command"] as? String)?.contains(hookURL.path) == true }
+            }
+        }
+    }
+
     /// Adds Nook hooks to Claude Code and Codex and removes Notchy's. Other hooks stay untouched.
     static func installHooks() -> (ok: Bool, message: String) {
         writeHookScript()
@@ -956,7 +1087,8 @@ final class AgentHub: ObservableObject {
         func isOurs(_ command: String) -> Bool {
             command.contains("/Notchy/agent-hook.sh") || command.contains("/Nook/agent-hook.sh")
         }
-        for event in Set(hookEvents).union(hooks.keys) {
+        let wanted = events(for: provider)
+        for event in Set(wanted).union(hooks.keys) {
             var groups = hooks[event] as? [[String: Any]] ?? []
             groups = groups.compactMap { group in
                 var group = group
@@ -965,7 +1097,7 @@ final class AgentHub: ObservableObject {
                 group["hooks"] = inner
                 return group
             }
-            if hookEvents.contains(event) {
+            if wanted.contains(event) {
                 var hook: [String: Any] = ["type": "command", "command": "\"\(hookURL.path)\" \(event)\(suffix)"]
                 if event == "PermissionRequest" { hook["timeout"] = 130 }
                 groups.insert(["hooks": [hook]], at: 0)
@@ -997,6 +1129,10 @@ extension AgentHub.Session {
         note = try c.decodeIfPresent(String.self, forKey: .note)
         toolCount = try c.decodeIfPresent(Int.self, forKey: .toolCount) ?? 0
         edited = try c.decodeIfPresent([String].self, forKey: .edited) ?? []
+        pendingChecks = try c.decodeIfPresent([String: String].self, forKey: .pendingChecks) ?? [:]
+        testsPassed = try c.decodeIfPresent(Bool.self, forKey: .testsPassed)
+        committed = try c.decodeIfPresent(Bool.self, forKey: .committed) ?? false
+        pushed = try c.decodeIfPresent(Bool.self, forKey: .pushed) ?? false
         branch = try c.decodeIfPresent(String.self, forKey: .branch)
         terminal = try c.decodeIfPresent([String: String].self, forKey: .terminal)
     }

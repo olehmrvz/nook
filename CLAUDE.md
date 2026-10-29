@@ -28,7 +28,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 
 - Open tabs without the mouse: `/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close`.
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
-  Also `--timer <min>|stop|pomodoro`, `--prompt`, `--answer allow|always|deny|terminal`.
+  Also `--timer <min>|stop|pomodoro|focus`, `--prompt`, `--answer allow|always|deny|terminal`.
 - Screenshots: the built-in display is 1800 pt wide, notch centred at x = 900:
   `screencapture -x -R 490,0,820,330 out.png`.
 - Animations are too fast to capture: `defaults write dev.nook.app slowMotion -float 10`, restart Nook,
@@ -62,6 +62,8 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   326 − 22 − 32 − 10 = 262 pt. Taller content is clipped; check new cards against that.
 - The panel takes the keyboard only for text fields (`becomesKeyOnlyIfNeeded`). Do not make it key on open:
   the user's ⌘1–9 and typing would land in Nook instead of the terminal (this once switched tabs by itself).
+- A fake session fed through `agent-hook.sh` from this terminal gets this agent's PID and herdr pane: its
+  "Ответить" button would type into this very pane. Look at it, never press it; end fake sessions with SessionEnd.
 - Test questions / plans / permissions by piping a PermissionRequest JSON into `agent-hook.sh` in the
   background, capture, then send SessionEnd for the fake session (it releases the request). `Nook --answer` from a
   process under an agent (this session included) is ignored on purpose: an agent must not approve its own requests.

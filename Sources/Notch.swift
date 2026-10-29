@@ -64,11 +64,23 @@ enum Flash: Equatable {
     }
 }
 
+/// A finished agent turn for the "done" island.
+struct AgentTurn: Equatable {
+    let provider: String
+    let session: String
+    let project: String
+    let message: String
+    let duration: TimeInterval?
+    let pid: Int32
+    let terminal: [String: String]
+    /// "✎ 3 файла", "тесты ✓", "коммит": what the turn did besides answering.
+    let summary: [AgentHub.TurnFact]
+}
+
 /// Medium pills that drop out of the notch for a few seconds.
 struct Island: Identifiable, Equatable {
     enum Kind: Equatable {
-        case agentDone(provider: String, project: String, message: String, duration: TimeInterval?, pid: Int32,
-                       terminal: [String: String])
+        case agentDone(AgentTurn)
         case notification(bundleID: String, app: String, title: String, body: String)
         case call(name: String, bundleID: String)
         case airpods(name: String, levels: [String: Int])
@@ -76,6 +88,10 @@ struct Island: Identifiable, Equatable {
         case timerDone(title: String, subtitle: String)
         case event(title: String, start: Date, url: URL?)
         case command(text: String, seconds: Double, exit: Int, pid: Int32, terminal: [String: String])
+        /// Little of a Claude usage window is left.
+        case limit(title: String, left: Int, resets: Date?)
+        /// A process loads the Mac for a long time; `agent` is the project of the agent that started it.
+        case hog(ProcessWatch.Hog, agent: String?)
     }
     let id = UUID()
     let kind: Kind
@@ -130,6 +146,8 @@ final class NotchModel: ObservableObject {
     /// Frame of the screen the notch lives on, set when the panel is placed (not looked up 30 times a second).
     var screenFrame = NSScreen.screens.first?.frame ?? .zero
     @Published private(set) var island: Island?
+    /// The session whose reply field is open in the Agents tab.
+    @Published var replyTo: String?
 
     let nowPlaying = NowPlaying()
     let clipboard = ClipboardStore()
@@ -137,6 +155,11 @@ final class NotchModel: ObservableObject {
     let agents = AgentHub()
     let battery = Battery()
     let limits = Limits()
+    let usage = Usage()
+    let processes = ProcessWatch()
+    /// Focus mode: Pomodoro with coffee on and no notification islands while a focus phase runs.
+    @Published private(set) var focusMode = false
+    private var coffeeBeforeFocus = false
     let calendar = CalendarStore()
     let timer = FocusTimer()
     let cuely = Cuely()
@@ -206,6 +229,35 @@ final class NotchModel: ObservableObject {
         shelf.start { [weak self] url in self?.show(.screenshot(url), for: 3.5) }
         battery.start { [weak self] percent in self?.show(.charging(percent), for: 3) }
         limits.start()
+        usage.start()
+        processes.isQuiet = { [weak self] in
+            guard let self else { return true }
+            return DispatchQueue.main.sync { self.resting }
+        }
+        processes.onHog = { [weak self] hog in
+            guard let self else { return }
+            // The agent that started it (or the agent itself), by the PIDs Nook knows from hooks.
+            let agent = hog.ancestors.lazy.compactMap { pid in self.agents.sessions.first { $0.pid == pid }?.project }.first
+            self.present(Island(kind: .hog(hog, agent: agent), seconds: 20))
+        }
+        processes.start()
+        // The Pomodoro stopped some other way (Сброс in the Timer tab): focus mode ends with it.
+        timer.$pomodoro.receive(on: DispatchQueue.main).sink { [weak self] on in
+            if !on { self?.endFocusMode() }
+        }
+        .store(in: &bag)
+        // A warning when the 5-hour window runs low: once at 15 % left and once at 5 %, per window.
+        limits.$claudeSession.receive(on: DispatchQueue.main).sink { [weak self] window in
+            guard let self, let window else { return }
+            let left = Int(max(0, 100 - window.usedPercent).rounded())
+            guard let level = [5, 15].first(where: { left <= $0 }) else { return }
+            let key = "\(window.resetsAt?.timeIntervalSince1970 ?? 0)-\(level)"
+            guard !self.limitWarnings.contains(key) else { return }
+            // Seen at launch already low: warn for the lower level only once, not for both.
+            self.limitWarnings.formUnion([5, 15].filter { $0 >= level }.map { "\(window.resetsAt?.timeIntervalSince1970 ?? 0)-\($0)" })
+            self.present(Island(kind: .limit(title: "Claude · 5 ч", left: left, resets: window.resetsAt), seconds: 8))
+        }
+        .store(in: &bag)
         calendar.start { [weak self] island in self?.present(island) }
         timer.onFinish = { [weak self] title, subtitle in
             self?.present(Island(kind: .timerDone(title: title, subtitle: subtitle), seconds: 8))
@@ -343,6 +395,7 @@ final class NotchModel: ObservableObject {
     }
 
     private var bag = Set<AnyCancellable>()
+    private var limitWarnings = Set<String>()
 
     // MARK: Geometry in screen coordinates
 
@@ -453,6 +506,13 @@ final class NotchModel: ObservableObject {
         }
     }
 
+    /// Opens the Agents tab with the reply field of this session, ready to type.
+    func startReply(to session: String) {
+        replyTo = session
+        open(tab: .ai)
+        focusPanel()
+    }
+
     /// Opens a tab and keeps it open until Esc or a click outside.
     func open(tab: Tab) {
         previousApp = NSWorkspace.shared.frontmostApplication
@@ -521,7 +581,28 @@ final class NotchModel: ObservableObject {
 
     // MARK: Islands
 
+    // MARK: Focus mode
+
+    /// Notification islands wait while a focus phase runs; breaks show them again. Calls still show.
+    var focusQuiet: Bool { focusMode && timer.phase == .focus && (timer.isRunning || timer.isPaused) }
+
+    func startFocusMode() {
+        guard !focusMode else { return }
+        coffeeBeforeFocus = caffeine.on
+        caffeine.set(true)
+        timer.startPomodoro()
+        focusMode = true
+    }
+
+    /// Ends focus mode and gives coffee back its earlier state; the timer is reset by the caller if needed.
+    func endFocusMode() {
+        guard focusMode else { return }
+        focusMode = false
+        caffeine.set(coffeeBeforeFocus)
+    }
+
     func present(_ new: Island) {
+        if focusQuiet, case .notification = new.kind { return }
         if island == nil && !expanded && !cuely.isPresenting {
             showIsland(new)
         } else if island?.kind != new.kind && !islandQueue.contains(where: { $0.kind == new.kind }) {

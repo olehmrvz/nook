@@ -99,6 +99,19 @@ enum Format {
         return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
+    /// "840 токенов", "35 тыс. токенов", "1,2 млн токенов".
+    static func tokens(_ n: Int) -> String {
+        if n >= 1_000_000 { return (Double(n) / 1_000_000).formatted(.number.precision(.fractionLength(n >= 10_000_000 ? 0 : 1))) + " млн токенов" }
+        if n >= 1_000 { return "\(n / 1_000) тыс. токенов" }
+        return count(n, "токен", "токена", "токенов")
+    }
+
+    /// "≈ $3.40", "≈ $0.05", "< $0.01".
+    static func dollars(_ value: Double) -> String {
+        if value < 0.01 { return "< $0.01" }
+        return "≈ $" + value.formatted(.number.precision(.fractionLength(value >= 100 ? 0 : 2)).locale(Locale(identifier: "en_US")))
+    }
+
     /// Russian plural: count(3, "файл", "файла", "файлов") → "3 файла".
     static func count(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
         let tens = n % 100, ones = n % 10

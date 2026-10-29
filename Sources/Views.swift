@@ -408,6 +408,10 @@ struct SessionIndicator: View {
 struct SessionBlock: View {
     let session: AgentHub.Session
     var roomy = false
+    /// Tokens and cost of the whole session (Claude only).
+    var usage: Usage.Total?
+    /// Shows "Ответить" when Nook can type into the agent's terminal.
+    var onReply: (() -> Void)?
     @State private var hover = false
 
     var body: some View {
@@ -444,8 +448,11 @@ struct SessionBlock: View {
                     }
                     .font(.system(size: 11))
                     .contentTransition(.opacity)
-                    if roomy && (!session.edited.isEmpty || session.toolCount > 0) {
-                        Text(Self.workLine(session)).font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
+                    .padding(.trailing, onReply == nil ? 0 : 86)
+                    if roomy && (!session.edited.isEmpty || session.toolCount > 0 || session.testsPassed != nil || session.committed
+                                 || (usage?.tokens ?? 0) > 0) {
+                        Text(Self.workLine(session, usage: usage)).font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
+                            .padding(.trailing, onReply == nil ? 0 : 86)
                     }
                 }
             }
@@ -461,6 +468,18 @@ struct SessionBlock: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottomTrailing) {
+            if let onReply {
+                Button(action: onReply) {
+                    Label("Ответить", systemImage: "arrowshape.turn.up.left.fill")
+                        .font(.system(size: 11, weight: .medium)).labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.pill(small: true))
+                .padding(.trailing, 10).padding(.bottom, 8)
+                .help("Написать агенту прямо отсюда: текст уйдёт в его терминал")
+                .transition(.opacity)
+            }
+        }
         .onHover { hover = $0 }
         .animation(Motion.quick, value: hover)
         .animation(Motion.smooth, value: session.status)
@@ -469,13 +488,18 @@ struct SessionBlock: View {
     }
 
     /// "12 действий · изменено: Views.swift, Theme.swift и ещё 2".
-    static func workLine(_ s: AgentHub.Session) -> String {
+    static func workLine(_ s: AgentHub.Session, usage: Usage.Total? = nil) -> String {
         var parts: [String] = []
+        if let usage, usage.tokens > 0 {
+            parts.append(Format.tokens(usage.tokens) + (usage.cost > 0 ? ", " + Format.dollars(usage.cost) : ""))
+        }
         if s.toolCount > 0 { parts.append(Format.count(s.toolCount, "действие", "действия", "действий")) }
         if !s.edited.isEmpty {
             let shown = s.edited.prefix(2).joined(separator: ", ")
             parts.append("изменено: " + shown + (s.edited.count > 2 ? " и ещё \(s.edited.count - 2)" : ""))
         }
+        if let passed = s.testsPassed { parts.append(passed ? "тесты ✓" : "тесты ✗") }
+        if s.committed { parts.append(s.pushed ? "коммит и push" : "коммит") } else if s.pushed { parts.append("push") }
         return parts.joined(separator: " · ")
     }
 }
@@ -560,6 +584,78 @@ struct AgentsSummary: View {
             }
             .animation(Motion.smooth, value: agents.sessions.map(\.id))
             .animation(Motion.smooth, value: waiting)
+        }
+    }
+}
+
+/// Facts about a finished turn as small labels: "✎ 3 файла", "✓ тесты прошли", "коммит".
+struct TurnFacts: View {
+    let facts: [AgentHub.TurnFact]
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(facts, id: \.self) { fact in
+                HStack(spacing: 3) {
+                    Image(systemName: fact.symbol).font(.system(size: 9, weight: .bold))
+                    Text(fact.text)
+                }
+                .foregroundStyle(fact.good == true ? Palette.green : (fact.good == false ? Palette.salmon : .white.opacity(0.7)))
+                .fixedSize()
+            }
+        }
+        .font(.system(size: 11, weight: .medium))
+        .lineLimit(1)
+    }
+}
+
+/// Reply to an agent: one line typed into its terminal (herdr or tmux), Enter included.
+struct ReplyField: View {
+    @ObservedObject var model: NotchModel
+    @ObservedObject var agents: AgentHub
+    let session: AgentHub.Session
+    @State private var text = ""
+    @State private var sending = false
+    @State private var failed = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let blank = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        HStack(spacing: 8) {
+            Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 11)).foregroundStyle(Palette.claude.lifted())
+            TextField(failed ? "Не дошло — откройте терминал" : "Что ответить агенту в \(session.project)?", text: $text)
+                .textFieldStyle(.plain).font(.system(size: 12.5))
+                .focused($focused)
+                .onSubmit(send)
+            Button(sending ? "Отправляю…" : "Отправить", action: send)
+                .buttonStyle(.pill(.primary, small: true))
+                .disabled(blank || sending)
+            Button { model.replyTo = nil } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(muted).frame(width: 18, height: 18)
+            }
+            .buttonStyle(.icon)
+            .help("Закрыть")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .glass(tint: [Palette.claude.opacity(0.18)], stroke: Palette.claude.opacity(0.35), radius: 14)
+        .onAppear {
+            model.stayOpen()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { focused = true }
+        }
+    }
+
+    private func send() {
+        guard !sending, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        sending = true
+        failed = false
+        agents.reply(to: session.id, text: text) { ok in
+            sending = false
+            if ok {
+                text = ""
+                model.replyTo = nil
+                // Sent: close the panel and give the keyboard back to the app you were in.
+                model.collapse()
+            } else {
+                failed = true
+            }
         }
     }
 }
@@ -862,8 +958,10 @@ struct ShelfTile: View {
 // MARK: Agents
 
 struct AgentsTab: View {
+    @ObservedObject var model: NotchModel
     @ObservedObject var agents: AgentHub
     @ObservedObject var limits: Limits
+    @ObservedObject var usage: Usage
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -899,11 +997,21 @@ struct AgentsTab: View {
                         }
                         ListScroll {
                             VStack(spacing: 6) {
-                                ForEach(agents.sessions.sorted { $0.rank < $1.rank }) {
-                                    SessionBlock(session: $0, roomy: true).transition(.opacity.combined(with: .move(edge: .top)))
+                                ForEach(agents.sessions.sorted { $0.rank < $1.rank }) { session in
+                                    let canReply = agents.canReply(session)
+                                    VStack(spacing: 4) {
+                                        SessionBlock(session: session, roomy: true, usage: usage.total(for: session),
+                                                     onReply: canReply ? { model.startReply(to: session.id) } : nil)
+                                        if canReply && model.replyTo == session.id {
+                                            ReplyField(model: model, agents: agents, session: session)
+                                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                        }
+                                    }
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
                                 }
                             }
                             .animation(Motion.smooth, value: agents.sessions.map(\.id))
+                            .animation(Motion.smooth, value: model.replyTo)
                         }
                     }
                     .animation(Motion.smooth, value: agents.permissions.map(\.id))
@@ -911,7 +1019,7 @@ struct AgentsTab: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .entrance(0)
-            LimitsCard(limits: limits).frame(width: 236).entrance(1)
+            LimitsCard(limits: limits, usage: usage).frame(width: 236).entrance(1)
         }
     }
 }
@@ -1015,6 +1123,7 @@ struct PermissionCard: View {
 
 struct LimitsCard: View {
     @ObservedObject var limits: Limits
+    @ObservedObject var usage: Usage
 
     var body: some View {
         Card(padding: 14) {
@@ -1025,6 +1134,18 @@ struct LimitsCard: View {
                 LimitRow(title: codexTitle, window: limits.codexPrimary,
                          length: limits.codexWindowMinutes > 0 ? Double(limits.codexWindowMinutes) * 60 : nil)
                 Spacer(minLength: 0)
+                if usage.today.tokens > 0 {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("Сегодня").font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 2)
+                        Text(Format.tokens(usage.today.tokens)).font(.rounded(11)).foregroundStyle(.white.opacity(0.85))
+                        Text(Format.dollars(usage.today.cost)).font(.rounded(11)).foregroundStyle(faint)
+                    }
+                    .lineLimit(1)
+                    .help("Claude за сегодня: \(Format.tokens(usage.today.tokens)). Стоимость по ценам API"
+                          + (usage.today.unpriced ? " (без моделей с неизвестной ценой)" : "")
+                          + "; с подпиской Claude платите не вы, это ориентир.")
+                }
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 1).fill(Color.white.opacity(0.85)).frame(width: 2, height: 9)
                     Text("— остаток при ровном темпе").font(.system(size: 10)).foregroundStyle(faint)

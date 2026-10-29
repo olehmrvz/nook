@@ -83,8 +83,8 @@ extension Island {
     /// Background pair for this island; app notifications take the colours of the app's icon.
     var colors: [Color] {
         switch kind {
-        case .agentDone(let provider, _, _, _, _, _):
-            return provider == "codex" ? [Palette.blue, Palette.cyan] : [Palette.claude, Palette.orange]
+        case .agentDone(let turn):
+            return turn.provider == "codex" ? [Palette.blue, Palette.cyan] : [Palette.claude, Palette.orange]
         case .notification(let bundleID, _, _, _): return IconColors.of(bundleID) ?? [Palette.violet, Palette.pink]
         case .call: return [Palette.green, Palette.mint]
         case .airpods: return [Palette.cyan, Palette.blue]
@@ -92,6 +92,8 @@ extension Island {
         case .timerDone: return [Palette.orange, Palette.pink]
         case .event: return [Palette.red, Palette.orange]
         case .command(_, _, let exit, _, _): return exit == 0 ? [Palette.green, Palette.mint] : [Palette.red, Palette.coral]
+        case .limit(_, let left, _): return left <= 5 ? [Palette.red, Palette.coral] : [Palette.orange, Palette.yellow]
+        case .hog: return [Palette.red, Palette.orange]
         }
     }
 }
@@ -523,21 +525,27 @@ struct IslandView: View {
             Badge(symbol: "calendar", colors: [Palette.red, Palette.orange], soft: true)
         case .command(_, _, let exit, _, _):
             Badge(symbol: exit == 0 ? "terminal.fill" : "exclamationmark.triangle.fill", colors: island.colors, soft: true)
+        case .limit:
+            Badge(symbol: "gauge.with.dots.needle.67percent", colors: island.colors, soft: true)
+        case .hog(let hog, _):
+            Badge(symbol: hog.memory >= ProcessWatch.memoryLimit ? "memorychip.fill" : "flame.fill", colors: island.colors, soft: true)
         }
     }
 
     @ViewBuilder private var text: some View {
         switch island.kind {
-        case .agentDone(let provider, let project, let message, let duration, _, _):
+        case .agentDone(let turn):
             HStack(spacing: 6) {
-                Text("\(project) — готово").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text([provider == "codex" ? "Codex" : "Claude", duration.map { "за " + Format.span($0) }]
+                Text("\(turn.project) — готово").font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text([turn.provider == "codex" ? "Codex" : "Claude", turn.duration.map { "за " + Format.span($0) }]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
             }
-            if !message.isEmpty {
-                Text(message).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
+            if !turn.message.isEmpty {
+                Text(turn.message).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(turn.summary.isEmpty ? 2 : 1)
             }
+            if !turn.summary.isEmpty { TurnFacts(facts: turn.summary) }
         case .notification(_, let app, let title, let body):
             Text(app).font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
@@ -571,6 +579,20 @@ struct IslandView: View {
                 .font(.system(size: 10.5, weight: .medium)).foregroundStyle(exit == 0 ? faint : Palette.salmon)
             Text(text).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
             Text("шла " + Format.until(seconds)).font(.system(size: 11)).foregroundStyle(muted)
+        case .hog(let hog, let agent):
+            Text(agent.map { "Грузит Mac · запущен агентом в \($0)" } ?? "Грузит Mac")
+                .font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint).lineLimit(1)
+            Text(hog.command).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+            Text(hog.memory >= ProcessWatch.memoryLimit
+                 ? "память \(ByteCountFormatter.string(fromByteCount: Int64(hog.memory), countStyle: .memory))"
+                 : "процессор \(hog.cpu)% больше 2 мин")
+                .font(.system(size: 11)).foregroundStyle(muted)
+        case .limit(let title, let left, let resets):
+            Text("Лимит почти исчерпан").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
+            Text("\(title): осталось \(left)%").font(.system(size: 14, weight: .semibold)).lineLimit(1)
+            Text(resets.map { "Сброс " + Format.when($0) + " · через " + Format.until(max(0, $0.timeIntervalSinceNow)) }
+                 ?? "Время сброса неизвестно")
+                .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
         case .event(let title, let start, _):
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             Text("Начало в \(start.formatted(date: .omitted, time: .shortened)) · \(start.formatted(.relative(presentation: .named)))")
@@ -580,9 +602,16 @@ struct IslandView: View {
 
     @ViewBuilder private var trailing: some View {
         switch island.kind {
-        case .agentDone(_, _, _, _, let pid, let terminal):
-            Button("Открыть") { AgentHub.focus(pid: pid, terminal: terminal); model.dismissIsland() }
-                .buttonStyle(.pill(small: true))
+        case .agentDone(let turn):
+            // One button keeps room for the text; a click on the island itself opens the terminal.
+            if let session = model.agents.sessions.first(where: { $0.id == turn.session }), model.agents.canReply(session) {
+                Button("Ответить") { model.dismissIsland(showNext: false); model.startReply(to: turn.session) }
+                    .buttonStyle(.pill(.primary, small: true))
+                    .help("Написать агенту прямо из Nook. Клик по островку открывает терминал")
+            } else {
+                Button("Открыть") { AgentHub.focus(pid: turn.pid, terminal: turn.terminal); model.dismissIsland() }
+                    .buttonStyle(.pill(small: true))
+            }
         case .download(_, let path):
             HStack(spacing: 6) {
                 if Downloads.isRunnable(path) {
@@ -614,6 +643,8 @@ struct IslandView: View {
         case .call(_, let bundleID):
             Button("Открыть") { NotificationWatcher.open(bundleID: bundleID); model.dismissIsland() }
                 .buttonStyle(.pill(.tint(Palette.green), small: true))
+        case .hog(let hog, _):
+            KillButton(hog: hog) { model.dismissIsland() }
         default:
             EmptyView()
         }
@@ -628,19 +659,49 @@ struct IslandView: View {
                 model.dismissIsland()
             }
         }
+        if case .hog(let hog, _) = island.kind {
+            Button("Не следить за «\(hog.name)»") {
+                var ignored = Settings.ignoredProcesses
+                ignored.insert(hog.name)
+                Settings.ignoredProcesses = ignored
+                model.dismissIsland()
+            }
+        }
         Button("Скрыть") { model.dismissIsland() }
     }
 
     private func primaryAction() {
         switch island.kind {
-        case .agentDone(_, _, _, _, let pid, let terminal): AgentHub.focus(pid: pid, terminal: terminal)
+        case .agentDone(let turn): AgentHub.focus(pid: turn.pid, terminal: turn.terminal)
         case .notification(let bundleID, _, _, _), .call(_, let bundleID): NotificationWatcher.open(bundleID: bundleID)
         case .download(_, let path): NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
         case .event: model.calendar.openCalendar()
         case .command(_, _, _, let pid, let terminal): AgentHub.focus(pid: pid, terminal: terminal)
-        case .airpods, .timerDone: break
+        case .limit: model.open(tab: .ai); return
+        case .airpods, .timerDone, .hog: break
         }
         model.dismissIsland()
+    }
+}
+
+/// Ends a process from its island. The first click arms the button, the second one ends the process.
+struct KillButton: View {
+    let hog: ProcessWatch.Hog
+    let done: () -> Void
+    @State private var armed = false
+
+    var body: some View {
+        Button(armed ? "Точно?" : "Завершить") {
+            if armed {
+                ProcessWatch.terminate(hog)
+                done()
+            } else {
+                withAnimation(Motion.quick) { armed = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation(Motion.quick) { armed = false } }
+            }
+        }
+        .buttonStyle(.pill(armed ? .tint(Palette.red) : .glass, small: true))
+        .help("Завершить «\(hog.name)» (PID \(hog.pid)): сначала мягко, через 3 с принудительно")
     }
 }
 
@@ -740,9 +801,9 @@ struct ExpandedView: View {
                     case .home: HomeTab(model: model)
                     case .clipboard: ClipboardTab(model: model, store: model.clipboard)
                     case .shelf: ShelfTab(model: model, shelf: model.shelf)
-                    case .ai: AgentsTab(agents: model.agents, limits: model.limits)
+                    case .ai: AgentsTab(model: model, agents: model.agents, limits: model.limits, usage: model.usage)
                     case .calendar: CalendarTab(store: model.calendar)
-                    case .timer: TimerTab(timer: model.timer)
+                    case .timer: TimerTab(model: model, timer: model.timer)
                     case .cuely: CuelyTab(model: model, cuely: model.cuely)
                     case .notes: NotesTab(model: model, notes: model.notes)
                     case .mirror: MirrorTab(camera: model.mirror)
@@ -1165,6 +1226,7 @@ struct CalendarTab: View {
 // MARK: Timer
 
 struct TimerTab: View {
+    @ObservedObject var model: NotchModel
     @ObservedObject var timer: FocusTimer
     private let presets: [Double] = [1, 3, 5, 10, 15, 25, 45, 60]
 
@@ -1192,7 +1254,7 @@ struct TimerTab: View {
                         if timer.isRunning || timer.isPaused {
                             HStack(spacing: 8) {
                                 Button(timer.isPaused ? "Продолжить" : "Пауза") { timer.pauseResume() }.buttonStyle(.pill(.primary))
-                                Button("Сброс") { timer.reset() }.buttonStyle(.pill())
+                                Button(model.focusMode ? "Стоп" : "Сброс") { timer.reset() }.buttonStyle(.pill())
                             }
                             HStack(spacing: 8) {
                                 Button("+1 мин") { timer.add(minutes: 1) }.buttonStyle(.pill())
@@ -1202,6 +1264,12 @@ struct TimerTab: View {
                             Caps(text: "Таймер")
                             Text("Выберите время справа").font(.system(size: 15, weight: .semibold))
                             Text("или запустите Помодоро 25 / 5").font(.system(size: 12)).foregroundStyle(muted)
+                        }
+                        if model.focusMode {
+                            Label(model.focusQuiet ? "Фокус: уведомления ждут, кофеин" : "Перерыв: уведомления снова видны",
+                                  systemImage: model.focusQuiet ? "moon.fill" : "cup.and.saucer.fill")
+                                .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.violet.lifted())
+                                .lineLimit(1)
                         }
                         if timer.pomodoro {
                             HStack(spacing: 5) {
@@ -1229,10 +1297,21 @@ struct TimerTab: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Button { timer.startPomodoro() } label: {
-                        Label("Помодоро 25 / 5", systemImage: "flame.fill").frame(maxWidth: .infinity)
+                    VStack(spacing: 6) {
+                        Button { model.endFocusMode(); timer.startPomodoro() } label: {
+                            Label("Помодоро 25 / 5", systemImage: "flame.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.pill(.gradient(FocusTimer.Phase.focus.colors)))
+                        .help("25 минут работы, 5 минут отдыха")
+                        Button { model.startFocusMode() } label: {
+                            Label(model.focusMode ? "Режим фокуса включён" : "Режим фокуса", systemImage: "moon.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.pill(.gradient([Palette.violet, Palette.blue])))
+                        .disabled(model.focusMode)
+                        .opacity(model.focusMode ? 0.6 : 1)
+                        .help("Помодоро, кофеин и тишина: пока идёт фокус, Nook не показывает уведомления приложений (звонки показывает). «Стоп» выключает режим")
                     }
-                    .buttonStyle(.pill(.gradient(FocusTimer.Phase.focus.colors)))
                 }
             }
             .frame(width: 250)

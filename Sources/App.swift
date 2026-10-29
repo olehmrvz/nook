@@ -20,14 +20,14 @@ enum NookMain {
             exit(result.ok ? 0 : 1)
         }
         // Scripting for Raycast / Shortcuts:
-        //   --show <tab|close>   --timer <minutes|stop|pomodoro>   --prompt (start Cuely)
+        //   --show <tab|close>   --timer <minutes|stop|pomodoro|focus>   --prompt (start Cuely)
         let args = CommandLine.arguments
         func value(after flag: String) -> String? {
             guard let i = args.firstIndex(of: flag) else { return nil }
             return args.indices.contains(i + 1) ? args[i + 1] : ""
         }
         var command = value(after: "--show")
-        if let t = value(after: "--timer") { command = t == "stop" ? "timer-stop" : (t == "pomodoro" ? "pomodoro" : "timer:\(t)") }
+        if let t = value(after: "--timer") { command = t == "stop" ? "timer-stop" : (t == "pomodoro" || t == "focus" ? t : "timer:\(t)") }
         if args.contains("--prompt") { command = "prompt" }
         if let command {
             exit(AgentHub.sendCommand(["event": "Show", "name": command.isEmpty ? "home" : command]) ? 0 : 1)
@@ -43,7 +43,7 @@ enum NookMain {
         if let unknown = args.dropFirst().first(where: { $0.hasPrefix("--") }) {
             // A typo must not start a second Nook: two copies would overwrite each other's files.
             print("Nook: unknown option \(unknown)")
-            print("Usage: Nook --show <tab|power|close> | --timer <min|stop|pomodoro> | --prompt | --answer <allow|always|deny|terminal> | --install-hooks")
+            print("Usage: Nook --show <tab|power|close> | --timer <min|stop|pomodoro|focus> | --prompt | --answer <allow|always|deny|terminal> | --install-hooks")
             exit(2)
         }
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.nook.app")
@@ -96,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             model.timer.start(minutes: minutes)
             return
         }
-        if name == "pomodoro" { model.timer.startPomodoro(); return }
+        if name == "pomodoro" { model.endFocusMode(); model.timer.startPomodoro(); return }
+        if name == "focus" { model.startFocusMode(); return }
         if name == "power" { model.open(tab: .home); model.showPower = true; return }
         if name == "timer-stop" { model.timer.reset(); return }
         model.open(tab: Tab(rawValue: name) ?? .home)
@@ -176,6 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         agents.addItem(.separator())
         item("Острова для долгих команд (zsh)…", #selector(installShell), to: agents)
+        item("Предупреждать о процессах, которые грузят Mac", #selector(toggleProcessWatch), on: Settings.processWatch, to: agents)
+        let ignored = Settings.ignoredProcesses.count
+        if ignored > 0 {
+            item("Снова следить за скрытыми процессами (\(ignored))", #selector(unignoreProcesses), to: agents)
+        }
 
         // Notifications
         let notes = submenu("Уведомления", symbol: "bell")
@@ -237,6 +243,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
     @objc private func toggleFocusHUD() { Settings.focusHUD.toggle() }
+    @objc private func toggleProcessWatch() { Settings.processWatch.toggle() }
+    @objc private func unignoreProcesses() { Settings.ignoredProcesses = [] }
     @objc private func toggleVolumeHUD() { Settings.volumeHUD.toggle() }
     @objc private func toggleNotificationText() { Settings.notificationText.toggle() }
     @objc private func toggleAutoUpdate(_ sender: NSMenuItem) { Settings.autoUpdate.toggle() }

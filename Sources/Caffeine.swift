@@ -14,7 +14,7 @@ final class Caffeine: ObservableObject {
         if value {
             let ok = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
                                                  IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                 "Nook: кофеин включён" as CFString, &assertion)
+                                                 "Nook: coffee mode" as CFString, &assertion)
             guard ok == kIOReturnSuccess else { return }
         } else {
             IOPMAssertionRelease(assertion)
