@@ -451,7 +451,6 @@ struct IslandBackdrop: View {
     var colors: [Color]
     /// Height of the band under the camera that stays pure black.
     var blackTop: CGFloat = 0
-    @State private var breathe = false
 
     var body: some View {
         GeometryReader { geo in
@@ -465,7 +464,6 @@ struct IslandBackdrop: View {
                                        .init(color: colors[0].opacity(0.1), location: 0.5),
                                        .init(color: .clear, location: 1)],
                                center: icon, startRadius: 0, endRadius: 110)
-                    .opacity(breathe ? 1 : 0.75)
             }
             .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
                                          .init(color: .clear, location: min(1, blackTop / h)),
@@ -475,10 +473,6 @@ struct IslandBackdrop: View {
         }
         .animation(.easeInOut(duration: 0.8).speed(Motion.speed), value: colors)
         .allowsHitTesting(false)
-        .onAppear {
-            guard !Motion.reduce else { return }
-            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breathe = true }
-        }
     }
 }
 
