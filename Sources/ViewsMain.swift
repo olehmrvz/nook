@@ -578,7 +578,8 @@ struct IslandView: View {
             Text(hog.command).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
             Text(hog.memory >= ProcessWatch.memoryLimit
                  ? "память \(ByteCountFormatter.string(fromByteCount: Int64(hog.memory), countStyle: .memory))"
-                 : "процессор \(hog.cpu)% больше 2 мин")
+                 // Share of the whole Mac, not of one core: "138 %" (1.4 cores) confused the user.
+                 : "\(max(1, Int((Double(hog.cpu) / Double(ProcessInfo.processInfo.activeProcessorCount)).rounded())))% всего процессора · больше 2 мин")
                 .font(.system(size: 11)).foregroundStyle(muted)
         case .limit(let title, let left, let resets):
             Text("Лимит почти исчерпан").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
