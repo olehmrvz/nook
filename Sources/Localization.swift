@@ -26,12 +26,25 @@ enum Language: String, CaseIterable, Identifiable {
             return own?.first.flatMap { Language(rawValue: String($0.prefix(2))) } ?? .system
         }
         set {
+            let defaults = UserDefaults.standard
             if newValue == .system {
-                UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+                defaults.removeObject(forKey: "AppleLanguages")
+                defaults.removeObject(forKey: "AppleLocale")
             } else {
-                UserDefaults.standard.set([newValue.rawValue], forKey: "AppleLanguages")
+                defaults.set([newValue.rawValue], forKey: "AppleLanguages")
+                // Dates, weekdays and currency names in the same language; the region's formats stay (en_UA, ru_DE).
+                let system = defaults.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLocale"] as? String
+                let region = system.flatMap { Locale(identifier: $0).region?.identifier }
+                defaults.set(region.map { "\(newValue.rawValue)_\($0)" } ?? newValue.rawValue, forKey: "AppleLocale")
             }
         }
+    }
+
+    /// What the choice means on this Mac: macOS picks from Nook's languages in the order of the system's list.
+    var resolved: Language {
+        guard self == .system else { return self }
+        let system = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"] as? [String]
+        return Bundle.preferredLocalizations(from: ["en", "ru"], forPreferences: system).first == "ru" ? .ru : .en
     }
 
     /// The language the text is shown in now (macOS picks it at launch).

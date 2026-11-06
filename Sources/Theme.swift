@@ -95,7 +95,7 @@ enum Format {
         let time = date.formatted(date: .omitted, time: .shortened)
         if cal.isDateInToday(date) { return L("сегодня в \(time)") }
         if cal.isDateInTomorrow(date) { return L("завтра в \(time)") }
-        if date.timeIntervalSinceNow < 6 * 86400 { return date.formatted(.dateTime.weekday(.abbreviated)) + " в \(time)" }
+        if date.timeIntervalSinceNow < 6 * 86400 { return L("\(date.formatted(.dateTime.weekday(.abbreviated))) в \(time)") }
         return date.formatted(.dateTime.day().month(.abbreviated))
     }
 

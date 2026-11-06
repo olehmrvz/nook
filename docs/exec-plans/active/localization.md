@@ -23,14 +23,18 @@ Other languages (UK DE ES FR PT-BR IT PL ZH-Hans) come after olehmrvz/certificat
 
 ## Steps
 
-1. [ ] Infrastructure: `Sources/Localization.swift`, lproj folders, Info.plist, install.sh line, `Format` helpers.
-2. [ ] Wrap code-built text with `L()` (script from the literal list, then review per file).
-3. [ ] English table for every key; check that every key in the code has an entry.
-4. [ ] Language picker in General.
-5. [ ] Run in English with `NSShowNonLocalizedStrings`; open every tab and settings pane; fix what is missing.
-6. [ ] English screenshots for the README (demo sessions only), README note about languages.
-7. [ ] Russian still looks the same (spot check), merge-tree with certificate, commit.
+1. [x] Infrastructure: `Sources/Localization.swift`, lproj folders, Info.plist, install.sh line, `Format` helpers (cf3ca0a).
+2. [x] Wrap code-built text with `L()` (482 places by script, reviewed per file; cf3ca0a).
+3. [x] English table: 682 entries; `Sources/Localization/check.py` finds text without English and glued `Text("…" + x)`.
+4. [x] Language picker in General (system / English / Русский), restart button; writes AppleLanguages + AppleLocale.
+5. [x] Ran in English with `NSShowNonLocalizedStrings`: all 13 settings panes, Home, Agents, Timer, Shelf, search.
+   Fixed: 4 glued literals, weekday phrase, «» quotes, dates in the region's language (AppleLocale en_UA).
+6. [x] English screenshots in docs/images (demo sessions; own session hidden with SessionEnd for the capture):
+   request, sessions, search, calculator. The limits card shows the real "Today … tokens ≈ $…" row (told the user).
+7. [x] Russian checked after restoring the defaults; `git merge-tree` with olehmrvz/certificate clean.
 
 ## Progress
 
-(empty)
+Done 2026-11-06/07 (see steps). Not checked in English: clipboard, calendar, notes tabs (private data, checked by
+code only), islands other than "done", the teleprompter. Next: the other 8 languages after the certificate merge
+(.stringsdict for plurals then; `Format.count` covers only Russian and English).

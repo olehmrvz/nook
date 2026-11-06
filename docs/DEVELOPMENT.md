@@ -133,3 +133,20 @@ terminal, not from a process an agent started (an agent must not approve its own
   without the app, compile `Sources/Parakeet.swift` with a small `main.swift` (it needs `supportDir`) and feed it
   `say -o x.aiff` speech. Ultra: 7 s of speech in ~0.1 s on M-series, first load ~10 s (Core ML compiles for the
   Neural Engine), then ~0.2 s. Redux needs macOS 15 and loads slower (~12 s).
+
+## Localization
+
+- Russian is the source text and the key. English lives in `Sources/Localization/en.lproj/Localizable.strings`;
+  `ru.lproj` stays empty so macOS counts Russian as one of Nook's languages. `install.sh` copies both into the app.
+- Literal titles (`Text("…")`, `Button("…")`, `Toggle`, `Picker`, `Section`, `LabeledContent`, `.help`) are looked
+  up by SwiftUI. Text built in code goes through `L("…")` (`Sources/Localization.swift`). Text glued with `+`
+  inside `Text(…)` is a plain String and is not looked up: wrap the Russian part in `L(…)`.
+- Interpolations become `%@` (String), `%lld` (Int), `%d` (Int32), `%lf` (Double) in the key; with any
+  interpolation a literal `%` becomes `%%`. Plurals: `Format.count(n, one, few, many)`; English uses `one` and `many`.
+- Words the calculator reads in the input, search keywords, AI prompts and logs are not translated.
+- After adding text: `python3 Sources/Localization/check.py` lists Russian text without English (exit status 1).
+- Settings → General → Language writes `AppleLanguages` and a matching `AppleLocale` (`en_UA`: English words, the
+  region's formats) into Nook's defaults; a new language needs a restart. Try English without the menu:
+  `defaults write dev.nook.app AppleLanguages -array en`, restart; `-bool YES` for `NSShowNonLocalizedStrings`
+  shows text without a translation in capitals. Delete both keys afterwards.
+

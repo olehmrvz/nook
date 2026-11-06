@@ -1,0 +1,1366 @@
+/* Nook — English. Keys are the Russian source text (see Sources/Localization.swift). */
+
+/* AgentCards.swift:22 */
+"ещё %lld" = "%lld more";
+/* AgentCards.swift:33 */
+"В терминале" = "In Terminal";
+/* AgentCards.swift:39 */
+"Ответить в терминале, как обычно" = "Answer in the terminal as usual";
+/* AgentCards.swift:88 */
+"Свой вариант (добавится к выбранным)" = "Your own option (added to the selected ones)";
+/* AgentCards.swift:88 */
+"Свой ответ" = "Your own answer";
+/* AgentCards.swift:94 */
+"Ответить" = "Reply";
+/* AgentCards.swift:94 */
+"Дальше" = "Next";
+/* AgentCards.swift:102 */
+"Nook не смог прочитать этот вопрос." = "Nook couldn’t read this question.";
+/* AgentCards.swift:114 */
+"Вопрос %lld из %lld" = "Question %lld of %lld";
+/* AgentCards.swift:114 */
+"Вопрос" = "Question";
+/* AgentCards.swift:176 */
+"План готов — посмотрите" = "The plan is ready — take a look";
+/* AgentCards.swift:189 */
+"Открыть ссылку из плана?" = "Open the link from the plan?";
+/* AgentCards.swift:191 */
+"Открыть" = "Open";
+/* AgentCards.swift:192 */
+"Отмена" = "Cancel";
+/* AgentCards.swift:201 */
+"Что поправить в плане?" = "What should change in the plan?";
+/* AgentCards.swift:206 */
+"Отправить" = "Send";
+/* AgentCards.swift:213 */
+"Одобрить" = "Approve";
+/* AgentCards.swift:214 */
+"Авто-правки" = "Auto-edits";
+/* AgentCards.swift:216 */
+"Одобрить и разрешить агенту править файлы без подтверждений до конца сессии" = "Approve and let the agent edit files without asking until the session ends";
+/* AgentCards.swift:217 */
+"Доработать…" = "Revise…";
+/* AgentCards.swift:234 */
+"Доработай план: %@" = "Revise the plan: %@";
+/* Agents.swift:365 */
+"Инструмент" = "Tool";
+/* Agents.swift:426 */
+"Отклонено в Nook" = "Denied in Nook";
+/* Agents.swift:534 */
+"файл" = "file";
+/* Agents.swift:534 */
+"файла" = "files";
+/* Agents.swift:534 */
+"файлов" = "files";
+/* Agents.swift:538 */
+"тесты" = "tests";
+/* Agents.swift:540 */
+"коммит" = "commit";
+/* Agents.swift:584 */
+"«%@»" = "“%@”";
+/* Agents.swift:690 */
+"Уже подключено. Новые вкладки терминала сообщают о долгих командах." = "Already connected. New terminal tabs report long commands.";
+/* Agents.swift:710 */
+"Добавлено в ~/.zshrc." = "Added to ~/.zshrc.";
+/* Agents.swift:710 */
+"Добавлено в ~/.zshrc (копия рядом)." = "Added to ~/.zshrc (a copy is next to it).";
+/* Agents.swift:711 */
+"%@ Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS." = "%@ Open a new terminal tab. Threshold: 20 s, set with NOOK_MIN_SECONDS.";
+/* Agents.swift:917 */
+"План" = "Plan";
+/* Agents.swift:1037 */
+"Claude Code и Codex не найдены: нет папок ~/.claude и ~/.codex." = "Claude Code and Codex not found: there are no ~/.claude and ~/.codex folders.";
+/* Agents.swift:1039 */
+"Codex может один раз спросить, доверять ли хукам Nook — разреши." = "Codex may ask once whether to trust Nook’s hooks — allow it.";
+/* Agents.swift:1041 */
+"Уже запущенные агенты перезапусти, чтобы они подхватили хуки." = "Restart agents that are already running so they pick up the hooks.";
+/* Agents.swift:1097 */
+"не JSON-объект" = "not a JSON object";
+/* App.swift:156 */
+"Открыть Nook" = "Open Nook";
+/* App.swift:157 */
+"Буфер обмена  ⌃⌘V" = "Clipboard  ⌃⌘V";
+/* App.swift:158 */
+"Кофеин включён — Mac не засыпает" = "Caffeine on — the Mac stays awake";
+/* App.swift:158 */
+"Кофеин: не давать Mac засыпать" = "Caffeine: keep the Mac awake";
+/* App.swift:161 */
+"Настройки…" = "Settings…";
+/* App.swift:162 */
+"Проверить обновления…" = "Check for Updates…";
+/* App.swift:163 */
+"Сказать спасибо…" = "Say Thanks…";
+/* App.swift:165 */
+"Выйти из Nook" = "Quit Nook";
+/* Assistant.swift:21 */
+"Claude Code (ваша подписка)" = "Claude Code (your subscription)";
+/* Assistant.swift:22 */
+"Claude API (свой ключ)" = "Claude API (your own key)";
+/* Assistant.swift:23 */
+"Apple Intelligence (на этом Mac)" = "Apple Intelligence (on this Mac)";
+/* Assistant.swift:46 */
+"Исправить ошибки в выделенном" = "Fix mistakes in the selection";
+/* Assistant.swift:47 */
+"Переписать выделенное понятнее" = "Rewrite the selection more clearly";
+/* Assistant.swift:48 */
+"Сократить выделенное" = "Shorten the selection";
+/* Assistant.swift:49 */
+"Кратко пересказать выделенное" = "Summarize the selection";
+/* Assistant.swift:50 */
+"Перевести выделенное на английский" = "Translate the selection to English";
+/* Assistant.swift:51 */
+"Перевести выделенное на русский" = "Translate the selection to Russian";
+/* Assistant.swift:125 */
+"Этот Mac не поддерживает Apple Intelligence" = "This Mac doesn’t support Apple Intelligence";
+/* Assistant.swift:126 */
+"Включите Apple Intelligence в Системных настройках" = "Turn on Apple Intelligence in System Settings";
+/* Assistant.swift:127 */
+"Модель Apple ещё загружается" = "Apple’s model is still downloading";
+/* Assistant.swift:128 */
+"Модель Apple недоступна" = "Apple’s model is unavailable";
+/* Assistant.swift:133 */
+"Нужна macOS 26" = "Requires macOS 26";
+/* Assistant.swift:188 */
+"Claude Code не найден" = "Claude Code not found";
+/* Assistant.swift:218 */
+"Claude Code не ответил" = "Claude Code didn’t answer";
+/* Assistant.swift:226 */
+"Claude Code завершился с кодом %d" = "Claude Code exited with code %d";
+/* Assistant.swift:245 */
+"Нет ключа Claude API" = "No Claude API key";
+/* Assistant.swift:278 */
+"Модель отказалась отвечать на этот запрос" = "The model declined to answer this request";
+/* Assistant.swift:281 */
+"Ошибка Claude API" = "Claude API error";
+/* Assistant.swift:288 */
+"Claude API: код %lld" = "Claude API: code %lld";
+/* Assistant.swift:289 */
+"Ключ Claude API не подошёл" = "The Claude API key didn’t work";
+/* Assistant.swift:293 */
+"Отменено" = "Cancelled";
+/* Calculator.swift:37 */
+"Калькулятор" = "Calculator";
+/* Calculator.swift:343 */
+"Степень только для чисел" = "Powers work only on numbers";
+/* Calculator.swift:487 */
+"Разные единицы в %@" = "Different units in %@";
+/* Calculator.swift:547 */
+"Так единицы не перемножить" = "These units can’t be multiplied";
+/* Calculator.swift:558 */
+"Разные величины: %@ и %@" = "Different quantities: %@ and %@";
+/* Calculator.swift:562 */
+"Нет курса для %@ или %@" = "No rate for %@ or %@";
+/* Calculator.swift:569 */
+"Деньги и единицы не переводятся друг в друга" = "Money and units don’t convert into each other";
+/* Calculator.swift:652 */
+"Длина" = "Length";
+/* Calculator.swift:652 */
+"Масса" = "Mass";
+/* Calculator.swift:652 */
+"Время" = "Time";
+/* Calculator.swift:652 */
+"Температура" = "Temperature";
+/* Calculator.swift:652 */
+"Объём" = "Volume";
+/* Calculator.swift:653 */
+"Данные" = "Data";
+/* Calculator.swift:653 */
+"Скорость" = "Speed";
+/* Calculator.swift:718 */
+"Курс ExchangeRate-API" = "Rate by ExchangeRate-API";
+/* Calculator.swift:721 */
+"Курс currency-api (fawazahmed0)" = "Rate by currency-api (fawazahmed0)";
+/* Calculator.swift:725 */
+"Курсы валют ещё не загрузились" = "Exchange rates haven’t loaded yet";
+/* Calculator.swift:727 */
+"Курсы криптовалют ещё не загрузились" = "Crypto rates haven’t loaded yet";
+/* Calculator.swift:729 */
+"Нет курса для %@" = "No rate for %@";
+/* Calendar.swift:175 */
+"Без названия" = "Untitled";
+/* Clipboard.swift:19 */
+"Изображение" = "Image";
+/* Clipboard.swift:45 */
+"Всё" = "All";
+/* Clipboard.swift:46 */
+"Текст" = "Text";
+/* Clipboard.swift:47 */
+"Ссылки" = "Links";
+/* Clipboard.swift:48 */
+"Картинки" = "Images";
+/* Clipboard.swift:49 */
+"Файлы" = "Files";
+/* Cuely.swift:47 */
+"Новый сценарий" = "New script";
+/* Cuely.swift:47 */
+"Вставьте сюда текст. Nook покажет его прямо под камерой, чтобы взгляд оставался в объективе." = "Paste your text here. Nook shows it right under the camera, so your eyes stay on the lens.";
+/* Cuely.swift:147 */
+"Нет доступа к микрофону или распознаванию речи — включаю автопрокрутку" = "No access to the microphone or speech recognition — scrolling by itself";
+/* Cuely.swift:160 */
+"Распознавание для этого языка недоступно — автопрокрутка" = "Recognition isn’t available for this language — scrolling by itself";
+/* Cuely.swift:166 */
+"Распознавание на этом Mac для языка недоступно — автопрокрутка" = "On-device recognition isn’t available for this language — scrolling by itself";
+/* Cuely.swift:181 */
+"Микрофон недоступен — автопрокрутка" = "Microphone unavailable — scrolling by itself";
+/* Cuely.swift:185 */
+"Слушаю…" = "Listening…";
+/* Devices.swift:17 */
+"Наушники" = "Headphones";
+/* Devices.swift:52 */
+"Кейс" = "Case";
+/* Devices.swift:52 */
+"Заряд" = "Battery";
+/* Devices.swift:165 */
+"Ясно" = "Clear";
+/* Devices.swift:166 */
+"Переменная облачность" = "Partly cloudy";
+/* Devices.swift:167 */
+"Пасмурно" = "Overcast";
+/* Devices.swift:168 */
+"Туман" = "Fog";
+/* Devices.swift:169 */
+"Морось" = "Drizzle";
+/* Devices.swift:170 */
+"Дождь" = "Rain";
+/* Devices.swift:171 */
+"Ливень" = "Showers";
+/* Devices.swift:172 */
+"Снег" = "Snow";
+/* Devices.swift:173 */
+"Гроза" = "Thunderstorm";
+/* Dictation.swift:92 */
+"Удерживать, чтобы говорить" = "Hold to talk";
+/* Dictation.swift:93 */
+"Двойное нажатие — начать" = "Double-press to start";
+/* Dictation.swift:93 */
+"Нажатие — начать и закончить" = "Press to start and stop";
+/* Dictation.swift:202 */
+"Nook не слышит клавишу" = "Nook can’t hear the key";
+/* Dictation.swift:202 */
+"Разрешите Nook «Мониторинг ввода» в Системных настройках" = "Allow Nook in Input Monitoring in System Settings";
+/* Dictation.swift:323 */
+"Диктовка выключена" = "Dictation is off";
+/* Dictation.swift:323 */
+"Включите её: Настройки Nook → Диктовка" = "Turn it on: Nook Settings → Dictation";
+/* Dictation.swift:328 */
+"Модель не скачана" = "The model isn’t downloaded";
+/* Dictation.swift:328 */
+"Скачайте её: Настройки Nook → Диктовка" = "Download it: Nook Settings → Dictation";
+/* Dictation.swift:338 */
+"Нет доступа к микрофону" = "No access to the microphone";
+/* Dictation.swift:338 */
+"Разрешите микрофон для Nook в Системных настройках" = "Allow the microphone for Nook in System Settings";
+/* Dictation.swift:342 */
+"Микрофон не отвечает" = "The microphone isn’t responding";
+/* Dictation.swift:342 */
+"Перезапустите Nook или выберите другой микрофон в настройках диктовки" = "Restart Nook or choose another microphone in the dictation settings";
+/* Dictation.swift:390 */
+"Микрофон не включился" = "The microphone didn’t turn on";
+/* Dictation.swift:437 */
+"Речь не распознана" = "No speech recognized";
+/* Dictation.swift:437 */
+"Говорите ближе к микрофону или громче" = "Speak closer to the microphone or louder";
+/* Dictation.swift:442 */
+"Не удалось распознать речь" = "Couldn’t recognize the speech";
+/* Dictation.swift:498 */
+"Текст скопирован" = "Text copied";
+/* Dictation.swift:498 */
+"Вставьте его: ⌘V" = "Paste it: ⌘V";
+/* Dictation.swift:785 */
+"Микрофон не открылся (%@: %lld)" = "The microphone didn’t open (%@: %lld)";
+/* Downloads.swift:62 */
+"Загрузка" = "Download";
+/* Focus.swift:88 */
+"Не беспокоить" = "Do Not Disturb";
+/* FocusTimer.swift:8 */
+"Таймер" = "Timer";
+/* FocusTimer.swift:9 */
+"Фокус" = "Focus";
+/* FocusTimer.swift:10 */
+"Перерыв" = "Break";
+/* FocusTimer.swift:11 */
+"Длинный перерыв" = "Long break";
+/* FocusTimer.swift:100 */
+"Время вышло" = "Time’s up";
+/* FocusTimer.swift:100 */
+"Таймер на %@ закончился" = "The %@ timer is done";
+/* FocusTimer.swift:105 */
+"Фокус завершён · %lld" = "Focus done · %lld";
+/* FocusTimer.swift:105 */
+"Длинный перерыв 15 мин" = "Long break 15 min";
+/* FocusTimer.swift:105 */
+"Перерыв 5 мин" = "Break 5 min";
+/* FocusTimer.swift:109 */
+"Перерыв окончен" = "Break is over";
+/* FocusTimer.swift:109 */
+"Следующий фокус 25 мин" = "Next focus 25 min";
+/* Launcher.swift:69 */
+"Буфер обмена" = "Clipboard";
+/* Launcher.swift:70 */
+"Вставить следующее из буфера" = "Paste the next one from the clipboard";
+/* Launcher.swift:71 */
+"Полка" = "Shelf";
+/* Launcher.swift:72 */
+"Заметки" = "Notes";
+/* Launcher.swift:73 */
+"Календарь" = "Calendar";
+/* Launcher.swift:74 */
+"Агенты" = "Agents";
+/* Launcher.swift:75 */
+"Таймер на 25 минут" = "Timer for 25 minutes";
+/* Launcher.swift:76 */
+"Помодоро" = "Pomodoro";
+/* Launcher.swift:77 */
+"Режим фокуса" = "Focus mode";
+/* Launcher.swift:78 */
+"Кофеин" = "Caffeine";
+/* Launcher.swift:79 */
+"Заблокировать клавиатуру на 30 с" = "Lock the keyboard for 30 s";
+/* Launcher.swift:80 */
+"Настройки Nook" = "Nook Settings";
+/* Launcher.swift:81 */
+"Проверить обновления Nook" = "Check for Nook updates";
+/* Launcher.swift:82 */
+"Сказать спасибо автору Nook" = "Thank the author of Nook";
+/* Launcher.swift:248 */
+"Окна" = "Windows";
+/* Launcher.swift:279 */
+"Быстрая команда" = "Shortcut";
+/* Launcher.swift:413 */
+"Окно · %@" = "Window · %@";
+/* Launcher.swift:413 */
+" · свёрнуто" = " · minimized";
+/* Launcher.swift:431 */
+"Своя команда" = "Your command";
+/* Launcher.swift:442 */
+"Сниппет" = "Snippet";
+/* Launcher.swift:442 */
+"Сниппет · %@" = "Snippet · %@";
+/* Launcher.swift:460 */
+"Эмодзи" = "Emoji";
+/* Launcher.swift:513 */
+"%@: «%@»" = "%@: “%@”";
+/* Launcher.swift:513 */
+"Ссылка" = "Link";
+/* Launcher.swift:518 */
+"Открыть %@" = "Open %@";
+/* Launcher.swift:518 */
+"Браузер" = "Browser";
+/* Launcher.swift:525 */
+"Спросить AI: «%@»" = "Ask AI: “%@”";
+/* Launcher.swift:531 */
+"Искать «%@» в Google" = "Search Google for “%@”";
+/* Launcher.swift:531 */
+"Интернет" = "Web";
+/* Launcher.swift:536 */
+"Определить «%@»" = "Define “%@”";
+/* Launcher.swift:536 */
+"Словарь" = "Dictionary";
+/* Launcher.swift:627 */
+"%@ · %lld с" = "%@ · %lld s";
+/* Launcher.swift:673 */
+"Программа" = "App";
+/* Launcher.swift:683 */
+"Аккумулятор" = "Battery";
+/* Launcher.swift:696 */
+"Системные настройки" = "System Settings";
+/* Launcher.swift:734 */
+"Программы, настройки, команды Nook" = "Apps, settings, Nook commands";
+/* Launcher.swift:775 */
+"Начните печатать название программы" = "Start typing an app name";
+/* Launcher.swift:775 */
+"Ничего не найдено" = "Nothing found";
+/* Launcher.swift:845 */
+"↩ открыть · ⌘↩ в Finder" = "↩ open · ⌘↩ show in Finder";
+/* Launcher.swift:846 */
+"↩ вставить" = "↩ paste";
+/* Launcher.swift:847 */
+"↩ выполнить" = "↩ run";
+/* Launcher.swift:848 */
+"↩ или Tab: спросить" = "↩ or Tab: ask";
+/* Launcher.swift:849 */
+"↩ с выделенным текстом" = "↩ with the selected text";
+/* Launcher.swift:850 */
+"↩ перейти" = "↩ go";
+/* Launcher.swift:852 */
+"↩ скопировать · ⌘↩ считать дальше" = "↩ copy · ⌘↩ keep calculating";
+/* Launcher.swift:853 */
+"↩ открыть" = "↩ open";
+/* Launcher.swift:1021 */
+"↩ скопировать · ⌘↩ вставить · Esc назад" = "↩ copy · ⌘↩ paste · Esc back";
+/* Launcher.swift:1030 */
+"Думаю…" = "Thinking…";
+/* LauncherAX.swift:58 */
+"Пробел" = "Space";
+/* LauncherSources.swift:105 */
+"Готово" = "Done";
+/* LauncherSources.swift:105 */
+"Код %d" = "Code %d";
+/* Localization.swift:16 */
+"Как в системе" = "System default";
+/* Notch.swift:10 */
+"Главная" = "Home";
+/* Notch.swift:11 */
+"Буфер" = "Clipboard";
+/* Notch.swift:15 */
+"Зеркало" = "Mirror";
+/* Notch.swift:19 */
+"Поиск" = "Search";
+/* Notch.swift:71 */
+"Погода" = "Weather";
+/* Notch.swift:72 */
+"Батарея" = "Battery";
+/* Notch.swift:73 */
+"Блокировка клавиатуры" = "Keyboard lock";
+/* Notch.swift:318 */
+"Claude · 5 ч" = "Claude · 5 h";
+/* Notch.swift:654 */
+"AI не настроен" = "AI isn’t set up";
+/* Notch.swift:654 */
+"Настройки Nook → AI" = "Nook Settings → AI";
+/* Notch.swift:662 */
+"Выделите текст" = "Select some text";
+/* Notch.swift:741 */
+"Больше нечего вставить" = "Nothing more to paste";
+/* Notch.swift:742 */
+"Это была самая старая запись" = "That was the oldest item";
+/* Notes.swift:13 */
+"Новая заметка" = "New note";
+/* Notifications.swift:121 */
+"Новое уведомление" = "New notification";
+/* NowPlaying.swift:19 */
+"Музыка" = "Music";
+/* NowPlaying.swift:147 */
+"Плеер" = "Player";
+/* Parakeet.swift:18 */
+"Быстрая" = "Fast";
+/* Parakeet.swift:19 */
+"Точная" = "Accurate";
+/* Parakeet.swift:25 */
+"Parakeet Redux: меньше места и памяти" = "Parakeet Redux: less disk space and memory";
+/* Parakeet.swift:26 */
+"Parakeet Ultra: точнее, особенно для русского и украинского" = "Parakeet Ultra: more accurate, especially for Russian and Ukrainian";
+/* Parakeet.swift:244 */
+"Файл модели не прошёл проверку: %@. Попробуйте ещё раз." = "A model file failed the check: %@. Try again.";
+/* Parakeet.swift:264 */
+"Не удалось скачать модель: %@" = "Couldn’t download the model: %@";
+/* Parakeet.swift:321 */
+"Словарь модели повреждён." = "The model’s vocabulary is damaged.";
+/* Parakeet.swift:388 */
+"Модель не вернула признаки звука." = "The model returned no audio features.";
+/* Parakeet.swift:395 */
+"Модель не вернула кадры кодировщика." = "The model returned no encoder frames.";
+/* Parakeet.swift:412 */
+"Модель не вернула решение." = "The model returned no decision.";
+/* Parakeet.swift:439 */
+"Модель не вернула состояние декодера." = "The model returned no decoder state.";
+/* Parakeet.swift:468 */
+"Неожиданная форма выхода модели: %@." = "Unexpected model output shape: %@.";
+/* Parakeet.swift:489 */
+"Неожиданная форма кадров: %@." = "Unexpected frame shape: %@.";
+/* SettingsWindow.swift:19 */
+"Основные" = "General";
+/* SettingsWindow.swift:20 */
+"Панель" = "Panel";
+/* SettingsWindow.swift:22 */
+"Сниппеты" = "Snippets";
+/* SettingsWindow.swift:25 */
+"Вырез" = "Notch";
+/* SettingsWindow.swift:26 */
+"Уведомления" = "Notifications";
+/* SettingsWindow.swift:27 */
+"Диктовка" = "Dictation";
+/* SettingsWindow.swift:29 */
+"Приватность" = "Privacy";
+/* SettingsWindow.swift:30 */
+"Обновления" = "Updates";
+/* SettingsWindow.swift:31 */
+"Спасибо автору" = "Thank the Author";
+/* SettingsWindow.swift:405 */
+"Локальный сертификат Nook" = "Nook’s local certificate";
+/* SettingsWindow.swift:407 */
+"Без постоянной подписи" = "No lasting signature";
+/* SettingsWindow.swift:414 */
+"Подписано сертификатом разработчика и проверено Apple: macOS открывает Nook без предупреждений." = "Signed with a Developer ID and checked by Apple: macOS opens Nook without warnings.";
+/* SettingsWindow.swift:416 */
+"Подписано сертификатом разработчика. Эту сборку Apple ещё не проверяла (нотаризация), её собрали на этом Mac." = "Signed with a Developer ID. Apple hasn’t checked this build yet (notarization); it was built on this Mac.";
+/* SettingsWindow.swift:418 */
+"Подписано сертификатом «Nook Local Signing». macOS сохраняет разрешения между сборками." = "Signed with the “Nook Local Signing” certificate. macOS keeps permissions between builds.";
+/* SettingsWindow.swift:420 */
+"Обновление установится, только если оно подписано так же, как эта копия." = "An update installs only if it is signed the same way as this copy.";
+/* SettingsWindow.swift:422 */
+"Сборка без сертификата: macOS будет заново спрашивать разрешения, а обновления с GitHub не установятся." = "Built without a certificate: macOS will ask for permissions again, and updates from GitHub won’t install.";
+/* SettingsWindow.swift:537 */
+"Запускать при входе в систему" = "Open at login";
+/* SettingsWindow.swift:538 */
+"Значок в строке меню" = "Menu bar icon";
+/* SettingsWindow.swift:540 */
+"Запуск" = "Startup";
+/* SettingsWindow.swift:543 */
+"Вырез на экране" = "Show the notch on";
+/* SettingsWindow.swift:544 */
+"Автоматически (экран с вырезом)" = "Automatic (display with a notch)";
+/* SettingsWindow.swift:544 */
+"Автоматически" = "Automatic";
+/* SettingsWindow.swift:554 */
+"Экран" = "Display";
+/* SettingsWindow.swift:556 */
+"Быстрый доступ" = "Quick access";
+/* SettingsWindow.swift:576 */
+"Язык" = "Language";
+/* SettingsWindow.swift:580 */
+"Язык сменится после перезапуска" = "The language changes after a restart";
+/* SettingsWindow.swift:581 */
+"Перезапустить Nook" = "Restart Nook";
+/* SettingsWindow.swift:594 */
+"Вкладки" = "Tabs";
+/* SettingsWindow.swift:603 */
+"Кнопки" = "Buttons";
+/* SettingsWindow.swift:620 */
+"Поиск в вырезе" = "Search in the notch";
+/* SettingsWindow.swift:621 */
+"Сочетание клавиш" = "Shortcut";
+/* SettingsWindow.swift:628 */
+"Сочетание занято другой программой" = "Another app uses this shortcut";
+/* SettingsWindow.swift:632 */
+"Искать" = "Look in";
+/* SettingsWindow.swift:633 */
+"Программы" = "Apps";
+/* SettingsWindow.swift:635 */
+"Команды Nook" = "Nook commands";
+/* SettingsWindow.swift:636 */
+"Файлы (Spotlight)" = "Files (Spotlight)";
+/* SettingsWindow.swift:637 */
+"Пункты меню программы впереди" = "Menu items of the app in front";
+/* SettingsWindow.swift:638 */
+"Открытые окна" = "Open windows";
+/* SettingsWindow.swift:639 */
+"Быстрые команды macOS" = "macOS Shortcuts";
+/* SettingsWindow.swift:640 */
+"Google и словарь внизу списка" = "Google and Dictionary at the end of the list";
+/* SettingsWindow.swift:643 */
+"Быстрые ссылки" = "Quicklinks";
+/* SettingsWindow.swift:643 */
+"имя" = "name";
+/* SettingsWindow.swift:645 */
+"Свои команды" = "Your commands";
+/* SettingsWindow.swift:645 */
+"название" = "name";
+/* SettingsWindow.swift:645 */
+"команда для zsh" = "zsh command";
+/* SettingsWindow.swift:648 */
+"Команды для окон: половины, трети, развернуть" = "Window commands: halves, thirds, maximize";
+/* SettingsWindow.swift:650 */
+"Сочетания клавиш" = "Keyboard shortcuts";
+/* SettingsWindow.swift:651 */
+"Как в Rectangle (⌃⌥ + стрелки)" = "Like Rectangle (⌃⌥ + arrows)";
+/* SettingsWindow.swift:656 */
+"История запусков" = "Launch history";
+/* SettingsWindow.swift:657 */
+"Очистить" = "Clear";
+/* SettingsWindow.swift:685 */
+"Добавить" = "Add";
+/* SettingsWindow.swift:714 */
+"Найти программу или команду" = "Find an app or command";
+/* SettingsWindow.swift:731 */
+"Псевдонимы и сочетания" = "Aliases and shortcuts";
+/* SettingsWindow.swift:745 */
+"псевдоним" = "alias";
+/* SettingsWindow.swift:770 */
+"Отвечает" = "Provider";
+/* SettingsWindow.swift:777 */
+"Найден" = "Found";
+/* SettingsWindow.swift:777 */
+"Не установлен" = "Not installed";
+/* SettingsWindow.swift:780 */
+"Ключ API" = "API key";
+/* SettingsWindow.swift:782 */
+"сохранён в Связке ключей" = "saved in the Keychain";
+/* SettingsWindow.swift:783 */
+"Сохранить" = "Save";
+/* SettingsWindow.swift:791 */
+"Удалить ключ" = "Delete Key";
+/* SettingsWindow.swift:795 */
+"Модель" = "Model";
+/* SettingsWindow.swift:799 */
+"Модель Apple" = "Apple model";
+/* SettingsWindow.swift:800 */
+"Готова" = "Ready";
+/* SettingsWindow.swift:803 */
+"Проверка" = "Check";
+/* SettingsWindow.swift:807 */
+"Проверить" = "Check";
+/* SettingsWindow.swift:809 */
+"Ответь одним словом: столица Франции?" = "Answer in one word: the capital of France?";
+/* SettingsWindow.swift:820 */
+"Действия с выделенным текстом" = "Actions on the selected text";
+/* SettingsWindow.swift:836 */
+"Хранить записи" = "Keep items";
+/* SettingsWindow.swift:840 */
+"Всегда (до 300)" = "Forever (up to 300)";
+/* SettingsWindow.swift:841 */
+"1 день" = "1 day";
+/* SettingsWindow.swift:842 */
+"7 дней" = "7 days";
+/* SettingsWindow.swift:843 */
+"30 дней" = "30 days";
+/* SettingsWindow.swift:844 */
+"90 дней" = "90 days";
+/* SettingsWindow.swift:845 */
+"1 год" = "1 year";
+/* SettingsWindow.swift:847 */
+"Открыть буфер" = "Open Clipboard";
+/* SettingsWindow.swift:849 */
+"Не записывать из программ" = "Don’t record from apps";
+/* SettingsWindow.swift:860 */
+"Добавить программу…" = "Add App…";
+/* SettingsWindow.swift:890 */
+"Раскрывать ключевые слова в любой программе" = "Expand keywords in any app";
+/* SettingsWindow.swift:896 */
+"Нужен Универсальный доступ" = "Accessibility access needed";
+/* SettingsWindow.swift:896 */
+"Открыть…" = "Open…";
+/* SettingsWindow.swift:907 */
+"Пока нет сниппетов" = "No snippets yet";
+/* SettingsWindow.swift:919 */
+"Изменить" = "Edit";
+/* SettingsWindow.swift:921 */
+"В корзину" = "Move to Trash";
+/* SettingsWindow.swift:926 */
+"Новый сниппет" = "New Snippet";
+/* SettingsWindow.swift:931 */
+"Показать папку" = "Show Folder";
+/* SettingsWindow.swift:950 */
+"Дата" = "Date";
+/* SettingsWindow.swift:950 */
+"Дата и время" = "Date and time";
+/* SettingsWindow.swift:951 */
+"День недели" = "Day of the week";
+/* SettingsWindow.swift:951 */
+"Дата в своём формате" = "Date in your format";
+/* SettingsWindow.swift:952 */
+"Время через 1 час" = "Time in 1 hour";
+/* SettingsWindow.swift:952 */
+"Место курсора" = "Cursor position";
+/* SettingsWindow.swift:957 */
+"Название" = "Name";
+/* SettingsWindow.swift:958 */
+"Ключевое слово, например ;sig" = "Keyword, e.g. ;sig";
+/* SettingsWindow.swift:959 */
+"Включён" = "On";
+/* SettingsWindow.swift:964 */
+"Вставить…" = "Insert…";
+/* SettingsWindow.swift:972 */
+"Создать" = "Create";
+/* SettingsWindow.swift:988 */
+"Громкость и яркость" = "Volume and brightness";
+/* SettingsWindow.swift:990 */
+"Системное окно громкости" = "System volume HUD";
+/* SettingsWindow.swift:992 */
+"Скрыто" = "Hidden";
+/* SettingsWindow.swift:994 */
+"Скрыть…" = "Hide…";
+/* SettingsWindow.swift:999 */
+"Клавиши" = "Keys";
+/* SettingsWindow.swift:1002 */
+"«Не беспокоить» и другие режимы" = "Do Not Disturb and other Focus modes";
+/* SettingsWindow.swift:1004 */
+"Нужен полный доступ к диску" = "Full Disk Access needed";
+/* SettingsWindow.swift:1005 */
+"Открыть настройки…" = "Open Settings…";
+/* SettingsWindow.swift:1009 */
+"Фокусирование" = "Focus";
+/* SettingsWindow.swift:1012 */
+"Процессы, которые грузят Mac" = "Processes that load the Mac";
+/* SettingsWindow.swift:1015 */
+"Снова следить" = "Watch again";
+/* SettingsWindow.swift:1019 */
+"Нагрузка" = "Load";
+/* SettingsWindow.swift:1031 */
+"Показывать уведомления в вырезе" = "Show notifications in the notch";
+/* SettingsWindow.swift:1033 */
+"Показывать текст уведомлений" = "Show notification text";
+/* SettingsWindow.swift:1038 */
+"Полный доступ к диску" = "Full Disk Access";
+/* SettingsWindow.swift:1040 */
+"Разрешён" = "Allowed";
+/* SettingsWindow.swift:1040 */
+"Нет доступа" = "No access";
+/* SettingsWindow.swift:1045 */
+"Доступ" = "Access";
+/* SettingsWindow.swift:1049 */
+"Нет скрытых приложений" = "No hidden apps";
+/* SettingsWindow.swift:1053 */
+"Показывать" = "Show";
+/* SettingsWindow.swift:1057 */
+"Скрытые приложения" = "Hidden apps";
+/* SettingsWindow.swift:1074 */
+"Включить диктовку" = "Turn on dictation";
+/* SettingsWindow.swift:1103 */
+"Как включать" = "How to start";
+/* SettingsWindow.swift:1106 */
+"Звук в начале" = "Start sound";
+/* SettingsWindow.swift:1107 */
+"Звук в конце" = "End sound";
+/* SettingsWindow.swift:1108 */
+"Приглушать звук до 5 % во время записи" = "Lower other sound to 5 % while recording";
+/* SettingsWindow.swift:1110 */
+"Управление" = "Controls";
+/* SettingsWindow.swift:1113 */
+"Микрофон" = "Microphone";
+/* SettingsWindow.swift:1117 */
+"Вставлять в активное приложение" = "Paste into the active app";
+/* SettingsWindow.swift:1118 */
+"Подстраивать заглавную букву и пробел" = "Fit the capital letter and space";
+/* SettingsWindow.swift:1121 */
+"Ввод" = "Input";
+/* SettingsWindow.swift:1124 */
+"Выгружать модель из памяти" = "Unload the model from memory";
+/* SettingsWindow.swift:1127 */
+"Через 5 мин" = "After 5 min";
+/* SettingsWindow.swift:1128 */
+"Через 15 мин" = "After 15 min";
+/* SettingsWindow.swift:1129 */
+"Через 1 час" = "After 1 hour";
+/* SettingsWindow.swift:1130 */
+"Никогда" = "Never";
+/* SettingsWindow.swift:1137 */
+"Спросит при первой записи" = "Will ask on the first recording";
+/* SettingsWindow.swift:1143 */
+"Универсальный доступ" = "Accessibility";
+/* SettingsWindow.swift:1150 */
+"Разрешения" = "Permissions";
+/* SettingsWindow.swift:1158 */
+"Готовлю модель для этого Mac…" = "Preparing the model for this Mac…";
+/* SettingsWindow.swift:1158 */
+"Скачиваю %@ из %@" = "Downloading %@ of %@";
+/* SettingsWindow.swift:1169 */
+"Установлена" = "Installed";
+/* SettingsWindow.swift:1171 */
+"%@ на диске" = "%@ on disk";
+/* SettingsWindow.swift:1172 */
+"Удалить" = "Delete";
+/* SettingsWindow.swift:1176 */
+"Не скачана" = "Not downloaded";
+/* SettingsWindow.swift:1176 */
+"Нужна macOS 15" = "Requires macOS 15";
+/* SettingsWindow.swift:1177 */
+"Скачать" = "Download";
+/* SettingsWindow.swift:1195 */
+"Без звука" = "None";
+/* SettingsWindow.swift:1209 */
+"Claude Code и Codex" = "Claude Code and Codex";
+/* SettingsWindow.swift:1211 */
+"Подключены" = "Connected";
+/* SettingsWindow.swift:1211 */
+"Не подключены" = "Not connected";
+/* SettingsWindow.swift:1212 */
+"Подключить заново" = "Reconnect";
+/* SettingsWindow.swift:1212 */
+"Подключить" = "Connect";
+/* SettingsWindow.swift:1217 */
+"Подключение" = "Connection";
+/* SettingsWindow.swift:1219 */
+"Сессии" = "Sessions";
+/* SettingsWindow.swift:1220 */
+"Звук, когда агент закончил" = "Sound when an agent finishes";
+/* SettingsWindow.swift:1221 */
+"Убирать завершённые сессии через" = "Remove finished sessions after";
+/* SettingsWindow.swift:1223 */
+"%lld мин" = "%lld min";
+/* SettingsWindow.swift:1227 */
+"Острова для долгих команд (zsh)" = "Islands for long commands (zsh)";
+/* SettingsWindow.swift:1229 */
+"Подключено" = "Connected";
+/* SettingsWindow.swift:1236 */
+"Терминал" = "Terminal";
+/* SettingsWindow.swift:1251 */
+"Разрешения macOS" = "macOS permissions";
+/* SettingsWindow.swift:1254 */
+"Скрывать Nook на скриншотах и при показе экрана" = "Hide Nook in screenshots and screen sharing";
+/* SettingsWindow.swift:1258 */
+"Данные Nook" = "Nook data";
+/* SettingsWindow.swift:1259 */
+"Показать в Finder" = "Show in Finder";
+/* SettingsWindow.swift:1295 */
+"Проверить сейчас" = "Check Now";
+/* SettingsWindow.swift:1303 */
+"Обновлять автоматически" = "Update automatically";
+/* SettingsWindow.swift:1307 */
+"Подпись" = "Signature";
+/* SettingsWindow.swift:1309 */
+"Проверка Apple" = "Apple check";
+/* SettingsWindow.swift:1310 */
+"Нотаризовано" = "Notarized";
+/* SettingsWindow.swift:1310 */
+"Нет" = "No";
+/* SettingsWindow.swift:1314 */
+"Эта копия" = "This copy";
+/* SettingsWindow.swift:1318 */
+"Все версии и что нового" = "All versions and what’s new";
+/* SettingsWindow.swift:1319 */
+"Открыть на GitHub" = "Open on GitHub";
+/* SettingsWindow.swift:1326 */
+"Проверяю…" = "Checking…";
+/* SettingsWindow.swift:1328 */
+"Nook сам проверит обновления." = "Nook checks for updates by itself.";
+/* SettingsWindow.swift:1328 */
+"Автоматическая проверка выключена." = "Automatic checks are off.";
+/* SettingsWindow.swift:1330 */
+" Проверено %@." = " Checked %@.";
+/* SettingsWindow.swift:1388 */
+"Сказать спасибо" = "Say Thanks";
+/* SettingsWindow.swift:1389 */
+"Nook бесплатный. Если он вам помогает, можно поблагодарить автора в USDT." = "Nook is free. If it helps you, you can thank the author in USDT.";
+/* SettingsWindow.swift:1400 */
+"Сеть" = "Network";
+/* SettingsWindow.swift:1408 */
+"USDT · сеть %@" = "USDT · %@ network";
+/* SettingsWindow.swift:1414 */
+"Скопировано" = "Copied";
+/* SettingsWindow.swift:1414 */
+"Скопировать адрес" = "Copy Address";
+/* SettingsWindow.swift:1416 */
+"Только USDT и только через сеть %@, иначе перевод пропадёт." = "Only USDT, and only on the %@ network, or the transfer is lost.";
+/* SettingsWindow.swift:1425 */
+"Ещё можно помочь" = "Other ways to help";
+/* SettingsWindow.swift:1426 */
+"Звезда на GitHub" = "A star on GitHub";
+/* SettingsWindow.swift:1427 */
+"Открыть репозиторий" = "Open the Repository";
+/* SettingsWindow.swift:1429 */
+"Ошибка или идея" = "A bug or an idea";
+/* SettingsWindow.swift:1430 */
+"Написать" = "Write";
+/* SettingsWindow.swift:1446 */
+"QR-код адреса в сети %@" = "QR code of the address on the %@ network";
+/* ShortcutRecorder.swift:16 */
+"Правый ⌘" = "Right ⌘";
+/* ShortcutRecorder.swift:16 */
+"Левый ⌘" = "Left ⌘";
+/* ShortcutRecorder.swift:16 */
+"Правый ⌥" = "Right ⌥";
+/* ShortcutRecorder.swift:16 */
+"Левый ⌥" = "Left ⌥";
+/* ShortcutRecorder.swift:17 */
+"Правый ⌃" = "Right ⌃";
+/* ShortcutRecorder.swift:17 */
+"Левый ⌃" = "Left ⌃";
+/* ShortcutRecorder.swift:17 */
+"Правый ⇧" = "Right ⇧";
+/* ShortcutRecorder.swift:17 */
+"Левый ⇧" = "Left ⇧";
+/* ShortcutRecorder.swift:112 */
+"Нажмите сочетание…" = "Press a shortcut…";
+/* ShortcutRecorder.swift:112 */
+"Записать" = "Record";
+/* ShortcutRecorder.swift:120 */
+"Сбросить" = "Reset";
+/* ShortcutRecorder.swift:123 */
+"Убрать сочетание" = "Remove Shortcut";
+/* System.swift:127 */
+"Держу заряд" = "Holding charge";
+/* System.swift:128 */
+"Заряжается" = "Charging";
+/* System.swift:129 */
+"От сети" = "On power";
+/* System.swift:130 */
+"От батареи" = "On battery";
+/* System.swift:139 */
+"Адаптер подключён, зарядка на паузе: работает лимит заряда или оптимизированная зарядка." = "Adapter connected, charging paused: a charge limit or optimized charging is on.";
+/* System.swift:140 */
+"Полная зарядка через " = "Full charge in ";
+/* System.swift:141 */
+"Хватит примерно на " = "Lasts about ";
+/* System.swift:142 */
+"Адаптер подключён." = "Adapter connected.";
+/* System.swift:142 */
+"Считаю оставшееся время…" = "Estimating the time left…";
+/* Theme.swift:77 */
+"сейчас" = "now";
+/* Theme.swift:78 */
+"%lld с" = "%lld s";
+/* Theme.swift:80 */
+"%lld ч %lld мин" = "%lld h %lld min";
+/* Theme.swift:87 */
+"%lld ч" = "%lld h";
+/* Theme.swift:89 */
+"%lld дн" = "%lld d";
+/* Theme.swift:89 */
+"%lld дн %lld ч" = "%lld d %lld h";
+/* Theme.swift:96 */
+"сегодня в %@" = "today at %@";
+/* Theme.swift:97 */
+"завтра в %@" = "tomorrow at %@";
+/* Theme.swift:98 */
+"%@ в %@" = "%@ at %@";
+/* Theme.swift:104 */
+" млн токенов" = " M tokens";
+/* Theme.swift:105 */
+"%lld тыс. токенов" = "%lldK tokens";
+/* Theme.swift:106 */
+"токен" = "token";
+/* Theme.swift:106 */
+"токена" = "tokens";
+/* Theme.swift:106 */
+"токенов" = "tokens";
+/* Updater.swift:37 */
+"Обновление скачано и установится, когда Nook закрыт." = "The update is downloaded and installs when Nook is closed.";
+/* Updater.swift:37 */
+"Проверка уже идёт." = "A check is already running.";
+/* Updater.swift:39 */
+"Перенесите Nook в папку «Программы», тогда он сможет обновляться." = "Move Nook to the Applications folder so it can update itself.";
+/* Updater.swift:56 */
+"Не удалось проверить обновления. Попробую позже." = "Couldn’t check for updates. I’ll try later.";
+/* Updater.swift:60 */
+"Установлена последняя версия." = "You have the latest version.";
+/* Updater.swift:72 */
+"Не удалось скачать обновление. Попробую позже." = "Couldn’t download the update. I’ll try later.";
+/* Updater.swift:87 */
+"Обновление не прошло проверку подписи и не установлено." = "The update failed the signature check and was not installed.";
+/* Updater.swift:93 */
+"Скачана версия 1.%lld, установится, когда Nook закрыт." = "Version 1.%lld is downloaded and installs when Nook is closed.";
+/* Updater.swift:129 */
+"Обновление изменилось после скачивания и не установлено." = "The update changed after it was downloaded and was not installed.";
+/* Updater.swift:138 */
+"Не удалось установить обновление: %@" = "Couldn’t install the update: %@";
+/* Views.swift:214 */
+"Сейчас играет" = "Now playing";
+/* Views.swift:214 */
+"На паузе" = "Paused";
+/* Views.swift:258 */
+"Ничего не играет" = "Nothing is playing";
+/* Views.swift:259 */
+"Музыка из любого приложения появится здесь" = "Music from any app shows up here";
+/* Views.swift:337 */
+"Работает" = "Working";
+/* Views.swift:338 */
+"Ждёт разрешения" = "Waiting for permission";
+/* Views.swift:339 */
+"Ждёт вас" = "Waiting for you";
+/* Views.swift:341 */
+"Ожидает" = "Idle";
+/* Views.swift:357 */
+"думает…" = "thinking…";
+/* Views.swift:360 */
+"ждёт новую задачу" = "waiting for a new task";
+/* Views.swift:386 */
+"идёт " = "running ";
+/* Views.swift:388 */
+" назад" = " ago";
+/* Views.swift:479 */
+"Написать агенту прямо отсюда: текст уйдёт в его терминал" = "Write to the agent right here: the text goes to its terminal";
+/* Views.swift:487 */
+"Открыть вкладку herdr этой сессии" = "Open this session’s herdr tab";
+/* Views.swift:487 */
+"Открыть терминал этой сессии" = "Open this session’s terminal";
+/* Views.swift:496 */
+"действие" = "action";
+/* Views.swift:496 */
+"действия" = "actions";
+/* Views.swift:496 */
+"действий" = "actions";
+/* Views.swift:499 */
+"изменено: " = "edited: ";
+/* Views.swift:499 */
+" и ещё %lld" = " and %lld more";
+/* Views.swift:501 */
+"тесты ✓" = "tests ✓";
+/* Views.swift:501 */
+"тесты ✗" = "tests ✗";
+/* Views.swift:502 */
+"коммит и push" = "commit and push";
+/* Views.swift:522 */
+"%@: осталось %@" = "%@: %@ left";
+/* Views.swift:523 */
+", сброс " = ", resets ";
+/* Views.swift:547 */
+"Все сессии  ⌘4" = "All sessions  ⌘4";
+/* Views.swift:549 */
+"%lld ждёт" = "%lld waiting";
+/* Views.swift:551 */
+"%lld в работе" = "%lld working";
+/* Views.swift:555 */
+"Claude · неделя" = "Claude · week";
+/* Views.swift:561 */
+"Нет активных сессий" = "No active sessions";
+/* Views.swift:561 */
+"Nook не подключён к агентам" = "Nook isn’t connected to agents";
+/* Views.swift:563 */
+"Запущенные Claude Code и Codex появятся здесь" = "Running Claude Code and Codex sessions show up here";
+/* Views.swift:564 */
+"Откройте вкладку «Агенты», чтобы подключить" = "Open the Agents tab to connect them";
+/* Views.swift:578 */
+"ещё %lld · все сессии" = "%lld more · all sessions";
+/* Views.swift:624 */
+"Не дошло — откройте терминал" = "Didn’t get through — open the terminal";
+/* Views.swift:624 */
+"Что ответить агенту в %@?" = "Reply to the agent in %@";
+/* Views.swift:628 */
+"Отправляю…" = "Sending…";
+/* Views.swift:635 */
+"Закрыть" = "Close";
+/* Views.swift:676 */
+"Поиск в буфере" = "Search the clipboard";
+/* Views.swift:696 */
+"Только текст, ссылки, картинки или файлы" = "Only text, links, images or files";
+/* Views.swift:702 */
+"↩ копирует · включить вставку" = "↩ copies · turn on pasting";
+/* Views.swift:707 */
+"Разрешить Nook вставлять выбранное в предыдущее приложение (Универсальный доступ)" = "Let Nook paste the selected item into the previous app (Accessibility)";
+/* Views.swift:710 */
+"Вернуть" = "Undo";
+/* Views.swift:717 */
+"Очистить всё, кроме закреплённого (можно вернуть 15 с)" = "Clear everything except pinned items (undo within 15 s)";
+/* Views.swift:727 */
+"Скопируйте что-нибудь — оно появится здесь" = "Copy something — it shows up here";
+/* Views.swift:741 */
+"Вставить" = "Paste";
+/* Views.swift:741 */
+"Скопировать" = "Copy";
+/* Views.swift:743 */
+"Скопировать текст с картинки" = "Copy Text from Image";
+/* Views.swift:747 */
+"Открепить" = "Unpin";
+/* Views.swift:747 */
+"Закрепить" = "Pin";
+/* Views.swift:861 */
+"Перетащите файлы на вырез" = "Drop files on the notch";
+/* Views.swift:862 */
+"Новые скриншоты попадают сюда сами" = "New screenshots land here by themselves";
+/* Views.swift:880 */
+"%lld файл(ов) · перетащите наружу, чтобы использовать" = "%lld file(s) · drag them out to use";
+/* Views.swift:884 */
+"AirDrop всё" = "AirDrop All";
+/* Views.swift:955 */
+"Убрать с полки" = "Remove from Shelf";
+/* Views.swift:988 */
+"Запустите Claude Code или Codex — статус и запросы на разрешение появятся здесь" = "Start Claude Code or Codex — status and permission requests show up here";
+/* Views.swift:989 */
+"Nook ещё не подключён к Claude Code и Codex" = "Nook isn’t connected to Claude Code and Codex yet";
+/* Views.swift:997 */
+"Добавит хук Nook в ~/.claude/settings.json и ~/.codex/hooks.json, сохранив копии файлов" = "Adds Nook’s hook to ~/.claude/settings.json and ~/.codex/hooks.json, keeping copies of the files";
+/* Views.swift:1073 */
+"%@ просит разрешение · %@" = "%@ asks for permission · %@";
+/* Views.swift:1077 */
+"%lld строк" = "%lld lines";
+/* Views.swift:1092 */
+"Разрешить" = "Allow";
+/* Views.swift:1094 */
+"Всегда" = "Always";
+/* Views.swift:1095 */
+"Добавит: " = "Adds: ";
+/* Views.swift:1097 */
+"Отклонить" = "Deny";
+/* Views.swift:1104 */
+"«Всегда» добавит: " = "“Always” adds: ";
+/* Views.swift:1115 */
+"этот проект, только у вас" = "this project, only for you";
+/* Views.swift:1115 */
+"проект" = "project";
+/* Views.swift:1116 */
+"все проекты" = "all projects";
+/* Views.swift:1116 */
+"до конца сессии" = "until the session ends";
+/* Views.swift:1126 */
+"режим %@" = "mode %@";
+/* Views.swift:1129 */
+"доступ к папкам: " = "folder access: ";
+/* Views.swift:1130 */
+"правило" = "rule";
+/* Views.swift:1133 */
+"правило из предложения Claude" = "rule from Claude’s suggestion";
+/* Views.swift:1144 */
+"Лимиты · осталось" = "Limits · left";
+/* Views.swift:1152 */
+"Сегодня" = "Today";
+/* Views.swift:1158 */
+"Claude за сегодня: %@. Стоимость по ценам API" = "Claude today: %@. Cost at API prices";
+/* Views.swift:1159 */
+" (без моделей с неизвестной ценой)" = " (without models of unknown price)";
+/* Views.swift:1160 */
+"; с подпиской Claude платите не вы, это ориентир." = "; with a Claude subscription you don’t pay this, it’s a guide.";
+/* Views.swift:1164 */
+"— остаток при ровном темпе" = "— what’s left at an even pace";
+/* Views.swift:1172 */
+"Codex · месяц" = "Codex · month";
+/* Views.swift:1173 */
+"Codex · неделя" = "Codex · week";
+/* Views.swift:1174 */
+"Codex · %lld ч" = "Codex · %lld h";
+/* Views.swift:1214 */
+"сброс " = "resets ";
+/* Views.swift:1214 */
+"нет данных" = "no data";
+/* Views.swift:1214 */
+"время сброса неизвестно" = "reset time unknown";
+/* Views.swift:1216 */
+"через " = "in ";
+/* Views.swift:1220 */
+"Расход опережает время: при таком темпе лимит закончится раньше сброса." = "Usage is ahead of time: at this pace the limit runs out before the reset.";
+/* ViewsMain.swift:338 */
+"Звук" = "Sound";
+/* ViewsMain.swift:357 */
+"Яркость" = "Brightness";
+/* ViewsMain.swift:382 */
+"Запись" = "Recording";
+/* ViewsMain.swift:382 */
+"Распознаю" = "Recognizing";
+/* ViewsMain.swift:421 */
+"Вкл" = "On";
+/* ViewsMain.swift:421 */
+"Выкл" = "Off";
+/* ViewsMain.swift:486 */
+"Нужен Универсальный доступ: разрешите Nook в Настройках и нажмите ещё раз" = "Accessibility needed: allow Nook in Settings and click again";
+/* ViewsMain.swift:487 */
+"Заблокировать клавиатуру на 30 секунд, чтобы её протереть" = "Lock the keyboard for 30 seconds to wipe it";
+/* ViewsMain.swift:500 */
+"Клавиатура заблокирована" = "Keyboard locked";
+/* ViewsMain.swift:501 */
+"Можно протирать. Трекпад работает." = "Wipe away. The trackpad still works.";
+/* ViewsMain.swift:503 */
+"Разблокировать" = "Unlock";
+/* ViewsMain.swift:634 */
+"%@ — готово" = "%@ — done";
+/* ViewsMain.swift:635 */
+"за " = "in ";
+/* ViewsMain.swift:649 */
+"Входящий звонок" = "Incoming call";
+/* ViewsMain.swift:650 */
+"Звонок · %@" = "Call · %@";
+/* ViewsMain.swift:667 */
+"Загружено" = "Downloaded";
+/* ViewsMain.swift:673 */
+"Команда завершилась" = "Command finished";
+/* ViewsMain.swift:673 */
+"Команда с ошибкой · код %lld" = "Command failed · code %lld";
+/* ViewsMain.swift:676 */
+"шла " = "took ";
+/* ViewsMain.swift:678 */
+"Грузит Mac · запущен агентом в %@" = "Loading the Mac · started by an agent in %@";
+/* ViewsMain.swift:678 */
+"Грузит Mac" = "Loading the Mac";
+/* ViewsMain.swift:682 */
+"память %@" = "memory %@";
+/* ViewsMain.swift:684 */
+"%lld%% всего процессора · больше 2 мин" = "%lld%% of all CPU · over 2 min";
+/* ViewsMain.swift:687 */
+"Лимит почти исчерпан" = "Limit almost used up";
+/* ViewsMain.swift:688 */
+"%@: осталось %lld%%" = "%@: %lld%% left";
+/* ViewsMain.swift:689 */
+"Сброс " = "Resets ";
+/* ViewsMain.swift:689 */
+" · через " = " · in ";
+/* ViewsMain.swift:690 */
+"Время сброса неизвестно" = "Reset time unknown";
+/* ViewsMain.swift:701 */
+"Начало в %@ · %@" = "Starts at %@ · %@";
+/* ViewsMain.swift:713 */
+"Написать агенту прямо из Nook. Клик по островку открывает терминал" = "Write to the agent right from Nook. A click on the island opens the terminal";
+/* ViewsMain.swift:721 */
+"В Finder" = "Show in Finder";
+/* ViewsMain.swift:723 */
+"Программы и скрипты из интернета Nook не открывает сам — проверьте файл в Finder" = "Nook doesn’t open apps and scripts from the internet by itself — check the file in Finder";
+/* ViewsMain.swift:728 */
+"На полку" = "To Shelf";
+/* ViewsMain.swift:733 */
+"+5 мин" = "+5 min";
+/* ViewsMain.swift:735 */
+"Стоп" = "Stop";
+/* ViewsMain.swift:740 */
+"Подключиться" = "Join";
+/* ViewsMain.swift:752 */
+"Настройки" = "Settings";
+/* ViewsMain.swift:761 */
+"Не показывать от «%@»" = "Don’t show from “%@”";
+/* ViewsMain.swift:769 */
+"Не следить за «%@»" = "Stop watching “%@”";
+/* ViewsMain.swift:776 */
+"Скрыть" = "Hide";
+/* ViewsMain.swift:804 */
+"Точно?" = "Sure?";
+/* ViewsMain.swift:804 */
+"Завершить" = "End";
+/* ViewsMain.swift:814 */
+"Завершить «%@» (PID %d): сначала мягко, через 3 с принудительно" = "End “%@” (PID %d): gently first, forced after 3 s";
+/* ViewsMain.swift:855 */
+"%lld сл/мин" = "%lld wpm";
+/* ViewsMain.swift:858 */
+"Голос" = "Voice";
+/* ViewsMain.swift:992 */
+"Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить" = "Caffeine on: the Mac stays awake. Click to turn it off";
+/* ViewsMain.swift:993 */
+"Кофеин: Mac не будет засыпать (например, пока работают агенты)" = "Caffeine: the Mac won’t sleep (for example, while agents work)";
+/* ViewsMain.swift:999 */
+"Поиск программ и команд (%@)" = "Search apps and commands (%@)";
+/* ViewsMain.swift:1066 */
+"Батарея %lld%% · нажмите для подробностей" = "Battery %lld%% · click for details";
+/* ViewsMain.swift:1176 */
+"Идёт сейчас" = "Happening now";
+/* ViewsMain.swift:1184 */
+"Войти" = "Join";
+/* ViewsMain.swift:1186 */
+"Подключиться: %@" = "Join: %@";
+/* ViewsMain.swift:1191 */
+"Покажу встречи" = "I’ll show your meetings";
+/* ViewsMain.swift:1196 */
+"Сегодня свободно" = "Nothing today";
+/* ViewsMain.swift:1197 */
+"Напоминаний нет" = "No reminders";
+/* ViewsMain.swift:1197 */
+"напоминание" = "reminder";
+/* ViewsMain.swift:1197 */
+"напоминания" = "reminders";
+/* ViewsMain.swift:1197 */
+"напоминаний" = "reminders";
+/* ViewsMain.swift:1207 */
+"Весь день" = "All day";
+/* ViewsMain.swift:1227 */
+"Открыть Погоду" = "Open Weather";
+/* ViewsMain.swift:1264 */
+"Покажу события и напоминания прямо в вырезе" = "I’ll show events and reminders right in the notch";
+/* ViewsMain.swift:1265 */
+"Открыть настройки доступа" = "Open Access Settings";
+/* ViewsMain.swift:1265 */
+"Разрешить доступ" = "Allow Access";
+/* ViewsMain.swift:1284 */
+"События" = "Events";
+/* ViewsMain.swift:1287 */
+"Открыть Календарь" = "Open Calendar";
+/* ViewsMain.swift:1290 */
+"Сегодня и завтра свободно" = "Today and tomorrow are free";
+/* ViewsMain.swift:1315 */
+"Напоминания" = "Reminders";
+/* ViewsMain.swift:1318 */
+"Новое напоминание" = "New reminder";
+/* ViewsMain.swift:1347 */
+"Завтра" = "Tomorrow";
+/* ViewsMain.swift:1348 */
+"%@ · весь день" = "%@ · all day";
+/* ViewsMain.swift:1384 */
+"Продолжить" = "Resume";
+/* ViewsMain.swift:1384 */
+"Пауза" = "Pause";
+/* ViewsMain.swift:1385 */
+"Сброс" = "Reset";
+/* ViewsMain.swift:1388 */
+"+1 мин" = "+1 min";
+/* ViewsMain.swift:1393 */
+"Выберите время справа" = "Pick a time on the right";
+/* ViewsMain.swift:1394 */
+"или запустите Помодоро 25 / 5" = "or start Pomodoro 25 / 5";
+/* ViewsMain.swift:1397 */
+"Фокус: уведомления ждут, кофеин" = "Focus: notifications wait, caffeine on";
+/* ViewsMain.swift:1397 */
+"Перерыв: уведомления снова видны" = "Break: notifications show again";
+/* ViewsMain.swift:1408 */
+"помодоро: %lld" = "pomodoros: %lld";
+/* ViewsMain.swift:1420 */
+"Быстрый старт" = "Quick start";
+/* ViewsMain.swift:1423 */
+"1 ч" = "1 h";
+/* ViewsMain.swift:1423 */
+"%lld м" = "%lld m";
+/* ViewsMain.swift:1430 */
+"Помодоро 25 / 5" = "Pomodoro 25 / 5";
+/* ViewsMain.swift:1433 */
+"25 минут работы, 5 минут отдыха" = "25 minutes of work, 5 minutes of rest";
+/* ViewsMain.swift:1435 */
+"Режим фокуса включён" = "Focus mode on";
+/* ViewsMain.swift:1441 */
+"Помодоро, кофеин и тишина: пока идёт фокус, Nook не показывает уведомления приложений (звонки показывает). «Стоп» выключает режим" = "Pomodoro, caffeine and quiet: during focus Nook shows no app notifications (calls still show). “Stop” turns the mode off";
+/* ViewsMain.swift:1482 */
+"Сценарии" = "Scripts";
+/* ViewsMain.swift:1521 */
+"Авто" = "Auto";
+/* ViewsMain.swift:1527 */
+"Текст идёт за вашей речью. Распознавание на Mac, звук не сохраняется." = "The text follows your speech. Recognition runs on the Mac; audio is not saved.";
+/* ViewsMain.swift:1531 */
+"Скорость · %lld слов/мин" = "Speed · %lld words/min";
+/* ViewsMain.swift:1536 */
+"Шрифт · %lld" = "Font · %lld";
+/* ViewsMain.swift:1541 */
+"Начать" = "Start";
+/* ViewsMain.swift:1544 */
+"Пробел — пауза, ←/→ — скорость, Esc — стоп" = "Space — pause, ←/→ — speed, Esc — stop";
+/* ViewsMore.swift:23 */
+"Пока пусто" = "Empty for now";
+/* ViewsMore.swift:45 */
+"Пишите — всё сохраняется само" = "Type — everything saves by itself";
+/* ViewsMore.swift:73 */
+"Скопировать текст" = "Copy Text";
+/* ViewsMore.swift:97 */
+"Нет доступа к камере" = "No access to the camera";
+/* ViewsMore.swift:98 */
+"Открыть настройки" = "Open Settings";
+/* ViewsMore.swift:106 */
+"Камера не найдена" = "No camera found";
+/* ViewsMore.swift:121 */
+"Свет и кадр перед созвоном" = "Light and framing before a call";
+/* ViewsMore.swift:122 */
+"Камера работает, только пока открыта эта вкладка. Ничего не записывается и не отправляется." = "The camera works only while this tab is open. Nothing is recorded or sent.";
+/* ViewsMore.swift:127 */
+"Камера включена" = "Camera on";
+/* ViewsMore.swift:127 */
+"Камера выключена" = "Camera off";
+/* ViewsMore.swift:173 */
+"Ёмкость" = "Capacity";
+/* ViewsMore.swift:174 */
+"Циклы" = "Cycles";
+/* ViewsMore.swift:175 */
+"Энергосбережение" = "Low Power Mode";
+/* ViewsMore.swift:175 */
+"вкл" = "on";
+/* ViewsMore.swift:175 */
+"выкл" = "off";
+/* ViewsMore.swift:178 */
+"Лимит заряда 80–100 % задаётся в macOS и работает даже без Nook." = "The 80–100 % charge limit is set in macOS and works even without Nook.";
+/* ViewsMore.swift:181 */
+"Настроить лимит заряда" = "Set the Charge Limit";
+/* Windows.swift:14 */
+"Левая половина" = "Left Half";
+/* Windows.swift:15 */
+"Правая половина" = "Right Half";
+/* Windows.swift:16 */
+"Верхняя половина" = "Top Half";
+/* Windows.swift:17 */
+"Нижняя половина" = "Bottom Half";
+/* Windows.swift:18 */
+"Половина по центру" = "Center Half";
+/* Windows.swift:19 */
+"Левая верхняя четверть" = "Top Left Quarter";
+/* Windows.swift:20 */
+"Правая верхняя четверть" = "Top Right Quarter";
+/* Windows.swift:21 */
+"Левая нижняя четверть" = "Bottom Left Quarter";
+/* Windows.swift:22 */
+"Правая нижняя четверть" = "Bottom Right Quarter";
+/* Windows.swift:23 */
+"Левая треть" = "Left Third";
+/* Windows.swift:24 */
+"Треть по центру" = "Center Third";
+/* Windows.swift:25 */
+"Правая треть" = "Right Third";
+/* Windows.swift:26 */
+"Две трети слева" = "Left Two Thirds";
+/* Windows.swift:27 */
+"Две трети по центру" = "Center Two Thirds";
+/* Windows.swift:28 */
+"Две трети справа" = "Right Two Thirds";
+/* Windows.swift:29 */
+"Развернуть окно" = "Maximize";
+/* Windows.swift:30 */
+"Окно по центру" = "Center";
+/* Windows.swift:31 */
+"Удобный размер окна" = "Reasonable Size";
+/* Windows.swift:32 */
+"Окно больше" = "Larger";
+/* Windows.swift:33 */
+"Окно меньше" = "Smaller";
+/* Windows.swift:34 */
+"Окно на следующий дисплей" = "Next Display";
+/* Windows.swift:35 */
+"Окно на предыдущий дисплей" = "Previous Display";
+/* Windows.swift:36 */
+"Вернуть окно как было" = "Restore";

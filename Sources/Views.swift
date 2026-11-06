@@ -1092,7 +1092,7 @@ struct PermissionCard: View {
                 Button("Разрешить") { agents.answer(request.id, with: .allow) }.buttonStyle(.pill(.primary))
                 if request.suggestions != nil {
                     Button("Всегда") { agents.answer(request.id, with: .always) }.buttonStyle(.pill())
-                        .help("Добавит: " + Self.describe(request.suggestions))
+                        .help(L("Добавит: ") + Self.describe(request.suggestions))
                 }
                 Button("Отклонить") { agents.answer(request.id, with: .deny) }.buttonStyle(.pill(foreground: Palette.salmon))
                 Spacer()
@@ -1101,7 +1101,7 @@ struct PermissionCard: View {
             .disabled(!armed)
             .opacity(armed ? 1 : 0.55)
             if request.suggestions != nil {
-                Text("«Всегда» добавит: " + Self.describe(request.suggestions))
+                Text(L("«Всегда» добавит: ") + Self.describe(request.suggestions))
                     .font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1).truncationMode(.middle)
             }
         }
@@ -1213,7 +1213,7 @@ struct LimitRow: View {
             HStack {
                 Text(window?.resetsAt.map { L("сброс ") + Format.when($0) } ?? (window == nil ? L("нет данных") : L("время сброса неизвестно")))
                 Spacer(minLength: 4)
-                if let timeLeft { Text("через " + Format.until(timeLeft)) }
+                if let timeLeft { Text(L("через ") + Format.until(timeLeft)) }
             }
             .font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
         }

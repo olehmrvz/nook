@@ -510,7 +510,7 @@ final class Launcher: ObservableObject {
             guard !argument.isEmpty else { continue }
             let encoded = argument.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? argument
             if let url = URL(string: template.replacingOccurrences(of: "{query}", with: encoded)) {
-                rows.insert(LaunchItem(id: "quicklink:\(name)", title: "\(name): «\(argument)»", subtitle: url.host ?? L("Ссылка"),
+                rows.insert(LaunchItem(id: "quicklink:\(name)", title: L("\(name): «\(argument)»"), subtitle: url.host ?? L("Ссылка"),
                                        terms: [], kind: .link(url, symbol: "link")), at: 0)
             }
         }

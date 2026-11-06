@@ -581,7 +581,7 @@ final class AgentHub: ObservableObject {
         case "Bash": (input["description"] as? String) ?? firstLine(input["command"] as? String, limit: 60)
         case "Read", "Edit", "Write", "MultiEdit": file("file_path")
         case "NotebookEdit": file("notebook_path")
-        case "Grep", "Glob": (input["pattern"] as? String).map { "«\($0)»" }
+        case "Grep", "Glob": (input["pattern"] as? String).map { L("«\($0)»") }
         case "WebFetch": (input["url"] as? String).flatMap { URL(string: $0)?.host }
         case "WebSearch": input["query"] as? String
         case "Task", "Agent": input["description"] as? String

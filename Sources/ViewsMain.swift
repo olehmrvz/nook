@@ -673,7 +673,7 @@ struct IslandView: View {
             Text(exit == 0 ? L("Команда завершилась") : L("Команда с ошибкой · код \(exit)"))
                 .font(.system(size: 10.5, weight: .medium)).foregroundStyle(exit == 0 ? faint : Palette.salmon)
             Text(text).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-            Text("шла " + Format.until(seconds)).font(.system(size: 11)).foregroundStyle(muted)
+            Text(L("шла ") + Format.until(seconds)).font(.system(size: 11)).foregroundStyle(muted)
         case .hog(let hog, let agent):
             Text(agent.map { L("Грузит Mac · запущен агентом в \($0)") } ?? L("Грузит Mac"))
                 .font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint).lineLimit(1)

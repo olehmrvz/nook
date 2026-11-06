@@ -532,6 +532,7 @@ struct GeneralPane: View {
 
     var body: some View {
         Form {
+            LanguageSection()
             Section {
                 Toggle("Запускать при входе в систему", isOn: state.bind({ state.loginItem }, state.setLoginItem))
                 Toggle("Значок в строке меню", isOn: state.bind({ Settings.showMenuIcon }, state.setMenuIcon))
@@ -560,6 +561,24 @@ struct GeneralPane: View {
                 HStack {
                     Spacer()
                     Button("Выйти из Nook") { NSApp.terminate(nil) }
+                }
+            }
+        }
+    }
+}
+
+/// The interface language; a new one needs a restart (macOS picks the language when an app starts).
+struct LanguageSection: View {
+    @State private var choice = Language.chosen
+
+    var body: some View {
+        Section {
+            Picker("Язык", selection: Binding(get: { choice }, set: { choice = $0; Language.chosen = $0 })) {
+                ForEach(Language.allCases) { Text($0.title).tag($0) }
+            }
+            if choice.resolved != Language.shown {
+                LabeledContent("Язык сменится после перезапуска") {
+                    Button("Перезапустить Nook") { Language.restartNook() }
                 }
             }
         }
