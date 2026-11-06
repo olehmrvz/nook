@@ -139,6 +139,8 @@ struct Island: Identifiable, Equatable {
         case hog(ProcessWatch.Hog, agent: String?)
         /// Dictation needs something (a model, the microphone) or reports a result.
         case dictation(title: String, detail: String, settings: Bool)
+        /// A short message with a symbol: a command from the search finished, and the like.
+        case notice(symbol: String, title: String, detail: String, ok: Bool)
     }
     let id = UUID()
     let kind: Kind
@@ -355,6 +357,9 @@ final class NotchModel: ObservableObject {
         launcher.snippets = { [weak self] in self?.snippets.all ?? [] }
         launcher.insertSnippet = { [weak self] snippet in self?.snippets.insert(snippet) }
         launcher.run = { [weak self] command in self?.run(command) }
+        launcher.notify = { [weak self] symbol, title, detail, ok in
+            self?.present(Island(kind: .notice(symbol: symbol, title: title, detail: detail, ok: ok), seconds: 5))
+        }
         launcher.prepare()
         launcher.applyHotkeys()
         cuely.onPresentChange = { [weak self] presenting in

@@ -89,6 +89,7 @@ extension Island {
         case .limit(_, let left, _): return left <= 5 ? [Palette.red, Palette.coral] : [Palette.orange, Palette.yellow]
         case .hog: return [Palette.red, Palette.orange]
         case .dictation: return [Palette.violet, Palette.pink]
+        case .notice(_, _, _, let ok): return ok ? [Palette.green, Palette.mint] : [Palette.red, Palette.coral]
         }
     }
 }
@@ -554,6 +555,8 @@ struct IslandView: View {
             Badge(symbol: hog.memory >= ProcessWatch.memoryLimit ? "memorychip.fill" : "flame.fill", colors: island.colors, soft: true)
         case .dictation:
             Badge(symbol: "waveform", colors: island.colors, soft: true)
+        case .notice(let symbol, _, _, _):
+            Badge(symbol: symbol, colors: island.colors, soft: true)
         }
     }
 
@@ -619,6 +622,9 @@ struct IslandView: View {
             Text(resets.map { "Сброс " + Format.when($0) + " · через " + Format.until(max(0, $0.timeIntervalSinceNow)) }
                  ?? "Время сброса неизвестно")
                 .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
+        case .notice(_, let title, let detail, _):
+            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+            if !detail.isEmpty { Text(detail).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2) }
         case .dictation(let title, let detail, _):
             Text("Диктовка").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
@@ -715,7 +721,7 @@ struct IslandView: View {
             model.dismissIsland()
             if settings { model.onOpenSettings?(.dictation) }
             return
-        case .airpods, .timerDone, .hog: break
+        case .airpods, .timerDone, .hog, .notice: break
         }
         model.dismissIsland()
     }

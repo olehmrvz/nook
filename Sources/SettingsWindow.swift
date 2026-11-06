@@ -606,9 +606,15 @@ struct LauncherPane: View {
                 Toggle("Программы", isOn: state.bind({ Settings.launcherApps }, { Settings.launcherApps = $0 }))
                 Toggle("Системные настройки", isOn: state.bind({ Settings.launcherSettings }, { Settings.launcherSettings = $0 }))
                 Toggle("Команды Nook", isOn: state.bind({ Settings.launcherCommands }, { Settings.launcherCommands = $0 }))
+                Toggle("Файлы (Spotlight)", isOn: state.bind({ Settings.launcherFiles }, { Settings.launcherFiles = $0 }))
+                Toggle("Быстрые команды macOS", isOn: state.bind({ Settings.launcherShortcuts }, { Settings.launcherShortcuts = $0 }))
                 Toggle("Google и словарь внизу списка",
                        isOn: state.bind({ Settings.launcherFallbacks }, { Settings.launcherFallbacks = $0 }))
             }
+            PairsSection(title: "Быстрые ссылки", first: "имя", second: "https://…{query}…",
+                         load: { Settings.quicklinks }, save: { Settings.quicklinks = $0 })
+            PairsSection(title: "Свои команды", first: "название", second: "команда для zsh",
+                         load: { Settings.customCommands }, save: { Settings.customCommands = $0 })
             Section("Окна") {
                 Toggle("Команды для окон: половины, трети, развернуть",
                        isOn: state.bind({ Settings.launcherWindows }, { Settings.launcherWindows = $0 }))
@@ -624,6 +630,41 @@ struct LauncherPane: View {
             }
             LauncherItemsSection(launcher: state.model.launcher)
         }
+    }
+}
+
+/// Name + text rows (quicklinks, commands), saved when a field loses focus.
+struct PairsSection: View {
+    let title: String
+    let first: String
+    let second: String
+    let load: () -> [[String]]
+    let save: ([[String]]) -> Void
+    @State private var rows: [[String]] = []
+
+    var body: some View {
+        Section {
+            ForEach(rows.indices, id: \.self) { index in
+                HStack(spacing: 8) {
+                    TextField(first, text: binding(index, 0)).frame(width: 110)
+                    TextField(second, text: binding(index, 1)).font(.system(size: 12, design: .monospaced))
+                    Button { rows.remove(at: index); save(rows) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.borderless)
+                }
+            }
+            Button("Добавить") { rows.append(["", ""]) }
+        } header: {
+            Text(title)
+        }
+        .onAppear { rows = load() }
+    }
+
+    private func binding(_ row: Int, _ column: Int) -> Binding<String> {
+        Binding(get: { rows.indices.contains(row) ? rows[row][column] : "" }, set: { value in
+            guard rows.indices.contains(row) else { return }
+            rows[row][column] = value
+            save(rows.filter { !$0[0].trimmingCharacters(in: .whitespaces).isEmpty && !$0[1].isEmpty })
+        })
     }
 }
 

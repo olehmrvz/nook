@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension Settings {
     private static var defaults: UserDefaults { .standard }
@@ -146,6 +147,12 @@ struct LaunchItem: Identifiable, Equatable {
         case link(URL, symbol: String)
         case window(WindowAction)
         case snippet(Snippet)
+        /// An Apple Shortcut by its identifier.
+        case shortcut(String)
+        case file(URL)
+        case emoji(String)
+        /// A shell command of the person's own.
+        case command(String)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -183,7 +190,13 @@ struct LaunchItem: Identifiable, Equatable {
 
 /// Search from the notch (⌥Space or the recorded shortcut): apps, System Settings panes and Nook's own commands.
 final class Launcher: ObservableObject {
-    @Published var query = "" { didSet { if query != oldValue { search() } } }
+    @Published var query = "" {
+        didSet {
+            guard query != oldValue else { return }
+            search()
+            files.search(query.trimmingCharacters(in: .whitespaces))
+        }
+    }
     @Published private(set) var results: [LaunchItem] = []
     @Published var selection = 0
     /// App and pane icons by path, loaded off the main thread.
@@ -194,6 +207,13 @@ final class Launcher: ObservableObject {
     /// The person's snippets and how to type one into the app in front (set by the model).
     var snippets: () -> [Snippet] = { [] }
     var insertSnippet: ((Snippet) -> Void)?
+    /// An island: symbol, title, detail, ok (set by the model).
+    var notify: ((String, String, String, Bool) -> Void)?
+
+    private var shortcuts: [LaunchItem] = []
+    private var emoji: [Emoji.Entry] = []
+    private let files = FileSearch()
+    private var fileResults: (query: String, urls: [URL]) = ("", [])
     /// Item ids whose own shortcut another app holds.
     @Published private(set) var takenHotkeys: Set<String> = []
     private var hotkeyIDs: [UInt32] = []
@@ -214,6 +234,7 @@ final class Launcher: ObservableObject {
     private let queue = DispatchQueue(label: "nook.launcher", qos: .userInitiated)
 
     static let settingsApp = "/System/Applications/System Settings.app"
+    static let shortcutsApp = "/System/Applications/Shortcuts.app"
 
     /// Called when the search opens: a fresh query, and the index again if it is older than a minute.
     func prepare() {
@@ -224,16 +245,29 @@ final class Launcher: ObservableObject {
         search()
         guard !indexing, Date().timeIntervalSince(indexedAt) > 60 else { return }
         indexing = true
+        files.onResults = { [weak self] urls in
+            guard let self else { return }
+            self.fileResults = (self.query.trimmingCharacters(in: .whitespaces), urls)
+            self.search()
+        }
         queue.async { [weak self] in
             let apps = Self.scanApps()
             let panes = Self.scanPanes()
+            let emoji = Emoji.load()
+            let shortcuts = Settings.launcherShortcuts ? AppleShortcuts.list().map { shortcut in
+                LaunchItem(id: "shortcut:\(shortcut.id)", title: shortcut.name, subtitle: "Быстрая команда",
+                           terms: [LaunchItem.Term(shortcut.name)], kind: .shortcut(shortcut.id))
+            } : []
             var icons: [String: NSImage] = [:]
             for case .app(let url) in apps.map(\.kind) { icons[url.path] = NSWorkspace.shared.icon(forFile: url.path) }
             icons[Self.settingsApp] = NSWorkspace.shared.icon(forFile: Self.settingsApp)
+            icons[Self.shortcutsApp] = NSWorkspace.shared.icon(forFile: Self.shortcutsApp)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.apps = apps
                 self.panes = panes
+                self.shortcuts = shortcuts
+                self.emoji = emoji
                 self.icons = icons
                 self.indexedAt = Date()
                 self.indexing = false
@@ -244,7 +278,8 @@ final class Launcher: ObservableObject {
 
     /// Apps, panes and commands, for the alias and shortcut list in Settings.
     var everything: [LaunchItem] {
-        (apps + panes).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending } + commands + windows
+        (apps + panes + shortcuts).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            + commands + windows + customCommands
     }
 
     func icon(for item: LaunchItem) -> NSImage? {
@@ -320,7 +355,7 @@ final class Launcher: ObservableObject {
     }
 
     private func launch(_ id: String) {
-        if let item = (apps + panes + commands + windows).first(where: { $0.id == id }) {
+        if let item = (apps + panes + shortcuts + commands + windows + customCommands).first(where: { $0.id == id }) {
             open(item, record: false)
         } else if id.hasPrefix("app:"),
                   let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: String(id.dropFirst(4))) {
@@ -331,9 +366,18 @@ final class Launcher: ObservableObject {
         }
     }
 
+    private var customCommands: [LaunchItem] {
+        Settings.customCommands.compactMap { pair in
+            guard pair.count == 2, !pair[0].isEmpty, !pair[1].isEmpty else { return nil }
+            return LaunchItem(id: "command:\(pair[0])", title: pair[0], subtitle: "Своя команда",
+                              terms: [LaunchItem.Term(pair[0])], kind: .command(pair[1]))
+        }
+    }
+
     private var pool: [LaunchItem] {
         (Settings.launcherApps ? apps : []) + (Settings.launcherSettings ? panes : [])
             + (Settings.launcherCommands ? commands : []) + (Settings.launcherWindows ? windows : [])
+            + (Settings.launcherShortcuts ? shortcuts : []) + customCommands
             + snippets().filter(\.enabled).map { snippet in
                 LaunchItem(id: "snippet:\(snippet.file.lastPathComponent)", title: snippet.name,
                            subtitle: snippet.keyword.isEmpty ? "Сниппет" : "Сниппет · \(snippet.keyword)",
@@ -351,6 +395,15 @@ final class Launcher: ObservableObject {
             return min(250, Int(entry[0] * 40 / (1 + days / 7)))
         }
         let typed = Self.fold(query.trimmingCharacters(in: .whitespaces))
+        // ":heart": emoji only.
+        if query.hasPrefix(":") {
+            results = Emoji.search(String(query.dropFirst()), in: emoji).prefix(30).map { emoji in
+                LaunchItem(id: "emoji:\(emoji.character)", title: emoji.title, subtitle: "Эмодзи",
+                           terms: [], kind: .emoji(emoji.character))
+            }
+            selection = 0
+            return
+        }
         var found: [(LaunchItem, Int)]
         if typed.isEmpty {
             // Nothing typed: what was opened lately, else Nook's commands.
@@ -374,14 +427,33 @@ final class Launcher: ObservableObject {
                 guard let best else { return nil }
                 let kind: Int = switch item.kind {
                 case .app: 20
-                case .nook, .window, .snippet: 10
-                case .setting, .answer, .link: 0
+                case .nook, .window, .snippet, .shortcut, .command: 10
+                case .setting, .answer, .link, .file, .emoji: 0
                 }
                 return (item, best + kind + boost(item.id))
             }
         }
         var rows = found.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.title < $1.0.title }.prefix(40).map(\.0)
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if fileResults.query == trimmed, !trimmed.isEmpty {
+            rows += fileResults.urls.map { url in
+                LaunchItem(id: "file:\(url.path)", title: url.lastPathComponent,
+                           subtitle: (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath,
+                           terms: [], kind: .file(url))
+            }
+        }
+        // "yt котики": a quicklink with what follows its name.
+        for link in Settings.quicklinks where link.count == 2 {
+            let name = link[0], template = link[1]
+            guard trimmed.lowercased().hasPrefix(name.lowercased() + " ") else { continue }
+            let argument = String(trimmed.dropFirst(name.count + 1)).trimmingCharacters(in: .whitespaces)
+            guard !argument.isEmpty else { continue }
+            let encoded = argument.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? argument
+            if let url = URL(string: template.replacingOccurrences(of: "{query}", with: encoded)) {
+                rows.insert(LaunchItem(id: "quicklink:\(name)", title: "\(name): «\(argument)»", subtitle: url.host ?? "Ссылка",
+                                       terms: [], kind: .link(url, symbol: "link")), at: 0)
+            }
+        }
         if let url = Self.webAddress(trimmed) {
             rows.insert(LaunchItem(id: "url", title: "Открыть \(trimmed)", subtitle: "Браузер", terms: [],
                                    kind: .link(url, symbol: "safari.fill")), at: 0)
@@ -470,6 +542,19 @@ final class Launcher: ObservableObject {
             WindowManager.shared.perform(action)
         case .snippet(let snippet):
             insertSnippet?(snippet)
+        case .shortcut(let id):
+            AppleShortcuts.run(id)
+        case .file(let url):
+            if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
+        case .emoji(let character):
+            TextInsertion.type(character)
+        case .command(let script):
+            let started = Date()
+            CustomCommands.run(name: item.title, script: script) { [weak self] ok, text in
+                let seconds = Int(Date().timeIntervalSince(started))
+                self?.notify?(ok ? "terminal.fill" : "exclamationmark.triangle.fill", item.title,
+                              seconds > 1 ? "\(text) · \(seconds) с" : text, ok)
+            }
         case .answer, .link:
             break
         }
@@ -633,7 +718,10 @@ struct LauncherTab: View {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
         case .setting: launcher.icons[Launcher.settingsApp]
-        case .nook, .answer, .link, .window, .snippet: nil
+        case .shortcut: launcher.icons[Launcher.shortcutsApp]
+        // By type, not from the file: reading files in Documents could ask for a permission.
+        case .file(let url): NSWorkspace.shared.icon(for: UTType(filenameExtension: url.pathExtension) ?? .data)
+        case .nook, .answer, .link, .window, .snippet, .emoji, .command: nil
         }
     }
 
@@ -641,7 +729,8 @@ struct LauncherTab: View {
         guard items.indices.contains(launcher.selection) else { return "" }
         switch items[launcher.selection].kind {
         case .app: return "↩ открыть · ⌘↩ в Finder"
-        case .snippet: return "↩ вставить"
+        case .snippet, .emoji: return "↩ вставить"
+        case .file: return "↩ открыть · ⌘↩ в Finder"
         case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
         default: return "↩ открыть"
         }
@@ -666,6 +755,11 @@ struct LauncherTab: View {
                 model.collapse()
                 model.show(.copied, for: 1.4)
             }
+            return
+        }
+        if case .emoji = item.kind {
+            model.collapse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { launcher.open(item, reveal: false) }
             return
         }
         if case .snippet = item.kind {
@@ -744,6 +838,8 @@ struct LaunchIcon: View {
         case .link(_, let symbol): tile(symbol, Palette.blue)
         case .window(let action): tile(action.symbol, Palette.cyan)
         case .snippet: tile("text.quote", Palette.green)
+        case .command: tile("terminal.fill", Color(hex: 0x636366))
+        case .emoji(let character): Text(character).font(.system(size: size * 0.78)).frame(width: size, height: size)
         default:
             if let icon {
                 Image(nsImage: icon).resizable().frame(width: size, height: size)

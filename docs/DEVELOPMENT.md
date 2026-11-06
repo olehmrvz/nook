@@ -92,6 +92,12 @@ terminal, not from a process an agent started (an agent must not approve its own
   letters in order; the query is also tried in the other keyboard layout (ЙЦУКЕН ↔ QWERTY); usage boost from
   `launcherUsage` (count, last use). Opening an app does not hand focus back to the previous app first, so the new
   window lands on the display the search was on.
+- **Search sources:** `Sources/LauncherSources.swift`. Apple Shortcuts: `shortcuts list --show-identifiers` at index
+  time (5 s cap), `shortcuts run <id>`. Files: `NSMetadataQuery` on the name in the home folder, 0.15 s after typing
+  stops, from 3 characters, top 5 (no `.app`, no `Library`); icons by file type, never read from the file (a file in
+  Documents could ask for a permission). Emoji: macOS's own names from CoreEmoji `AppleName.strings` (system
+  language + English), `:` starts an emoji search. Quicklinks `[name, URL with {query}]` and custom commands
+  `[name, zsh text]` are lists in the settings; commands run `zsh -lc` in the home folder with `NOOK=1`.
 - **Windows:** `Sources/Windows.swift`. Commands are search items (`window:<action>`), so aliases and item shortcuts
   apply. AX off the main thread on the front app's focused window: visible frame of its display (Dock, menu bar,
   notch excluded), edges rounded separately, size → position → size. Restore keeps the frame from before the first

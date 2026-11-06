@@ -57,6 +57,8 @@ for the terminal tab. Everything else usually scattered around the screen lives 
   `sqrt 25`, units (`5 km в мили`, `100 f to c`) and currencies (`10 eur to uah`, `€20 to GBP`, `10 евро`).
 - Windows like Rectangle: halves, quarters, thirds, maximize, center, larger/smaller, next display, restore — from the
   search or with your own shortcuts (one click sets Rectangle's ⌃⌥ + arrows).
+- More in the search: files (Spotlight), Apple Shortcuts, emoji (`:сердце`, `:heart`), quicklinks (`yt котики`
+  opens a YouTube search; add your own with `{query}`), your own shell commands with the result in an island.
 - Snippets: type a keyword (`;sig`) anywhere and it turns into your text, with `{clipboard}`, `{date}`, `{time}`,
   `{uuid}`, `{cursor}` and custom date formats; also from the search. Plain `.md` files in the data folder.
 - Aliases and a shortcut for any app, System Settings pane or command.
