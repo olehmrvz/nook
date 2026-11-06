@@ -35,7 +35,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Вкладка «Зеркало» показывает камеру, только пока она открыта. Ничего не записывается.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cuely слушает вашу речь, чтобы прокручивать текст. Звук не сохраняется.</string>
+	<string>Nook слушает микрофон для диктовки и для суфлёра Cuely. Звук обрабатывается только на этом Mac и не сохраняется.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Cuely распознаёт речь, чтобы текст шёл за вами. По возможности распознавание идёт на Mac.</string>
 	<key>NSContactsUsageDescription</key>

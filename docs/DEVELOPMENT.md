@@ -30,7 +30,9 @@ is ad-hoc signed and macOS may ask again.
 
 `Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
 app (`power` opens Home with the battery card); `Nook --show settings[:pane]` opens the Settings window
-(panes: general, notch, notifications, agents, privacy, updates, thanks).
+(panes: general, notch, notifications, dictation, agents, privacy, updates, thanks).
+`Nook --dictate [start|stop|cancel|toggle]` drives dictation; it is refused from processes an agent started
+(they would hear the person and get the text typed into their own terminal), like `--answer`.
 `Nook --timer 25|stop|pomodoro` and `Nook --prompt` (start Cuely) for Raycast / Shortcuts.
 `Nook --answer allow|always|deny|terminal` answers the oldest pending agent request. It works from your own
 terminal, not from a process an agent started (an agent must not approve its own request).
@@ -79,3 +81,15 @@ terminal, not from a process an agent started (an agent must not approve its own
   automatic brightness. **Focus / Do Not Disturb:** `Sources/Focus.swift` watches `~/Library/DoNotDisturb/DB`
   (needs Full Disk Access) with file-system events, no polling; `focus-debug.log` records structure only.
 - **Pointer:** event-driven polling; the panel takes the keyboard only for text fields.
+- **Dictation:** `Sources/Dictation.swift` (key, audio, text) and `Sources/Parakeet.swift` (models, download,
+  recognition). A listen-only event tap watches one modifier key while dictation is on (Accessibility); held 0.25 s
+  without another key → recording (AVAudioEngine, resampled to 16 kHz mono); an active tap swallows Return (finish)
+  and Escape (cancel) only while recording. Recognition on a serial queue: Parakeet TDT 0.6B v3 in Core ML
+  (Preprocessor → Encoder → Decoder/JointDecisionv3, greedy TDT, 15 s windows cut at the quietest moment, decoder
+  state carried over). Text goes in by clipboard + ⌘V, marked `org.nspasteboard.TransientType`, and the previous
+  clipboard comes back 0.6 s later; Accessibility reads 3 characters before the cursor for case and spacing.
+  Models: `~/Library/Application Support/Nook/Models/parakeet-{ultra,redux}`, every file pinned by revision, size
+  and SHA-256 (`ParakeetFile`); downloads go to `*.partial` and are renamed only when complete. To try the engine
+  without the app, compile `Sources/Parakeet.swift` with a small `main.swift` (it needs `supportDir`) and feed it
+  `say -o x.aiff` speech. Ultra: 7 s of speech in ~0.1 s on M-series, first load ~10 s (Core ML compiles for the
+  Neural Engine), then ~0.2 s. Redux needs macOS 15 and loads slower (~12 s).

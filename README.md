@@ -52,6 +52,8 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - ⌨︎ Keyboard lock for 30 seconds to wipe it clean. The trackpad keeps working.
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
 - Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
+- Dictation: hold right ⌥ (or another key), speak, let go — the text appears where the cursor is. Recognition runs
+  on this Mac (Parakeet, 25 languages); the model (222 or 632 MB) downloads once. Credits: [NOTICE.md](NOTICE.md).
 - Weather, battery, choice of display for the notch.
 
 ## Install
@@ -79,8 +81,8 @@ Turn off: same page, Update automatically (Обновлять автоматич
 
 ## Security and privacy
 
-- No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km) and
-  updates (GitHub).
+- No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km),
+  updates (GitHub) and the dictation model, once, when you download it (Hugging Face). Dictated audio stays on the Mac.
 - All data stays on your Mac in `~/Library/Application Support/Nook`, readable only by your user account.
 - An update is installed only if it is signed with the same certificate as your copy.
 - An agent cannot approve its own request: only your answer counts.

@@ -92,6 +92,8 @@ struct Island: Identifiable, Equatable {
         case limit(title: String, left: Int, resets: Date?)
         /// A process loads the Mac for a long time; `agent` is the project of the agent that started it.
         case hog(ProcessWatch.Hog, agent: String?)
+        /// Dictation needs something (a model, the microphone) or reports a result.
+        case dictation(title: String, detail: String, settings: Bool)
     }
     let id = UUID()
     let kind: Kind
@@ -174,8 +176,9 @@ final class NotchModel: ObservableObject {
     let focus = FocusWatcher()
     let keyboardLock = KeyboardLock()
     let updater = Updater()
-    /// Opens the Settings window (the gear in the panel), set by the app delegate.
-    var onOpenSettings: (() -> Void)?
+    let dictation = Dictation()
+    /// Opens the Settings window (the gear in the panel; a pane, or the last one), set by the app delegate.
+    var onOpenSettings: ((SettingsPane?) -> Void)?
 
     weak var panel: NotchPanel?
     /// Opened from the hotkey: stays open until Esc, a pick or a click outside.
@@ -196,9 +199,10 @@ final class NotchModel: ObservableObject {
     var hasLiveActivity: Bool { flash != nil || live != nil }
 
     /// What the collapsed notch shows on its sides, by priority.
-    enum Live: Equatable { case keyLock, permission, prompter, timer, download, agents, music }
+    enum Live: Equatable { case dictation, keyLock, permission, prompter, timer, download, agents, music }
 
     var live: Live? {
+        if dictation.phase != .idle { return .dictation }
         if keyboardLock.isLocked { return .keyLock }
         if !agents.permissions.isEmpty { return .permission }
         if cuely.isPresenting { return .prompter }
@@ -269,9 +273,11 @@ final class NotchModel: ObservableObject {
         notes.start()
         updater.isIdle = { [weak self] in
             guard let self else { return false }
-            // A restart would drop coffee mode (the Mac sleeps, agents stop), a running timer and the keyboard lock.
+            // A restart would drop coffee mode (the Mac sleeps, agents stop), a running timer, the keyboard lock,
+            // and dictation: what was said, or the clipboard waiting to come back after the paste.
             return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
                 && !self.caffeine.on && !self.timer.isRunning && !self.timer.isPaused && !self.keyboardLock.isLocked
+                && !self.dictation.isBusy
         }
         updater.start()
         volume.onChange = { [weak self] level, muted in
@@ -289,6 +295,10 @@ final class NotchModel: ObservableObject {
             self.show(.focus(on: on, name: name, symbol: symbol), for: 2.5)
         }
         focus.start()
+        dictation.onNotice = { [weak self] title, detail, settings in
+            self?.present(Island(kind: .dictation(title: title, detail: detail, settings: settings), seconds: 4))
+        }
+        dictation.start()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }
@@ -305,7 +315,8 @@ final class NotchModel: ObservableObject {
 
         // Re-render the collapsed notch when any live source changes.
         for source in [nowPlaying.objectWillChange, agents.objectWillChange, timer.objectWillChange,
-                       downloads.objectWillChange, cuely.objectWillChange, keyboardLock.objectWillChange] {
+                       downloads.objectWillChange, cuely.objectWillChange, keyboardLock.objectWillChange,
+                       dictation.objectWillChange] {
             source.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &bag)
         }
@@ -555,7 +566,7 @@ final class NotchModel: ObservableObject {
         }
     }
 
-    private static func sendPaste() {
+    static func sendPaste() {
         let source = CGEventSource(stateID: .combinedSessionState)
         let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)

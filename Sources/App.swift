@@ -21,6 +21,7 @@ enum NookMain {
         }
         // Scripting for Raycast / Shortcuts:
         //   --show <tab|settings[:pane]|close>   --timer <minutes|stop|pomodoro|focus>   --prompt (start Cuely)
+        //   --dictate [start|stop|cancel|toggle]
         let args = CommandLine.arguments
         func value(after flag: String) -> String? {
             guard let i = args.firstIndex(of: flag) else { return nil }
@@ -29,6 +30,7 @@ enum NookMain {
         var command = value(after: "--show")
         if let t = value(after: "--timer") { command = t == "stop" ? "timer-stop" : (t == "pomodoro" || t == "focus" ? t : "timer:\(t)") }
         if args.contains("--prompt") { command = "prompt" }
+        if let d = value(after: "--dictate") { command = "dictate:\(d.isEmpty ? "toggle" : d)" }
         if let command {
             exit(AgentHub.sendCommand(["event": "Show", "name": command.isEmpty ? "home" : command]) ? 0 : 1)
         }
@@ -43,7 +45,7 @@ enum NookMain {
         if let unknown = args.dropFirst().first(where: { $0.hasPrefix("--") }) {
             // A typo must not start a second Nook: two copies would overwrite each other's files.
             print("Nook: unknown option \(unknown)")
-            print("Usage: Nook --show <tab|power|settings[:pane]|close> | --timer <min|stop|pomodoro|focus> | --prompt | --answer <allow|always|deny|terminal> | --install-hooks")
+            print("Usage: Nook --show <tab|power|settings[:pane]|close> | --timer <min|stop|pomodoro|focus> | --prompt | --dictate [start|stop|cancel|toggle] | --answer <allow|always|deny|terminal> | --install-hooks")
             exit(2)
         }
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.nook.app")
@@ -75,9 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.start()
         setupStatusItem()
         settings = SettingsWindowController(state: SettingsState(model: model, app: self))
-        model.onOpenSettings = { [weak self] in
+        model.onOpenSettings = { [weak self] pane in
             self?.model.collapse()
-            self?.settings.show()
+            self?.settings.show(pane)
         }
         LoginItem.followApp()
 
@@ -97,6 +99,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if name == "close" { model.collapse(); model.cuely.stop(); return }
         if name == "reveal" { reveal(); return }
         if name == "prompt" { model.cuely.present(); model.focusPanel(); return }
+        if name.hasPrefix("dictate:") {
+            switch name.dropFirst("dictate:".count) {
+            case "start": model.dictation.begin()
+            case "stop": model.dictation.finish()
+            case "cancel": model.dictation.cancel()
+            default: model.dictation.toggle()
+            }
+            return
+        }
         if name == "settings" || name.hasPrefix("settings:") {
             settings.show(SettingsPane(rawValue: String(name.dropFirst("settings:".count))))
             return

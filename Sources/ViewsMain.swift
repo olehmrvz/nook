@@ -87,6 +87,7 @@ extension Island {
         case .command(_, _, let exit, _, _): return exit == 0 ? [Palette.green, Palette.mint] : [Palette.red, Palette.coral]
         case .limit(_, let left, _): return left <= 5 ? [Palette.red, Palette.coral] : [Palette.orange, Palette.yellow]
         case .hog: return [Palette.red, Palette.orange]
+        case .dictation: return [Palette.violet, Palette.pink]
         }
     }
 }
@@ -304,6 +305,9 @@ struct CollapsedView: View {
             .padding(.leading, 10)
         case nil:
             switch model.live {
+            case .dictation:
+                Image(systemName: model.dictation.phase == .recording ? "mic.fill" : "waveform")
+                    .foregroundStyle(model.dictation.phase == .recording ? Palette.red : Palette.violet.lifted())
             case .keyLock: Image(systemName: "keyboard").foregroundStyle(Palette.orange)
             case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
             case .timer: Image(systemName: "timer").foregroundStyle(model.timer.phase.color)
@@ -346,6 +350,12 @@ struct CollapsedView: View {
                 .padding(.trailing, 12)
         case nil:
             switch model.live {
+            case .dictation:
+                if model.dictation.phase == .recording {
+                    LevelMeter(dictation: model.dictation, color: NSColor(Palette.red.lifted())).frame(width: 22, height: 14)
+                } else {
+                    Spinner(color: Palette.violet.lifted())
+                }
             case .keyLock: LockCountdown(lock: model.keyboardLock).font(.rounded(12)).foregroundStyle(Palette.orange)
             case .permission: Circle().fill(Palette.orange.opacity(0.9)).frame(width: 6, height: 6)
             case .timer:
@@ -522,6 +532,8 @@ struct IslandView: View {
             Badge(symbol: "gauge.with.dots.needle.67percent", colors: island.colors, soft: true)
         case .hog(let hog, _):
             Badge(symbol: hog.memory >= ProcessWatch.memoryLimit ? "memorychip.fill" : "flame.fill", colors: island.colors, soft: true)
+        case .dictation:
+            Badge(symbol: "waveform", colors: island.colors, soft: true)
         }
     }
 
@@ -587,6 +599,10 @@ struct IslandView: View {
             Text(resets.map { "Сброс " + Format.when($0) + " · через " + Format.until(max(0, $0.timeIntervalSinceNow)) }
                  ?? "Время сброса неизвестно")
                 .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
+        case .dictation(let title, let detail, _):
+            Text("Диктовка").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
+            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+            Text(detail).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2)
         case .event(let title, let start, _):
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             Text("Начало в \(start.formatted(date: .omitted, time: .shortened)) · \(start.formatted(.relative(presentation: .named)))")
@@ -639,6 +655,9 @@ struct IslandView: View {
                 .buttonStyle(.pill(.tint(Palette.green), small: true))
         case .hog(let hog, _):
             KillButton(hog: hog) { model.dismissIsland() }
+        case .dictation(_, _, let settings) where settings:
+            Button("Настройки") { model.dismissIsland(); model.onOpenSettings?(.dictation) }
+                .buttonStyle(.pill(small: true))
         default:
             EmptyView()
         }
@@ -672,6 +691,10 @@ struct IslandView: View {
         case .event: model.calendar.openCalendar()
         case .command(_, _, _, let pid, let terminal): AgentHub.focus(pid: pid, terminal: terminal)
         case .limit: model.open(tab: .ai); return
+        case .dictation(_, _, let settings):
+            model.dismissIsland()
+            if settings { model.onOpenSettings?(.dictation) }
+            return
         case .airpods, .timerDone, .hog: break
         }
         model.dismissIsland()
@@ -870,7 +893,7 @@ struct ExpandedView: View {
                                                : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
                     withAnimation(Motion.quick) { caffeine.toggle() }
                 }
-                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenSettings?() }
+                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenSettings?(nil) }
             }
             .padding(2)
             .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))

@@ -236,8 +236,19 @@ final class AgentHub: ObservableObject {
               let event = message["event"] as? String else { close(fd); return }
         if event == "Show" {
             // `Nook --show …`, `--timer …`, `--prompt`: authenticated, unlike a broadcast notification.
-            close(fd)
             let name = message["name"] as? String ?? "home"
+            if name.hasPrefix("dictate:") {
+                // Never from a process an agent started: it would switch the microphone on and get what the
+                // person says typed into its own terminal.
+                var peer: pid_t = 0
+                var length = socklen_t(MemoryLayout<pid_t>.size)
+                let known = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer, &length) == 0
+                close(fd)
+                guard known, !Self.runsUnderAgent(peer) else { return }
+                DispatchQueue.main.async { self.onShow?(name) }
+                return
+            }
+            close(fd)
             DispatchQueue.main.async { self.onShow?(name) }
             return
         }

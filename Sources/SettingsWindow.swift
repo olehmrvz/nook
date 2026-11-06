@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import CoreImage
 import Security
@@ -6,11 +7,11 @@ import SwiftUI
 
 /// Sections of the Settings window, in sidebar order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, notch, notifications, agents, privacy, updates, thanks
+    case general, notch, notifications, dictation, agents, privacy, updates, thanks
 
     var id: String { rawValue }
     /// The first group in the sidebar: what Nook does. The second one is about Nook itself.
-    static let settings: [SettingsPane] = [.general, .notch, .notifications, .agents, .privacy]
+    static let settings: [SettingsPane] = [.general, .notch, .notifications, .dictation, .agents, .privacy]
     static let about: [SettingsPane] = [.updates, .thanks]
 
     var title: String {
@@ -18,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "Основные"
         case .notch: "Вырез"
         case .notifications: "Уведомления"
+        case .dictation: "Диктовка"
         case .agents: "Агенты"
         case .privacy: "Приватность"
         case .updates: "Обновления"
@@ -30,6 +32,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "Запуск, значок в строке меню и экран для выреза."
         case .notch: "Что вырез показывает сам, без открытой панели."
         case .notifications: "Уведомления приложений и звонки островом в вырезе."
+        case .dictation: "Речь в текст на этом Mac, без интернета."
         case .agents: "Claude Code и Codex: статус, вопросы и ответы в вырезе."
         case .privacy: "Разрешения macOS, скриншоты и где лежат данные."
         case .updates: "Версия, подпись и обновления с GitHub."
@@ -42,6 +45,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .notch: "rectangle.topthird.inset.filled"
         case .notifications: "bell.badge.fill"
+        case .dictation: "waveform"
         case .agents: "sparkles"
         case .privacy: "hand.raised.fill"
         case .updates: "arrow.down.circle.fill"
@@ -54,6 +58,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: Color(hex: 0x8E8E93)
         case .notch: Palette.orange
         case .notifications: Palette.red
+        case .dictation: Palette.violet
         case .agents: Palette.claude
         case .privacy: Palette.blue
         case .updates: Palette.green
@@ -158,6 +163,7 @@ final class SettingsState: ObservableObject {
     @Published var pane: SettingsPane = .general
     @Published private(set) var accessibility = AXIsProcessTrusted()
     @Published private(set) var fullDiskAccess = false
+    @Published private(set) var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var loginItem = false
     @Published private(set) var shellConnected = false
     @Published private(set) var mutedApps: [NamedApp] = []
@@ -193,6 +199,8 @@ final class SettingsState: ObservableObject {
     func refresh() {
         objectWillChange.send()
         accessibility = AXIsProcessTrusted()
+        microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        model.dictation.apply()
         if !checking { updateText = model.updater.status }
         model.agents.checkHooks()
         let shellScript = AgentHub.shellScriptURL.path
@@ -287,6 +295,25 @@ final class SettingsState: ObservableObject {
                 if result.ok { self?.shellConnected = true }
             }
         }
+    }
+
+    // Dictation
+
+    func setDictation(_ on: Bool) {
+        objectWillChange.send()
+        Settings.dictation = on
+        model.dictation.apply()
+        guard on else { return }
+        if !AXIsProcessTrusted() { askAccessibility() }
+        if microphone == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                DispatchQueue.main.async { self.microphone = AVCaptureDevice.authorizationStatus(for: .audio) }
+            }
+        }
+    }
+
+    func openMicrophone() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
     }
 
     // Updates
@@ -391,6 +418,7 @@ struct SettingsView: View {
                 case .general: GeneralPane(state: state)
                 case .notch: NotchPane(state: state)
                 case .notifications: NotificationsPane(state: state)
+                case .dictation: DictationPane(state: state, dictation: state.model.dictation)
                 case .agents: AgentsPane(state: state, agents: agents)
                 case .privacy: PrivacyPane(state: state)
                 case .updates: UpdatesPane(state: state)
@@ -623,6 +651,141 @@ struct NotificationsPane: View {
     }
 }
 
+struct DictationPane: View {
+    @ObservedObject var state: SettingsState
+    @ObservedObject var dictation: Dictation
+
+    var body: some View {
+        let selected = Settings.dictationModel
+        Form {
+            Section {
+                Toggle(isOn: state.bind({ Settings.dictation }, state.setDictation)) {
+                    HStack(spacing: 12) {
+                        PaneIcon(pane: .dictation, size: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Включить диктовку").font(.system(size: 15, weight: .semibold))
+                            Text("Речь в текст на этом Mac, без интернета. Звук не сохраняется.")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            Section {
+                Picker("Модель", selection: state.bind({ Settings.dictationModel }, {
+                    Settings.dictationModel = $0
+                    dictation.unload()
+                })) {
+                    ForEach(ParakeetModel.allCases) { model in
+                        Text("\(model.title) · \(Self.size(model.downloadSize))").tag(model).disabled(!model.isSupported)
+                    }
+                }
+                modelStatus(selected)
+                if let error = dictation.downloadError { NoteText(note: .init(ok: false, text: error)) }
+            } header: {
+                Text("Модель")
+            } footer: {
+                Footnote("\(selected.detail). Parakeet понимает 25 языков, среди них русский, украинский, английский, немецкий и польский; язык определяет сам. Модель скачивается один раз с Hugging Face, каждый файл проверяется по контрольной сумме.")
+            }
+            Section {
+                Picker("Клавиша", selection: state.bind({ Settings.dictationKey }, { Settings.dictationKey = $0 })) {
+                    ForEach(Dictation.Key.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Как включать", selection: state.bind({ Settings.dictationMode }, { Settings.dictationMode = $0 })) {
+                    ForEach(Dictation.Mode.allCases) { Text($0.title).tag($0) }
+                }
+                Toggle("Звуки в начале и в конце", isOn: state.bind({ Settings.dictationSounds }, { Settings.dictationSounds = $0 }))
+            } header: {
+                Text("Управление")
+            } footer: {
+                Footnote(Settings.dictationMode == .hold
+                         ? "Удерживайте клавишу и говорите. Отпустите: текст появится там, где курсор. Return тоже заканчивает, Escape отменяет."
+                         : "Нажмите клавишу дважды и говорите. Нажмите ещё раз, чтобы закончить. Return тоже заканчивает, Escape отменяет.")
+            }
+            Section {
+                Picker("Микрофон", selection: state.bind({ Settings.dictationMicrophone }, { Settings.dictationMicrophone = $0 })) {
+                    Text("Как в системе").tag(String?.none)
+                    ForEach(Dictation.microphones) { Text($0.name).tag(Optional($0.id)) }
+                }
+                Toggle("Вставлять в активное приложение", isOn: state.bind({ Settings.dictationPaste }, { Settings.dictationPaste = $0 }))
+                Toggle("Подстраивать заглавную букву и пробел",
+                       isOn: state.bind({ Settings.dictationSmartCase }, { Settings.dictationSmartCase = $0 }))
+            } header: {
+                Text("Ввод")
+            } footer: {
+                Footnote(Settings.dictationPaste
+                         ? "Текст вставляется через буфер обмена, потом в буфере снова то, что было. В начале предложения первая буква становится заглавной, а сразу после слова добавляется пробел."
+                         : "Текст только копируется в буфер обмена: вставьте его сами, ⌘V.")
+            }
+            Section {
+                Picker("Выгружать модель из памяти", selection: state.bind({ Settings.dictationUnloadMinutes }, {
+                    Settings.dictationUnloadMinutes = $0
+                })) {
+                    Text("Через 5 мин").tag(5)
+                    Text("Через 15 мин").tag(15)
+                    Text("Через 1 час").tag(60)
+                    Text("Никогда").tag(0)
+                }
+            } footer: {
+                Footnote("Загруженная модель занимает память. После выгрузки следующая диктовка начнётся чуть позже.")
+            }
+            Section {
+                LabeledContent("Микрофон") {
+                    HStack(spacing: 10) {
+                        StatusText(ok: state.microphone == .authorized, yes: "Разрешён",
+                                   no: state.microphone == .notDetermined ? "Спросит при первой записи" : "Нет доступа")
+                        if state.microphone == .denied || state.microphone == .restricted {
+                            Button("Открыть…") { state.openMicrophone() }
+                        }
+                    }
+                }
+                LabeledContent("Универсальный доступ") {
+                    HStack(spacing: 10) {
+                        StatusText(ok: state.accessibility, yes: "Разрешён", no: "Нет доступа")
+                        if !state.accessibility { Button("Открыть…") { state.askAccessibility() } }
+                    }
+                }
+            } header: {
+                Text("Разрешения")
+            } footer: {
+                Footnote("Универсальный доступ нужен, чтобы Nook замечал клавишу диктовки и вставлял текст. Модель: NVIDIA Parakeet TDT 0.6B v3, сборки moondream (Ultra, Redux) и FluidInference для Core ML, лицензия CC-BY-4.0.")
+            }
+        }
+    }
+
+    @ViewBuilder private func modelStatus(_ model: ParakeetModel) -> some View {
+        let _ = dictation.installs
+        if let download = dictation.download, download.model == model {
+            LabeledContent(download.preparing ? "Готовлю модель для этого Mac…" : "Скачиваю \(Self.size(download.done)) из \(Self.size(download.total))") {
+                HStack(spacing: 10) {
+                    if download.preparing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        ProgressView(value: Double(download.done), total: Double(max(download.total, 1))).frame(width: 120)
+                        Button("Отмена") { dictation.cancelDownload() }
+                    }
+                }
+            }
+        } else if model.isInstalled {
+            LabeledContent("Установлена") {
+                HStack(spacing: 10) {
+                    Text("\(Self.size(model.downloadSize)) на диске").foregroundStyle(.secondary)
+                    Button("Удалить") { dictation.delete(model) }
+                }
+            }
+        } else {
+            LabeledContent(model.isSupported ? "Не скачана" : "Нужна macOS 15") {
+                Button("Скачать") { dictation.startDownload(model) }
+                    .disabled(!model.isSupported || dictation.download != nil)
+            }
+        }
+    }
+
+    private static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
 struct AgentsPane: View {
     @ObservedObject var state: SettingsState
     @ObservedObject var agents: AgentHub
@@ -695,7 +858,7 @@ struct PrivacyPane: View {
                     Button("Показать в Finder") { state.showData() }
                 }
             } footer: {
-                Footnote("Всё хранится только на этом Mac, в ~/Library/Application Support/Nook, и доступно только вашей учётной записи. В сеть Nook выходит только за погодой (Open-Meteo) и обновлениями (GitHub).")
+                Footnote("Всё хранится только на этом Mac, в ~/Library/Application Support/Nook, и доступно только вашей учётной записи. В сеть Nook выходит только за погодой (Open-Meteo), обновлениями (GitHub) и моделью для диктовки, один раз, когда вы её скачиваете (Hugging Face). Звук диктовки остаётся на Mac.")
             }
         }
     }

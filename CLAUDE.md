@@ -31,6 +31,8 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   `screencapture -l<window id>` (it is a normal window, not the notch panel).
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
   Also `--timer <min>|stop|pomodoro|focus`, `--prompt`, `--answer allow|always|deny|terminal`.
+  `--dictate` is refused from this agent on purpose (like `--answer`); test the engine with a scratch CLI
+  (docs/DEVELOPMENT.md → Dictation), the key and paste only with the user.
 - Screenshots: the built-in display is 1800 pt wide, notch centred at x = 900:
   `screencapture -x -R 490,0,820,330 out.png`.
 - Animations are too fast to capture: `defaults write dev.nook.app slowMotion -float 10`, restart Nook,
