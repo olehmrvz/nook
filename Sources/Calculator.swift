@@ -77,7 +77,9 @@ enum Calculator {
         case .currency(let code):
             let (shown, copy) = (format(value.number, currency: true) + " " + code, format(value.number, currency: true))
             let names = pair.map { name($0.0) + " → " + name($0.1) + " · " } ?? ""
-            return Answer(result: shown, copy: copy, detail: names + rates.source, chain: canonical(value.number) + " " + code)
+            let crypto = Rates.crypto.contains(code) || pair.map { Rates.crypto.contains($0.0) || Rates.crypto.contains($0.1) } == true
+            return Answer(result: shown, copy: copy, detail: names + (crypto ? rates.cryptoSource : rates.source),
+                          chain: canonical(value.number) + " " + code)
         case .measure(let measure):
             // "1 m" alone turns into feet and so on; a calculation keeps its unit.
             if bare, let other = Units.counterpart[measure.symbol], let target = Units.find(other) {
@@ -96,6 +98,9 @@ enum Calculator {
 
     /// "Евро", "Украинская гривна": in the system language.
     static func name(_ code: String) -> String {
+        let crypto = ["BTC": "Bitcoin", "ETH": "Ethereum", "USDT": "Tether", "USDC": "USD Coin", "SOL": "Solana",
+                      "BNB": "BNB", "XRP": "XRP", "DOGE": "Dogecoin", "TON": "Toncoin", "TRX": "TRON", "LTC": "Litecoin"]
+        if let name = crypto[code] { return name }
         guard let name = Locale.current.localizedString(forCurrencyCode: code) else { return code }
         return name.prefix(1).uppercased() + name.dropFirst()
     }
@@ -663,12 +668,23 @@ enum Calculator {
             "yen": "JPY", "иена": "JPY", "иен": "JPY", "yuan": "CNY", "юань": "CNY", "юаней": "CNY",
             "franc": "CHF", "francs": "CHF", "франк": "CHF", "франков": "CHF", "lira": "TRY", "лира": "TRY", "лир": "TRY",
             "tenge": "KZT", "тенге": "KZT", "sterling": "GBP", "стерлингов": "GBP",
+            "bitcoin": "BTC", "bitcoins": "BTC", "биткоин": "BTC", "биткоина": "BTC", "биткоинов": "BTC", "биток": "BTC",
+            "ethereum": "ETH", "эфир": "ETH", "эфира": "ETH", "tether": "USDT", "тезер": "USDT",
         ]
 
-        /// Any ISO code macOS knows or the rate feed quotes, in any case.
+        /// Russian and Ukrainian word stems, so every case form works ("в долларах", "гривнах", "биткоина").
+        static let stems: [(String, String)] = [
+            ("доллар", "USD"), ("бакс", "USD"), ("гривн", "UAH"), ("гривен", "UAH"), ("гривень", "UAH"), ("рубл", "RUB"),
+            ("злот", "PLN"), ("иен", "JPY"), ("юан", "CNY"), ("франк", "CHF"), ("лир", "TRY"), ("биткоин", "BTC"),
+            ("биткойн", "BTC"), ("эфир", "ETH"), ("евро", "EUR"), ("стерлинг", "GBP"),
+        ]
+
+        /// Any ISO code macOS knows or the rate feed quotes, in any case; crypto tickers too (btc, usdt, doge).
         static func code(_ word: String) -> String? {
             if let code = names[word] { return code }
+            if let stem = stems.first(where: { word.hasPrefix($0.0) }) { return stem.1 }
             let upper = word.uppercased()
+            if Rates.crypto.contains(upper) { return upper }
             guard word.count == 3, word.allSatisfy(\.isLetter) else { return nil }
             return codes.contains(upper) || Rates.shared.perDollar[upper] != nil ? upper : nil
         }
@@ -686,17 +702,30 @@ final class Rates {
     var onChange: (() -> Void)?
 
     private let file = supportDir.appendingPathComponent("currency-rates.json")
+    private let cryptoFile = supportDir.appendingPathComponent("crypto-rates.json")
     private let queue = DispatchQueue(label: "nook.rates")
     private var loading = false
+    private var cryptoRetry = Date.distantPast
+    private var cryptoPerDollar: [String: Double] = [:]
+
+    /// Tickers taken from the crypto feed (fawazahmed0 currency-api, CC0, daily); the rest stays ExchangeRate-API's.
+    static let crypto: Set<String> = ["BTC", "ETH", "USDT", "USDC", "SOL", "BNB", "XRP", "DOGE", "ADA", "TRX", "LTC",
+                                      "DOT", "AVAX", "SHIB", "LINK", "XLM", "BCH", "UNI", "ATOM", "XMR", "NEAR", "APT",
+                                      "ARB", "OP", "POL", "SUI", "DAI", "TON"]
 
     var source: String {
         let when = fetchedAt.map { " · " + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""
         return "Курс ExchangeRate-API" + when
     }
 
+    var cryptoSource: String { "Курс currency-api (fawazahmed0)" }
+
     /// nil when the rates are not here yet; throws for a code the feed does not know.
     func rate(_ from: String, _ to: String) throws -> Double? {
         guard !perDollar.isEmpty else { throw Calculator.Failure(message: "Курсы валют ещё не загрузились") }
+        if (Self.crypto.contains(from) || Self.crypto.contains(to)) && cryptoPerDollar.isEmpty {
+            throw Calculator.Failure(message: "Курсы криптовалют ещё не загрузились")
+        }
         guard let a = perDollar[from] else { throw Calculator.Failure(message: "Нет курса для \(from)") }
         guard let b = perDollar[to] else { throw Calculator.Failure(message: "Нет курса для \(to)") }
         return b / a
@@ -704,6 +733,7 @@ final class Rates {
 
     /// From the cache file first; from the network when older than a day.
     func refresh() {
+        refreshCrypto()
         guard !loading else { return }
         loading = true
         queue.async { [weak self] in
@@ -734,9 +764,46 @@ final class Rates {
     }
 
     private func apply(_ rates: [String: Double], _ at: Date?) {
-        perDollar = rates
+        perDollar = rates.merging(cryptoPerDollar) { _, crypto in crypto }
         fetchedAt = at
         onChange?()
+    }
+
+    /// The same shape (units per dollar); only the tickers in `crypto` are kept. A failure retries in 30 min.
+    private func refreshCrypto() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            if self.cryptoPerDollar.isEmpty, let data = try? Data(contentsOf: self.cryptoFile), let cached = Self.parseCrypto(data) {
+                DispatchQueue.main.async { self.applyCrypto(cached) }
+            }
+            let age = (try? self.cryptoFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            guard age.map({ Date().timeIntervalSince($0) > 86_400 }) ?? true, Date() > self.cryptoRetry else { return }
+            self.cryptoRetry = Date().addingTimeInterval(1800)
+            var request = URLRequest(url: URL(string: "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json")!)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 15
+            URLSession.shared.dataTask(with: request) { data, response, _ in
+                guard let data, (response as? HTTPURLResponse)?.statusCode == 200, let fresh = Self.parseCrypto(data) else { return }
+                self.queue.async { try? data.write(to: self.cryptoFile, options: .atomic) }
+                DispatchQueue.main.async { self.applyCrypto(fresh) }
+            }.resume()
+        }
+    }
+
+    private func applyCrypto(_ rates: [String: Double]) {
+        cryptoPerDollar = rates
+        if !perDollar.isEmpty { perDollar.merge(rates) { _, crypto in crypto } }
+        onChange?()
+    }
+
+    private static func parseCrypto(_ data: Data) -> [String: Double]? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usd = json["usd"] as? [String: Any] else { return nil }
+        var rates: [String: Double] = [:]
+        for (code, value) in usd where crypto.contains(code.uppercased()) {
+            if let number = (value as? NSNumber)?.doubleValue, number > 0 { rates[code.uppercased()] = number }
+        }
+        return rates.isEmpty ? nil : rates
     }
 
     private static func parse(_ data: Data) -> (rates: [String: Double], at: Date?)? {
