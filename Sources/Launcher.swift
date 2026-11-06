@@ -120,6 +120,8 @@ struct LaunchItem: Identifiable, Equatable {
         case app(URL)
         case setting(String)
         case nook(NookCommand)
+        /// The calculator's answer, always the first row.
+        case answer(Calculator.Answer)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -183,6 +185,8 @@ final class Launcher: ObservableObject {
     func prepare() {
         query = ""
         selection = 0
+        Rates.shared.onChange = { [weak self] in self?.search() }
+        Rates.shared.refresh()
         search()
         guard !indexing, Date().timeIntervalSince(indexedAt) > 60 else { return }
         indexing = true
@@ -237,12 +241,16 @@ final class Launcher: ObservableObject {
                 let kind: Int = switch item.kind {
                 case .app: 20
                 case .nook: 10
-                case .setting: 0
+                case .setting, .answer: 0
                 }
                 return (item, best + kind + boost(item.id))
             }
         }
-        results = found.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.title < $1.0.title }.prefix(40).map(\.0)
+        var rows = found.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.title < $1.0.title }.prefix(40).map(\.0)
+        if let answer = Calculator.evaluate(query, rates: .shared) {
+            rows.insert(LaunchItem(id: "answer", title: answer.result, subtitle: answer.detail, terms: [], kind: .answer(answer)), at: 0)
+        }
+        results = rows
         selection = 0
     }
 
@@ -267,6 +275,7 @@ final class Launcher: ObservableObject {
     // MARK: Opening
 
     func open(_ item: LaunchItem, reveal: Bool = false) {
+        if case .answer = item.kind { return }
         var usage = Settings.launcherUsage
         let count = usage[item.id]?.first ?? 0
         usage[item.id] = [count + 1, Date().timeIntervalSince1970]
@@ -288,6 +297,8 @@ final class Launcher: ObservableObject {
             if let url = URL(string: "x-apple.systempreferences:\(id)") { NSWorkspace.shared.open(url) }
         case .nook(let command):
             run?(command)
+        case .answer:
+            break
         }
     }
 
@@ -444,14 +455,17 @@ struct LauncherTab: View {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
         case .setting: launcher.icons[Launcher.settingsApp]
-        case .nook: nil
+        case .nook, .answer: nil
         }
     }
 
     private func selectedHint(_ items: [LaunchItem]) -> String {
         guard items.indices.contains(launcher.selection) else { return "" }
-        if case .app = items[launcher.selection].kind { return "↩ открыть · ⌘↩ в Finder" }
-        return "↩ открыть"
+        switch items[launcher.selection].kind {
+        case .app: return "↩ открыть · ⌘↩ в Finder"
+        case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
+        default: return "↩ открыть"
+        }
     }
 
     private func move(_ delta: Int, count: Int) {
@@ -462,6 +476,19 @@ struct LauncherTab: View {
     private func open(_ items: [LaunchItem], reveal: Bool) {
         guard items.indices.contains(launcher.selection) else { return }
         let item = items[launcher.selection]
+        if case .answer(let answer) = item.kind {
+            guard !answer.isError else { return }
+            if reveal {
+                // Go on from the answer: "455 UAH", then "* 3".
+                launcher.query = answer.chain + " "
+            } else {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(answer.copy, forType: .string)
+                model.collapse()
+                model.show(.copied, for: 1.4)
+            }
+            return
+        }
         // Nook's commands change the panel themselves; apps and settings take the screen.
         if case .nook = item.kind {
             launcher.open(item, reveal: reveal)
@@ -482,22 +509,8 @@ struct LaunchRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                if case .nook(let command) = item.kind {
-                    Image(systemName: command.symbol)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .background(RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                            .fill(LinearGradient(colors: [command.color.lifted(), command.color], startPoint: .top, endPoint: .bottom)))
-                } else if let icon {
-                    Image(nsImage: icon).resizable().frame(width: 26, height: 26)
-                } else {
-                    Color.clear.frame(width: 26, height: 26)
-                }
-                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 8)
-                Text(item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
+            Group {
+                if case .answer(let answer) = item.kind { AnswerCard(answer: answer) } else { row }
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background {
@@ -514,5 +527,53 @@ struct LaunchRow: View {
         .buttonStyle(.plain)
         .focusable(false)
         .onHover { hover = $0 }
+    }
+
+    private var row: some View {
+        HStack(spacing: 10) {
+            if case .nook(let command) = item.kind {
+                Image(systemName: command.symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                        .fill(LinearGradient(colors: [command.color.lifted(), command.color], startPoint: .top, endPoint: .bottom)))
+            } else if let icon {
+                Image(nsImage: icon).resizable().frame(width: 26, height: 26)
+            } else {
+                Color.clear.frame(width: 26, height: 26)
+            }
+            Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Spacer(minLength: 8)
+            Text(item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
+        }
+    }
+}
+
+/// The calculator's answer: the result large, what it is under it.
+struct AnswerCard: View {
+    let answer: Calculator.Answer
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: answer.isError ? "exclamationmark.triangle.fill" : "equal")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(answer.isError ? Palette.orange : .white)
+                .frame(width: 24, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                    .fill(answer.isError ? Palette.orange.opacity(0.18) : Palette.violet.opacity(0.55)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(answer.result)
+                    .font(.rounded(answer.isError ? 13 : 17, .semibold))
+                    .foregroundStyle(answer.isError ? Palette.orange.lifted() : .white)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+                if !answer.isError {
+                    Text(answer.detail).font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
     }
 }

@@ -53,7 +53,8 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
 - Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
 - Search from the notch (⌥Space or your own shortcut): apps, System Settings panes and Nook's commands, also typed in
-  the wrong keyboard layout; it opens on the display you work on.
+  the wrong keyboard layout; it opens on the display you work on. It calculates as you type: `10+10`, `450 + 20%`,
+  `sqrt 25`, units (`5 km в мили`, `100 f to c`) and currencies (`10 eur to uah`, `€20 to GBP`, `10 евро`).
 - Choose which tabs and buttons the panel header shows.
 - Dictation: hold right ⌥ (or another key), speak, let go — the text appears where the cursor is. Recognition runs
   on this Mac (Parakeet, 25 languages); the model (222 or 632 MB) downloads once. Credits: [NOTICE.md](NOTICE.md).
@@ -85,7 +86,8 @@ Turn off: same page, Update automatically (Обновлять автоматич
 ## Security and privacy
 
 - No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km),
-  updates (GitHub) and the dictation model, once, when you download it (Hugging Face). Dictated audio stays on the Mac.
+  updates (GitHub), currency rates for the search's calculator, once a day (ExchangeRate-API), and the dictation
+  model, once, when you download it (Hugging Face). Dictated audio stays on the Mac.
 - All data stays on your Mac in `~/Library/Application Support/Nook`, readable only by your user account.
 - An update is installed only if it is signed with the same certificate as your copy.
 - An agent cannot approve its own request: only your answer counts.
