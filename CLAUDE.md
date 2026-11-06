@@ -27,7 +27,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 ## Checking changes
 
 - Open tabs without the mouse: `/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close`.
-  Settings window: `--show settings[:general|notch|notifications|agents|privacy|updates|thanks]`; capture it with
+  Settings window: `--show settings[:<pane>]` (`SettingsPane`); capture it with
   `screencapture -l<window id>` (it is a normal window, not the notch panel).
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
   Also `--timer <min>|stop|pomodoro|focus`, `--prompt`, `--answer allow|always|deny|terminal`.

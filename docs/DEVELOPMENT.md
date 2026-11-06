@@ -30,7 +30,8 @@ is ad-hoc signed and macOS may ask again.
 
 `Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
 app (`power` opens Home with the battery card); `Nook --show settings[:pane]` opens the Settings window
-(panes: general, notch, notifications, dictation, agents, privacy, updates, thanks).
+(panes: general, panel, launcher, snippets, clipboard, ai, notch, notifications, dictation, agents, privacy, updates,
+thanks).
 `Nook --show launcher` opens the search with the keyboard in it; `Nook --show launcher:<text>` shows the results for
 `<text>` without taking the keyboard (for checks: typing keeps going to the app in front).
 `Nook --dictate [start|stop|cancel|toggle]` drives dictation; it is refused from processes an agent started
@@ -123,8 +124,14 @@ terminal, not from a process an agent started (an agent must not approve its own
   tabs or fewer on the left, all of them show their names.
 - **Dictation:** `Sources/Dictation.swift` (key, audio, text) and `Sources/Parakeet.swift` (models, download,
   recognition). A listen-only event tap watches one modifier key while dictation is on (Accessibility); held 0.25 s
-  without another key → recording (AVAudioEngine, resampled to 16 kHz mono); an active tap swallows Return (finish)
-  and Escape (cancel) only while recording. Recognition on a serial queue: Parakeet TDT 0.6B v3 in Core ML
+  without another key → recording; an active tap swallows Return (finish) and Escape (cancel) only while recording.
+  The microphone is an Audio Queue that records 16 kHz mono Float32 itself (`AudioInput`), opened and closed on
+  `audioQueue`, never on the main thread: Core Audio can hang while it asks the hardware (AVAudioEngine's
+  `inputNode` once froze the whole notch there). A watchdog gives up after 3 s: "The microphone isn't responding",
+  and dictation stays off until the queue answers. During recording other sound goes down to 5 %
+  (`VolumeControl.duck`) and comes back on the same device after it, also on quit.
+  `~/Library/Application Support/Nook/dictation-debug.log` keeps the last ~200 lines: how long the microphone took to
+  open, length, recognition time, characters, pasted or copied (never the text). Recognition on a serial queue: Parakeet TDT 0.6B v3 in Core ML
   (Preprocessor → Encoder → Decoder/JointDecisionv3, greedy TDT, 15 s windows cut at the quietest moment, decoder
   state carried over). Text goes in by clipboard + ⌘V, marked `org.nspasteboard.TransientType`, and the previous
   clipboard comes back 0.6 s later; Accessibility reads 3 characters before the cursor for case and spacing.
@@ -138,6 +145,7 @@ terminal, not from a process an agent started (an agent must not approve its own
 
 - Russian is the source text and the key. English lives in `Sources/Localization/en.lproj/Localizable.strings`;
   `ru.lproj` stays empty so macOS counts Russian as one of Nook's languages. `install.sh` copies both into the app.
+  Permission prompts: Russian in `Info.plist`, English in `en.lproj/InfoPlist.strings`; a new usage string needs both.
 - Literal titles (`Text("…")`, `Button("…")`, `Toggle`, `Picker`, `Section`, `LabeledContent`, `.help`) are looked
   up by SwiftUI. Text built in code goes through `L("…")` (`Sources/Localization.swift`). Text glued with `+`
   inside `Text(…)` is a plain String and is not looked up: wrap the Russian part in `L(…)`.

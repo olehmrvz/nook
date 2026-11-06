@@ -38,6 +38,9 @@ final class VolumeControl {
         deviceListener = listener
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutput, .main, listener)
         attach()
+        // Quitting while dictation listens (the menu, a restart for a new language, an update): the level comes back.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { [weak self] _ in self?.restore() }
         if Settings.volumeHUD { installKeyTap() }
         if tap == nil && Settings.volumeHUD && !Settings.askedKeyAccess {
             // Once: macOS shows its own volume/brightness HUD until Nook may take the keys.
@@ -81,7 +84,9 @@ final class VolumeControl {
         last = current
     }
 
-    private var current: (level: Float, muted: Bool)? {
+    private var current: (level: Float, muted: Bool)? { state(of: device) }
+
+    private func state(of device: AudioObjectID) -> (level: Float, muted: Bool)? {
         var level: Float32 = 0
         var size = UInt32(MemoryLayout<Float32>.size)
         guard AudioObjectGetPropertyData(device, &Self.volume, 0, nil, &size, &level) == noErr else { return nil }
@@ -111,14 +116,15 @@ final class VolumeControl {
         ducked = (now.level, current?.level ?? level, device)
     }
 
-    /// Back to the level before, unless the person changed the volume or the output in between.
+    /// Back to the level before on the device that was lowered, also when the output changed in between (AirPods
+    /// came in); not when the person set another level on that device.
     func restore() {
         guard let ducked else { return }
         self.ducked = nil
-        guard ducked.device == device, let now = current, abs(now.level - ducked.to) < 0.01 else { return }
+        guard let now = state(of: ducked.device), abs(now.level - ducked.to) < 0.01 else { return }
         var level = ducked.from
-        silentUntil = Date().addingTimeInterval(0.5)
-        AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
+        if ducked.device == device { silentUntil = Date().addingTimeInterval(0.5) }
+        AudioObjectSetPropertyData(ducked.device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
     }
 
     // MARK: Volume keys

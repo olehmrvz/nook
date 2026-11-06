@@ -134,7 +134,7 @@ display, and restore — from the search or with your own shortcuts. One click s
 
 ### Settings
 
-- A settings window: ⌘, or the menu bar icon → Settings….
+- A settings window: ⚙︎ in the panel, "Nook Settings" in the search, or the menu bar icon → Settings….
 - Language: English or Russian, or the system's.
 - Panel: choose which tabs and buttons the header shows. The header uses the space that is left.
 - Privacy shows which permissions Nook has and opens the right page of System Settings.
