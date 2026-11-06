@@ -55,6 +55,9 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - Search from the notch (⌥Space or your own shortcut): apps, System Settings panes and Nook's commands, also typed in
   the wrong keyboard layout; it opens on the display you work on. It calculates as you type: `10+10`, `450 + 20%`,
   `sqrt 25`, units (`5 km в мили`, `100 f to c`) and currencies (`10 eur to uah`, `€20 to GBP`, `10 евро`).
+- Windows like Rectangle: halves, quarters, thirds, maximize, center, larger/smaller, next display, restore — from the
+  search or with your own shortcuts (one click sets Rectangle's ⌃⌥ + arrows).
+- Aliases and a shortcut for any app, System Settings pane or command.
 - Choose which tabs and buttons the panel header shows.
 - Dictation: hold right ⌥ (or another key), speak, let go — the text appears where the cursor is. Recognition runs
   on this Mac (Parakeet, 25 languages); the model (222 or 632 MB) downloads once. Credits: [NOTICE.md](NOTICE.md).

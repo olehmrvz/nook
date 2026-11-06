@@ -32,6 +32,11 @@ extension Settings {
         get { defaults.object(forKey: "launcherCommands") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "launcherCommands") }
     }
+    /// Window commands (halves, thirds…) in the search.
+    static var launcherWindows: Bool {
+        get { defaults.object(forKey: "launcherWindows") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "launcherWindows") }
+    }
     /// Google search and the dictionary under the results.
     static var launcherFallbacks: Bool {
         get { defaults.object(forKey: "launcherFallbacks") as? Bool ?? true }
@@ -139,6 +144,7 @@ struct LaunchItem: Identifiable, Equatable {
         case answer(Calculator.Answer)
         /// A web page or a URL scheme: "github.com", Google, the dictionary.
         case link(URL, symbol: String)
+        case window(WindowAction)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -194,6 +200,10 @@ final class Launcher: ObservableObject {
         LaunchItem(id: "nook:\(command.rawValue)", title: command.title, subtitle: "Nook",
                    terms: ([command.title] + command.aliases).map(LaunchItem.Term.init), kind: .nook(command))
     }
+    private let windows: [LaunchItem] = WindowAction.allCases.map { action in
+        LaunchItem(id: "window:\(action.rawValue)", title: action.title, subtitle: "Окна",
+                   terms: [action.title, action.english, "window", "окно"].map(LaunchItem.Term.init), kind: .window(action))
+    }
     private var indexedAt = Date.distantPast
     private var indexing = false
     /// Folders and bundles are read here, never on the main thread.
@@ -230,7 +240,7 @@ final class Launcher: ObservableObject {
 
     /// Apps, panes and commands, for the alias and shortcut list in Settings.
     var everything: [LaunchItem] {
-        (apps + panes).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending } + commands
+        (apps + panes).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending } + commands + windows
     }
 
     func icon(for item: LaunchItem) -> NSImage? {
@@ -255,6 +265,21 @@ final class Launcher: ObservableObject {
         aliases[id] = trimmed.isEmpty ? nil : trimmed
         Settings.launcherAliases = aliases
         search()
+    }
+
+    /// "Как в Rectangle": fills in only what has no shortcut yet.
+    func useRectangleShortcuts() {
+        var keys = Settings.launcherHotkeys
+        let used = Set(keys.values.map { $0 })
+        for action in WindowAction.allCases {
+            let id = "window:\(action.rawValue)"
+            guard keys[id] == nil, let shortcut = action.rectangleShortcut else { continue }
+            let stored = [Int(shortcut.keyCode), Int(shortcut.modifiers)]
+            guard !used.contains(stored) else { continue }
+            keys[id] = stored
+        }
+        Settings.launcherHotkeys = keys
+        applyHotkeys()
     }
 
     func setHotkey(_ shortcut: Shortcut?, for id: String) {
@@ -291,7 +316,7 @@ final class Launcher: ObservableObject {
     }
 
     private func launch(_ id: String) {
-        if let item = (apps + panes + commands).first(where: { $0.id == id }) {
+        if let item = (apps + panes + commands + windows).first(where: { $0.id == id }) {
             open(item, record: false)
         } else if id.hasPrefix("app:"),
                   let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: String(id.dropFirst(4))) {
@@ -304,7 +329,7 @@ final class Launcher: ObservableObject {
 
     private var pool: [LaunchItem] {
         (Settings.launcherApps ? apps : []) + (Settings.launcherSettings ? panes : [])
-            + (Settings.launcherCommands ? commands : [])
+            + (Settings.launcherCommands ? commands : []) + (Settings.launcherWindows ? windows : [])
     }
 
     func search() {
@@ -339,7 +364,7 @@ final class Launcher: ObservableObject {
                 guard let best else { return nil }
                 let kind: Int = switch item.kind {
                 case .app: 20
-                case .nook: 10
+                case .nook, .window: 10
                 case .setting, .answer, .link: 0
                 }
                 return (item, best + kind + boost(item.id))
@@ -431,6 +456,8 @@ final class Launcher: ObservableObject {
             if let url = URL(string: "x-apple.systempreferences:\(id)") { NSWorkspace.shared.open(url) }
         case .nook(let command):
             run?(command)
+        case .window(let action):
+            WindowManager.shared.perform(action)
         case .answer, .link:
             break
         }
@@ -594,7 +621,7 @@ struct LauncherTab: View {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
         case .setting: launcher.icons[Launcher.settingsApp]
-        case .nook, .answer, .link: nil
+        case .nook, .answer, .link, .window: nil
         }
     }
 
@@ -626,6 +653,12 @@ struct LauncherTab: View {
                 model.collapse()
                 model.show(.copied, for: 1.4)
             }
+            return
+        }
+        if case .window = item.kind {
+            // Focus goes back to the window first; then it moves.
+            model.collapse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { launcher.open(item, reveal: false) }
             return
         }
         // Nook's commands change the panel themselves; apps and settings take the screen.
@@ -690,6 +723,7 @@ struct LaunchIcon: View {
         switch item.kind {
         case .nook(let command): tile(command.symbol, command.color)
         case .link(_, let symbol): tile(symbol, Palette.blue)
+        case .window(let action): tile(action.symbol, Palette.cyan)
         default:
             if let icon {
                 Image(nsImage: icon).resizable().frame(width: size, height: size)

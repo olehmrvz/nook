@@ -605,6 +605,14 @@ struct LauncherPane: View {
                 Toggle("Google и словарь внизу списка",
                        isOn: state.bind({ Settings.launcherFallbacks }, { Settings.launcherFallbacks = $0 }))
             }
+            Section("Окна") {
+                Toggle("Команды для окон: половины, трети, развернуть",
+                       isOn: state.bind({ Settings.launcherWindows }, { Settings.launcherWindows = $0 }))
+                LabeledContent("Сочетания клавиш") {
+                    Button("Как в Rectangle (⌃⌥ + стрелки)") { state.model.launcher.useRectangleShortcuts() }
+                }
+                .disabled(!Settings.launcherWindows)
+            }
             Section {
                 LabeledContent("История запусков") {
                     Button("Очистить") { state.model.launcher.clearHistory() }

@@ -92,6 +92,10 @@ terminal, not from a process an agent started (an agent must not approve its own
   letters in order; the query is also tried in the other keyboard layout (ЙЦУКЕН ↔ QWERTY); usage boost from
   `launcherUsage` (count, last use). Opening an app does not hand focus back to the previous app first, so the new
   window lands on the display the search was on.
+- **Windows:** `Sources/Windows.swift`. Commands are search items (`window:<action>`), so aliases and item shortcuts
+  apply. AX off the main thread on the front app's focused window: visible frame of its display (Dock, menu bar,
+  notch excluded), edges rounded separately, size → position → size. Restore keeps the frame from before the first
+  command of a chain; a window moved by hand (> 2 pt) starts a new chain. Minimized and full-screen windows are skipped.
 - **Header:** Settings → Панель hides tabs and buttons (`Settings.headerHidden`); the gear always stays. With three
   tabs or fewer on the left, all of them show their names.
 - **Dictation:** `Sources/Dictation.swift` (key, audio, text) and `Sources/Parakeet.swift` (models, download,
