@@ -627,9 +627,10 @@ final class NotchModel: ObservableObject {
 
     /// ⌥Space (or the magnifier): the search with the keyboard in its field; again closes it.
     /// `focus: false` (`Nook --show launcher:<text>`): shows the results without taking the keyboard.
-    func toggleLauncherFromHotkey(query: String = "", focus: Bool = true) {
+    /// `followPointer: false` keeps the notch's display (a preview from `--show launcher:<text>`).
+    func toggleLauncherFromHotkey(query: String = "", focus: Bool = true, followPointer: Bool = true) {
         if expanded && sticky && tab == .launcher && query.isEmpty { collapse(); return }
-        if !expanded {
+        if !expanded && followPointer {
             previousApp = NSWorkspace.shared.frontmostApplication
             // The display you work on, like Spotlight: the one with the pointer.
             let pointer = NSEvent.mouseLocation

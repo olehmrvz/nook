@@ -111,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if name == "launcher" || name.hasPrefix("launcher:") {
             let query = String(name.dropFirst("launcher:".count))
-            model.toggleLauncherFromHotkey(query: query, focus: query.isEmpty)
+            model.toggleLauncherFromHotkey(query: query, focus: query.isEmpty, followPointer: query.isEmpty)
             return
         }
         if name == "settings" || name.hasPrefix("settings:") {

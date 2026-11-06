@@ -31,7 +31,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   `screencapture -l<window id>` (it is a normal window, not the notch panel).
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
   Also `--timer <min>|stop|pomodoro|focus`, `--prompt`, `--answer allow|always|deny|terminal`.
-  `--show launcher:<text>` shows search results without taking the keyboard. A panel opened by a flag closes on
+  `--show launcher:<text>` shows search results without taking the keyboard, on the notch's display. A panel opened by a flag closes on
   any click outside it: when the user is busy (a game, typing), captures show it collapsed — do not retry, wait.
   `--dictate` is refused from this agent on purpose (like `--answer`); test the engine with a scratch CLI
   (docs/DEVELOPMENT.md → Dictation), the key and paste only with the user.
@@ -49,6 +49,8 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 - The band under the camera (notch height) stays pure black in every mode; glow rises from below
   (`AmbientGlow(blackTop:)`). The user asked for this explicitly.
 - Animations go through `Motion` (`smooth`, `quick`, `tab`) and respect Reduce Motion.
+- UI text is written in Russian (the key) with an English entry; run `python3 Sources/Localization/check.py`
+  (docs/DEVELOPMENT.md → Localization).
 
 ## Pitfalls
 
