@@ -16,7 +16,7 @@ Claude Code and Codex agents, a search with a calculator, AI, dictation, clipboa
 
 </div>
 
-> The app interface is in Russian for now. Menu names below are given in English with the Russian label in brackets.
+> Nook speaks English and Russian and follows the system language. To change it: Settings → General → Language.
 
 ## Why
 
@@ -48,12 +48,14 @@ and speech recognition runs on your Mac.
 - Tokens and API-price cost per Claude session and for today (read from local transcripts).
 - A warning when one of your processes loads the Mac for minutes (a dev server an agent left running),
   with a button to end it.
-- ☕ Coffee: keeps the Mac awake while agents work overnight.
+- ☕ Caffeine: keeps the Mac awake while agents work overnight.
 
 ### Search
 
 Press ⌥Space (or record your own shortcut) and type. The search opens on the display you work on, and the app
 you pick opens there too.
+
+<p align="center"><img src="docs/images/search.jpg" alt="Search from the notch: an app, System Settings panes and window commands" width="820"></p>
 
 - Apps, System Settings panes and Nook's commands (timer, Pomodoro, coffee, keyboard lock…). A word typed in the
   wrong keyboard layout still works: `ыфа` finds Safari. What you open often moves up.
@@ -68,6 +70,8 @@ you pick opens there too.
 ### Calculator
 
 Results appear in the search as you type. Return copies the result, ⌘Return keeps calculating with it.
+
+<p align="center"><img src="docs/images/calculator.jpg" alt="10 eur to uah answered right in the search" width="820"></p>
 
 - Arithmetic and percentages: `10+10`, `450 + 20%`, `2^10`, `sqrt 25`.
 - Units: `5 km in miles`, `100 f to c`.
@@ -93,7 +97,8 @@ Results appear in the search as you type. Return copies the result, ⌘Return ke
   The language is detected automatically.
 - Two models: Accurate (about 630 MB) and Fast (about 220 MB, macOS 15 or later). The model downloads once from
   Hugging Face and is checked against pinned checksums. Audio is never saved or sent.
-- Off until you turn it on: Settings → Dictation (Диктовка).
+- Pick the start and end sounds, or none. Other sound goes down to 5 % while you speak and comes back after.
+- Off until you turn it on: Settings → Dictation.
 
 ### Windows
 
@@ -113,7 +118,7 @@ display, and restore — from the search or with your own shortcuts. One click s
 
 - ⌃⌘V: 300 items, pins, search, a filter (text, links, images, files) and text from images.
 - A keep time, and apps to ignore (Keychain Access and Passwords by default). Password-manager items are never saved.
-- "Paste the next one" (Вставить следующее из буфера) pastes a list item by item, in order.
+- "Paste the next one from the clipboard" pastes a list item by item, in order.
 
 ### Every day
 
@@ -129,9 +134,10 @@ display, and restore — from the search or with your own shortcuts. One click s
 
 ### Settings
 
-- A settings window: ⌘, or the menu bar icon → Settings… (Настройки…).
-- Panel (Панель): choose which tabs and buttons the header shows. The header uses the space that is left.
-- Privacy (Приватность) shows which permissions Nook has and opens the right page of System Settings.
+- A settings window: ⌘, or the menu bar icon → Settings….
+- Language: English or Russian, or the system's.
+- Panel: choose which tabs and buttons the header shows. The header uses the space that is left.
+- Privacy shows which permissions Nook has and opens the right page of System Settings.
 
 ## Install
 
@@ -171,8 +177,7 @@ macOS asks for a permission when you first use a feature that needs it.
 ## Updates
 
 Nook checks for a new version every 6 hours and installs it when the panel is closed. Check by hand:
-the menu bar icon → Check for Updates… (Проверить обновления…), or Settings → Updates (Обновления) → Check now
-(Проверить сейчас). Turn off: same page, Update automatically (Обновлять автоматически).
+the menu bar icon → Check for Updates…, or Settings → Updates → Check Now. Turn off: same page, Update automatically.
 
 ## Security and privacy
 
@@ -205,8 +210,7 @@ Nook is free. If it helps you, you can thank the author in USDT:
 - TRON (TRC-20): `TDQnp3XjR1yjFhDTxUfhgRAA9YuoitR9vd`
 - Ethereum (ERC-20): `0x64aF41413b60d36eBf0148eA303AC3087301b2e8`
 
-Send only USDT, and only on the network named next to the address. QR codes: the menu bar icon → Say Thanks…
-(Сказать спасибо…).
+Send only USDT, and only on the network named next to the address. QR codes: the menu bar icon → Say Thanks….
 
 ## Build from source
 
