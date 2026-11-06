@@ -307,6 +307,14 @@ struct CollapsedView: View {
             .padding(.leading, 10)
         case nil:
             switch model.live {
+            case .ai:
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.violet.lifted())
+                    Text("AI").font(.system(size: 12.5, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 10)
             case .dictation:
                 let recording = model.dictation.phase == .recording
                 HStack(spacing: 6) {
@@ -362,6 +370,7 @@ struct CollapsedView: View {
                 .padding(.trailing, 12)
         case nil:
             switch model.live {
+            case .ai: Spinner(color: Palette.violet.lifted())
             case .dictation:
                 HStack(spacing: 8) {
                     if model.dictation.phase == .recording, let started = model.dictation.startedAt {
@@ -847,7 +856,7 @@ struct ExpandedView: View {
                     case .ai: AgentsTab(model: model, agents: model.agents, limits: model.limits, usage: model.usage)
                     case .calendar: CalendarTab(store: model.calendar)
                     case .timer: TimerTab(model: model, timer: model.timer)
-                    case .launcher: LauncherTab(model: model, launcher: model.launcher)
+                    case .launcher: LauncherTab(model: model, launcher: model.launcher, assistant: model.assistant)
                     case .cuely: CuelyTab(model: model, cuely: model.cuely)
                     case .notes: NotesTab(model: model, notes: model.notes)
                     case .mirror: MirrorTab(camera: model.mirror)

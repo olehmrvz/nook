@@ -7,11 +7,11 @@ import SwiftUI
 
 /// Sections of the Settings window, in sidebar order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, panel, launcher, snippets, clipboard, notch, notifications, dictation, agents, privacy, updates, thanks
+    case general, panel, launcher, snippets, clipboard, ai, notch, notifications, dictation, agents, privacy, updates, thanks
 
     var id: String { rawValue }
     /// The first group in the sidebar: what Nook does. The second one is about Nook itself.
-    static let settings: [SettingsPane] = [.general, .panel, .launcher, .snippets, .clipboard, .notch, .notifications, .dictation, .agents, .privacy]
+    static let settings: [SettingsPane] = [.general, .panel, .launcher, .snippets, .clipboard, .ai, .notch, .notifications, .dictation, .agents, .privacy]
     static let about: [SettingsPane] = [.updates, .thanks]
 
     var title: String {
@@ -21,6 +21,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .launcher: "Поиск"
         case .snippets: "Сниппеты"
         case .clipboard: "Буфер обмена"
+        case .ai: "AI"
         case .notch: "Вырез"
         case .notifications: "Уведомления"
         case .dictation: "Диктовка"
@@ -38,6 +39,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .launcher: "magnifyingglass"
         case .snippets: "text.quote"
         case .clipboard: "doc.on.clipboard.fill"
+        case .ai: "sparkles"
         case .notch: "rectangle.topthird.inset.filled"
         case .notifications: "bell.badge.fill"
         case .dictation: "waveform"
@@ -55,6 +57,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .launcher: Palette.cyan
         case .snippets: Palette.green
         case .clipboard: Palette.blue
+        case .ai: Palette.violet
         case .notch: Palette.orange
         case .notifications: Palette.red
         case .dictation: Palette.violet
@@ -455,6 +458,7 @@ struct SettingsView: View {
                 case .launcher: LauncherPane(state: state)
                 case .snippets: SnippetsPane(state: state, snippets: state.model.snippets)
                 case .clipboard: ClipboardPane(state: state)
+                case .ai: AIPane(assistant: state.model.assistant)
                 case .notch: NotchPane(state: state)
                 case .notifications: NotificationsPane(state: state)
                 case .dictation: DictationPane(state: state, dictation: state.model.dictation)
@@ -726,6 +730,78 @@ struct AliasField: View {
             .onChange(of: alias) { _, new in if !focused { text = new } }
             .onSubmit { save(text) }
             .onChange(of: focused) { _, now in if !now { save(text) } }
+    }
+}
+
+struct AIPane: View {
+    @ObservedObject var assistant: Assistant
+    @State private var key = ""
+    @State private var hasKey = Keychain.read("anthropic") != nil
+    @State private var provider = Settings.aiProvider
+    @State private var tested: String?
+
+    private static let models = [("claude-opus-5-5", "Claude Opus 5.5"), ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+                                 ("claude-haiku-5-5", "Claude Haiku 5.5")]
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Отвечает", selection: $provider) {
+                    ForEach(AIProvider.allCases) { Text($0.title).tag($0) }
+                }
+                .onChange(of: provider) { _, new in Settings.aiProvider = new; tested = nil }
+                switch provider {
+                case .claudeCode:
+                    LabeledContent("Claude Code") {
+                        StatusText(ok: Assistant.claudeBinary != nil, yes: "Найден", no: "Не установлен")
+                    }
+                case .anthropic:
+                    LabeledContent("Ключ API") {
+                        HStack(spacing: 8) {
+                            SecureField(hasKey ? "сохранён в Связке ключей" : "sk-ant-…", text: $key).frame(width: 220)
+                            Button("Сохранить") {
+                                Keychain.save(key.trimmingCharacters(in: .whitespaces), for: "anthropic")
+                                hasKey = Keychain.read("anthropic") != nil
+                                key = ""
+                            }
+                            .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+                            if hasKey {
+                                Button { Keychain.save(nil, for: "anthropic"); hasKey = false } label: { Image(systemName: "trash") }
+                                    .buttonStyle(.borderless).help("Удалить ключ")
+                            }
+                        }
+                    }
+                    Picker("Модель", selection: Binding(get: { Settings.aiModel }, set: { Settings.aiModel = $0; tested = nil })) {
+                        ForEach(Self.models, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                case .apple:
+                    LabeledContent("Модель Apple") {
+                        StatusText(ok: Assistant.appleStatus == nil, yes: "Готова", no: Assistant.appleStatus ?? "")
+                    }
+                }
+                LabeledContent("Проверка") {
+                    HStack(spacing: 8) {
+                        if let tested { Text(tested).foregroundStyle(.secondary).lineLimit(1) }
+                        if assistant.working { ProgressView().controlSize(.small) }
+                        Button("Проверить") {
+                            tested = nil
+                            assistant.ask("Ответь одним словом: столица Франции?", title: "Проверка") { result in
+                                switch result {
+                                case .success(let text): tested = "✓ " + text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                case .failure(let error): tested = "✗ " + error.localizedDescription
+                                }
+                            }
+                        }
+                        .disabled(assistant.working || !assistant.isReady)
+                    }
+                }
+            }
+            Section("Действия с выделенным текстом") {
+                ForEach(AIAction.allCases, id: \.self) { action in
+                    Label(action.title, systemImage: action.symbol)
+                }
+            }
+        }
     }
 }
 

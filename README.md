@@ -63,6 +63,9 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - More in the search: menu items of the app in front ("Экспортировать…" with its shortcut), open windows of all
   apps, files (Spotlight), Apple Shortcuts, emoji (`:сердце`, `:heart`), quicklinks (`yt котики`
   opens a YouTube search; add your own with `{query}`), your own shell commands with the result in an island.
+- AI from the notch: ask in the search (Tab), or fix, rewrite, shorten, summarize or translate the selected text in any
+  app (each action can have its own shortcut). Answers come from Claude through your Claude Code login, a Claude API
+  key (kept in the keychain), or Apple Intelligence on the Mac.
 - Snippets: type a keyword (`;sig`) anywhere and it turns into your text, with `{clipboard}`, `{date}`, `{time}`,
   `{uuid}`, `{cursor}` and custom date formats; also from the search. Plain `.md` files in the data folder.
 - Aliases and a shortcut for any app, System Settings pane or command.
@@ -99,7 +102,8 @@ Turn off: same page, Update automatically (Обновлять автоматич
 - No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km),
   updates (GitHub), currency and crypto rates for the search's calculator, once a day (ExchangeRate-API,
   currency-api by fawazahmed0), and the dictation
-  model, once, when you download it (Hugging Face). Dictated audio stays on the Mac.
+  model, once, when you download it (Hugging Face). Dictated audio stays on the Mac. Text you send to AI goes to the
+  provider you chose (Anthropic for Claude; Apple Intelligence stays on the Mac).
 - All data stays on your Mac in `~/Library/Application Support/Nook`, readable only by your user account.
 - An update is installed only if it is signed with the same certificate as your copy.
 - An agent cannot approve its own request: only your answer counts.

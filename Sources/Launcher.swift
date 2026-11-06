@@ -158,6 +158,9 @@ struct LaunchItem: Identifiable, Equatable {
         case command(String)
         case menu(MenuSearch.Item)
         case openWindow(WindowList.Window)
+        /// Ask the assistant this text.
+        case ask(String)
+        case ai(AIAction)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -198,6 +201,7 @@ final class Launcher: ObservableObject {
     @Published var query = "" {
         didSet {
             guard query != oldValue else { return }
+            if answerMode { answerMode = false }
             search()
             files.search(query.trimmingCharacters(in: .whitespaces))
         }
@@ -212,6 +216,10 @@ final class Launcher: ObservableObject {
     /// The person's snippets and how to type one into the app in front (set by the model).
     var snippets: () -> [Snippet] = { [] }
     var insertSnippet: ((Snippet) -> Void)?
+    /// Runs an AI action on the selection (set by the model).
+    var runAI: ((AIAction) -> Void)?
+    /// The panel shows the assistant's answer instead of results.
+    @Published var answerMode = false
     /// An island: symbol, title, detail, ok (set by the model).
     var notify: ((String, String, String, Bool) -> Void)?
 
@@ -231,6 +239,10 @@ final class Launcher: ObservableObject {
     private let commands: [LaunchItem] = NookCommand.allCases.map { command in
         LaunchItem(id: "nook:\(command.rawValue)", title: command.title, subtitle: "Nook",
                    terms: ([command.title] + command.aliases).map(LaunchItem.Term.init), kind: .nook(command))
+    }
+    private let aiActions: [LaunchItem] = AIAction.allCases.map { action in
+        LaunchItem(id: "ai:\(action.rawValue)", title: action.title, subtitle: "AI",
+                   terms: [action.title, action.english, "ai"].map(LaunchItem.Term.init), kind: .ai(action))
     }
     private let windows: [LaunchItem] = WindowAction.allCases.map { action in
         LaunchItem(id: "window:\(action.rawValue)", title: action.title, subtitle: "Окна",
@@ -288,7 +300,7 @@ final class Launcher: ObservableObject {
     /// Apps, panes and commands, for the alias and shortcut list in Settings.
     var everything: [LaunchItem] {
         (apps + panes + shortcuts).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            + commands + windows + customCommands
+            + commands + windows + aiActions + customCommands
     }
 
     func icon(for item: LaunchItem) -> NSImage? {
@@ -364,7 +376,7 @@ final class Launcher: ObservableObject {
     }
 
     private func launch(_ id: String) {
-        if let item = (apps + panes + shortcuts + commands + windows + customCommands).first(where: { $0.id == id }) {
+        if let item = (apps + panes + shortcuts + commands + windows + aiActions + customCommands).first(where: { $0.id == id }) {
             open(item, record: false)
         } else if id.hasPrefix("app:"),
                   let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: String(id.dropFirst(4))) {
@@ -423,7 +435,7 @@ final class Launcher: ObservableObject {
 
     private var pool: [LaunchItem] {
         (Settings.launcherApps ? apps : []) + (Settings.launcherSettings ? panes : [])
-            + (Settings.launcherCommands ? commands : []) + (Settings.launcherWindows ? windows : [])
+            + (Settings.launcherCommands ? commands + aiActions : []) + (Settings.launcherWindows ? windows : [])
             + (Settings.launcherShortcuts ? shortcuts : []) + customCommands
             + snippets().filter(\.enabled).map { snippet in
                 LaunchItem(id: "snippet:\(snippet.file.lastPathComponent)", title: snippet.name,
@@ -475,8 +487,8 @@ final class Launcher: ObservableObject {
                 guard let best else { return nil }
                 let kind: Int = switch item.kind {
                 case .app: 20
-                case .nook, .window, .snippet, .shortcut, .command: 10
-                case .setting, .answer, .link, .file, .emoji, .menu, .openWindow: 0
+                case .nook, .window, .snippet, .shortcut, .command, .ai: 10
+                case .setting, .answer, .link, .file, .emoji, .menu, .openWindow, .ask: 0
                 }
                 return (item, best + kind + boost(item.id))
             }
@@ -508,6 +520,9 @@ final class Launcher: ObservableObject {
         }
         if let answer = Calculator.evaluate(query, rates: .shared) {
             rows.insert(LaunchItem(id: "answer", title: answer.result, subtitle: answer.detail, terms: [], kind: .answer(answer)), at: 0)
+        }
+        if !trimmed.isEmpty, rows.first.map({ if case .answer = $0.kind { false } else { true } }) ?? true {
+            rows.append(LaunchItem(id: "ask", title: "Спросить AI: «\(trimmed)»", subtitle: "Tab", terms: [], kind: .ask(trimmed)))
         }
         if !trimmed.isEmpty, Settings.launcherFallbacks {
             // Always under the results: "Use «query» with…".
@@ -596,6 +611,10 @@ final class Launcher: ObservableObject {
             if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
         case .emoji(let character):
             TextInsertion.type(character)
+        case .ai(let action):
+            runAI?(action)
+        case .ask:
+            break
         case .menu(let item):
             MenuSearch.press(item)
         case .openWindow(let window):
@@ -702,6 +721,7 @@ final class Launcher: ObservableObject {
 struct LauncherTab: View {
     @ObservedObject var model: NotchModel
     @ObservedObject var launcher: Launcher
+    @ObservedObject var assistant: Assistant
     @FocusState private var focused: Bool
     @Namespace private var selectionSpace
 
@@ -715,17 +735,30 @@ struct LauncherTab: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 15))
                     .focused($focused)
-                    .onSubmit { open(items, reveal: false) }
+                    .onSubmit { launcher.answerMode ? copyAnswer() : open(items, reveal: false) }
                     .onKeyPress(keys: [.return]) { press in
                         guard press.modifiers.contains(.command) else { return .ignored }
-                        open(items, reveal: true)
+                        if launcher.answerMode { pasteAnswer() } else { open(items, reveal: true) }
+                        return .handled
+                    }
+                    // Tab sends what is typed to the assistant.
+                    .onKeyPress(.tab) {
+                        let text = launcher.query.trimmingCharacters(in: .whitespaces)
+                        if !text.isEmpty { ask(text) }
                         return .handled
                     }
                     .onKeyPress(.downArrow) { move(1, count: items.count); return .handled }
                     .onKeyPress(.upArrow) { move(-1, count: items.count); return .handled }
                     // Esc clears the field first, then closes.
                     .onKeyPress(.escape) {
-                        if launcher.query.isEmpty { model.collapse() } else { launcher.query = "" }
+                        if launcher.answerMode {
+                            assistant.cancel()
+                            launcher.answerMode = false
+                        } else if launcher.query.isEmpty {
+                            model.collapse()
+                        } else {
+                            launcher.query = ""
+                        }
                         return .handled
                     }
                 Text(selectedHint(items)).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
@@ -734,7 +767,9 @@ struct LauncherTab: View {
             .glass(radius: 12)
             .entrance(0)
 
-            if items.isEmpty {
+            if launcher.answerMode {
+                AnswerPanel(assistant: assistant).entrance(1)
+            } else if items.isEmpty {
                 VStack(spacing: 8) {
                     Badge(symbol: "magnifyingglass", colors: [Palette.blue, Palette.violet], size: 44)
                     Text(launcher.query.isEmpty ? "Начните печатать название программы" : "Ничего не найдено")
@@ -766,6 +801,31 @@ struct LauncherTab: View {
         .onAppear { if model.sticky && model.panel?.isKeyWindow == true { focused = true } }
     }
 
+    private func ask(_ question: String) {
+        guard assistant.isReady else {
+            model.collapse()
+            model.onOpenSettings?(.ai)
+            return
+        }
+        launcher.answerMode = true
+        assistant.ask(question)
+    }
+
+    private func copyAnswer() {
+        guard !assistant.answer.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(assistant.answer, forType: .string)
+        model.collapse()
+        model.show(.copied, for: 1.4)
+    }
+
+    private func pasteAnswer() {
+        let text = assistant.answer
+        guard !text.isEmpty else { return }
+        model.collapse()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TextInsertion.paste(text) }
+    }
+
     private func icon(_ item: LaunchItem) -> NSImage? {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
@@ -775,7 +835,7 @@ struct LauncherTab: View {
         case .file(let url): NSWorkspace.shared.icon(for: UTType(filenameExtension: url.pathExtension) ?? .data)
         case .openWindow(let window): window.bundle.flatMap { launcher.icons[$0.path] }
         case .menu: NSWorkspace.shared.frontmostApplication?.bundleURL.flatMap { launcher.icons[$0.path] }
-        case .nook, .answer, .link, .window, .snippet, .emoji, .command: nil
+        case .nook, .answer, .link, .window, .snippet, .emoji, .command, .ask, .ai: nil
         }
     }
 
@@ -785,6 +845,8 @@ struct LauncherTab: View {
         case .app: return "↩ открыть · ⌘↩ в Finder"
         case .snippet, .emoji: return "↩ вставить"
         case .menu: return "↩ выполнить"
+        case .ask: return "↩ или Tab: спросить"
+        case .ai: return "↩ с выделенным текстом"
         case .openWindow: return "↩ перейти"
         case .file: return "↩ открыть · ⌘↩ в Finder"
         case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
@@ -811,6 +873,15 @@ struct LauncherTab: View {
                 model.collapse()
                 model.show(.copied, for: 1.4)
             }
+            return
+        }
+        if case .ask(let question) = item.kind {
+            ask(question)
+            return
+        }
+        if case .ai = item.kind {
+            // The model reads the selection of the app the search was opened from.
+            launcher.open(item, reveal: false)
             return
         }
         if case .menu = item.kind {
@@ -899,6 +970,8 @@ struct LaunchIcon: View {
         case .nook(let command): tile(command.symbol, command.color)
         case .link(_, let symbol): tile(symbol, Palette.blue)
         case .window(let action): tile(action.symbol, Palette.cyan)
+        case .ai(let action): tile(action.symbol, Palette.violet)
+        case .ask: tile("sparkles", Palette.violet)
         case .snippet: tile("text.quote", Palette.green)
         case .command: tile("terminal.fill", Color(hex: 0x636366))
         case .emoji(let character): Text(character).font(.system(size: size * 0.78)).frame(width: size, height: size)
@@ -919,6 +992,44 @@ struct LaunchIcon: View {
             .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
                 .fill(LinearGradient(colors: [color.lifted(), color], startPoint: .top, endPoint: .bottom)))
             .frame(width: size, height: size)
+    }
+}
+
+/// The assistant's answer as it streams in.
+struct AnswerPanel: View {
+    @ObservedObject var assistant: Assistant
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles").foregroundStyle(Palette.violet.lifted())
+                Text(assistant.question).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 8)
+                if assistant.working { ProgressView().controlSize(.small) }
+            }
+            ScrollView(showsIndicators: false) {
+                Text(rendered)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .defaultScrollAnchor(.bottom)
+            if let failure = assistant.failure {
+                Label(failure, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11.5)).foregroundStyle(Palette.orange)
+            }
+            Text("↩ скопировать · ⌘↩ вставить · Esc назад").font(.system(size: 10.5)).foregroundStyle(faint)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glass(radius: 14)
+    }
+
+    /// Bold, italics and code from Markdown; line breaks kept.
+    private var rendered: AttributedString {
+        let text = assistant.answer.isEmpty ? (assistant.working ? "Думаю…" : "") : assistant.answer
+        return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 }
 

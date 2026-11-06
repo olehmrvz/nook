@@ -102,6 +102,13 @@ terminal, not from a process an agent started (an agent must not approve its own
   queue — the front app's menu bar (≤ 4000 items, 1 s, enabled leaves only; never opens a menu) and every regular
   app's standard windows (0.2 s per app). Menu items join the results from two typed letters; ↩ presses the item
   after the app is back in front, a window is raised (and unminimized).
+- **AI** (`Sources/Assistant.swift`): one streamed request at a time. Claude Code route: `claude -p --setting-sources
+  project --no-session-persistence --tools "" --output-format stream-json --include-partial-messages` from the data
+  folder — no user settings means no hooks, so the call never appears as an agent session; the prompt goes in on
+  stdin (arguments are visible to other processes). API route: Messages API with SSE, `anthropic-version: 2026-10-21`,
+  `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`), key in the keychain (service `dev.nook.app.ai`).
+  Apple route: FoundationModels on macOS 26. Selection: AX `kAXSelectedText`, else a borrowed ⌘C with the clipboard
+  restored. Quick actions run at `effort: low`; a summary opens in the search, the others replace the selection.
 - **Windows:** `Sources/Windows.swift`. Commands are search items (`window:<action>`), so aliases and item shortcuts
   apply. AX off the main thread on the front app's focused window: visible frame of its display (Dock, menu bar,
   notch excluded), edges rounded separately, size → position → size. Restore keeps the frame from before the first

@@ -226,6 +226,7 @@ final class NotchModel: ObservableObject {
     let dictation = Dictation()
     let launcher = Launcher()
     let snippets = Snippets()
+    let assistant = Assistant()
     /// Opens the Settings window (the gear in the panel; a pane, or the last one), set by the app delegate.
     var onOpenSettings: ((SettingsPane?) -> Void)?
 
@@ -250,10 +251,11 @@ final class NotchModel: ObservableObject {
     var hasLiveActivity: Bool { flash != nil || live != nil }
 
     /// What the collapsed notch shows on its sides, by priority.
-    enum Live: Equatable { case dictation, keyLock, permission, prompter, timer, download, agents, music }
+    enum Live: Equatable { case dictation, ai, keyLock, permission, prompter, timer, download, agents, music }
 
     var live: Live? {
         if dictation.phase != .idle { return .dictation }
+        if assistant.working && !expanded { return .ai }
         if keyboardLock.isLocked { return .keyLock }
         if !agents.permissions.isEmpty { return .permission }
         if cuely.isPresenting { return .prompter }
@@ -273,6 +275,7 @@ final class NotchModel: ObservableObject {
         }
         // Dictation says what it does in words: "Запись 0:07", "Распознаю".
         if flash == nil, live == .dictation { return 112 }
+        if flash == nil, live == .ai { return 64 }
         return hasLiveActivity ? Self.slot : 0
     }
 
@@ -357,6 +360,7 @@ final class NotchModel: ObservableObject {
         launcher.snippets = { [weak self] in self?.snippets.all ?? [] }
         launcher.insertSnippet = { [weak self] snippet in self?.snippets.insert(snippet) }
         launcher.run = { [weak self] command in self?.run(command) }
+        launcher.runAI = { [weak self] action in self?.runAI(action) }
         launcher.notify = { [weak self] symbol, title, detail, ok in
             self?.present(Island(kind: .notice(symbol: symbol, title: title, detail: detail, ok: ok), seconds: 5))
         }
@@ -379,7 +383,7 @@ final class NotchModel: ObservableObject {
         // Re-render the collapsed notch when any live source changes.
         for source in [nowPlaying.objectWillChange, agents.objectWillChange, timer.objectWillChange,
                        downloads.objectWillChange, cuely.objectWillChange, keyboardLock.objectWillChange,
-                       dictation.objectWillChange] {
+                       dictation.objectWillChange, assistant.objectWillChange] {
             source.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &bag)
         }
@@ -637,6 +641,51 @@ final class NotchModel: ObservableObject {
         expand(tab: .launcher)
         tab = .launcher
         if focus { panel?.makeKeyAndOrderFront(nil) }
+    }
+
+    /// An AI action on the selection of the app in front (from the search or its own shortcut).
+    func runAI(_ action: AIAction) {
+        collapse()
+        guard assistant.isReady else {
+            present(Island(kind: .notice(symbol: "sparkles", title: "AI не настроен", detail: "Настройки Nook → AI", ok: false), seconds: 4))
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            let target = NSWorkspace.shared.frontmostApplication
+            Selection.read { text in
+                guard let self else { return }
+                guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.present(Island(kind: .notice(symbol: "text.cursor", title: "Выделите текст",
+                                                      detail: action.title, ok: false), seconds: 3))
+                    return
+                }
+                self.assistant.ask(text, title: action.title, system: action.instruction, effort: "low") { result in
+                    switch result {
+                    case .success(let answer):
+                        let clean = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !clean.isEmpty else { return }
+                        if action.replaces {
+                            TextInsertion.paste(clean, into: target)
+                        } else {
+                            // A summary is read, not pasted: the search opens with it.
+                            self.showAnswer()
+                        }
+                    case .failure(let error):
+                        self.present(Island(kind: .notice(symbol: "exclamationmark.triangle.fill", title: action.title,
+                                                          detail: error.localizedDescription, ok: false), seconds: 5))
+                    }
+                }
+            }
+        }
+    }
+
+    /// The search panel with the assistant's answer.
+    func showAnswer() {
+        launcher.answerMode = true
+        if !expanded { previousApp = NSWorkspace.shared.frontmostApplication }
+        sticky = true
+        expand(tab: .launcher)
+        tab = .launcher
     }
 
     /// A Nook command picked in the search.
