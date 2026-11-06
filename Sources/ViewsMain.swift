@@ -19,6 +19,40 @@ enum Motion {
     static var smooth: Animation { .spring(response: 0.45, dampingFraction: 0.88).speed(speed) }
     /// Hover, press, selection.
     static var quick: Animation { .spring(response: 0.28, dampingFraction: 0.9).speed(speed) }
+    /// The closed notch changing what it shows: the shape overshoots a little, like it takes a breath.
+    static var morph: Animation { .spring(response: 0.44, dampingFraction: 0.72).speed(speed) }
+}
+
+/// Slot content goes into the camera and comes out of it: toward the middle, smaller, blurred.
+private struct SlotMorph: ViewModifier {
+    var amount: Double
+    /// +1 in the left slot (the camera is to its right), −1 in the right one.
+    var toward: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .opacity(1 - amount)
+            .blur(radius: 5 * amount)
+            .scaleEffect(1 - 0.55 * amount)
+            .offset(x: toward * 16 * amount)
+    }
+}
+
+/// One ring that leaves the microphone when recording starts.
+private struct MicRipple: View {
+    var color: Color
+    @State private var gone = false
+
+    var body: some View {
+        Circle().stroke(color, lineWidth: 1.5)
+            .frame(width: 18, height: 18)
+            .scaleEffect(gone ? 2.6 : 0.6)
+            .opacity(gone ? 0 : 0.9)
+            .allowsHitTesting(false)
+            .onAppear {
+                guard !Motion.reduce else { gone = true; return }
+                withAnimation(.easeOut(duration: 0.75).speed(Motion.speed)) { gone = true }
+            }
+    }
 }
 
 /// Content of the panel comes into focus: from a light blur and slightly smaller to sharp.
@@ -182,11 +216,23 @@ struct RootView: View {
         .environment(\.motionPaused, model.resting)
         .animation(spring, value: mode)
         .animation(.spring(response: 0.38, dampingFraction: 0.9), value: model.hasLiveActivity)
+        // One live thing turning into another: the shape springs to its new width (no overshoot when it closes).
+        .animation(model.hasLiveActivity ? Motion.morph : spring, value: model.slotWidth)
     }
 
     /// While music plays, the collapsed notch casts a little of the cover's colour below itself.
     @ViewBuilder private var underglow: some View {
-        if mode == .collapsed && model.flash == nil && model.live == .music {
+        if mode == .collapsed && model.flash == nil && model.live == .dictation {
+            // Red while the microphone is on, violet while the words are being recognized.
+            let color = model.dictation.phase == .recording ? Palette.red : Palette.violet
+            Ellipse()
+                .fill(EllipticalGradient(colors: [color.opacity(0.45), .clear], center: .center))
+                .frame(width: size.width * 0.9, height: 34)
+                .offset(y: model.notch.height - 15)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .animation(Motion.smooth, value: model.dictation.phase)
+        } else if mode == .collapsed && model.flash == nil && model.live == .music {
             Ellipse()
                 .fill(EllipticalGradient(colors: [model.nowPlaying.glowColors[0].opacity(0.5), .clear], center: .center))
                 .frame(width: size.width * 0.9, height: 34)
@@ -240,25 +286,33 @@ struct CollapsedView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            slot(leftSlot)
+            slot(leftSlot, toward: 1)
             Spacer(minLength: model.notch.width)
-            slot(rightSlot)
+            slot(rightSlot, toward: -1)
         }
         .frame(height: model.notch.height)
         .clipped()
-        .animation(Motion.smooth, value: slotKey)
+        .animation(Motion.morph, value: slotKey)
     }
 
     /// Changes whenever the slots show something else, so the old content scales away and the new one in.
     private var slotKey: String { "\(model.flash?.kind ?? "")|\(String(describing: model.live))" }
 
-    private func slot(_ content: some View) -> some View {
+    private func slot(_ content: some View, toward: CGFloat) -> some View {
         ZStack {
             content
                 .id(slotKey)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                .transition(Self.morph(toward: toward))
         }
         .frame(width: model.slotWidth)
+    }
+
+    /// The old content leaves first; the new one comes out of the camera while the shape widens.
+    private static func morph(toward: CGFloat) -> AnyTransition {
+        guard !Motion.reduce else { return .opacity }
+        let move = AnyTransition.modifier(active: SlotMorph(amount: 1, toward: toward), identity: SlotMorph(amount: 0, toward: toward))
+        return .asymmetric(insertion: move.animation(Motion.morph.delay(0.08)),
+                           removal: move.animation(.easeIn(duration: 0.16).speed(Motion.speed)))
     }
 
     @ViewBuilder private var leftSlot: some View {
@@ -322,9 +376,13 @@ struct CollapsedView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(recording ? Palette.red : Palette.violet.lifted())
                         .symbolEffect(.pulse, isActive: recording && !Motion.reduce)
+                        .contentTransition(.symbolEffect(.replace))
                         .frame(width: 16)
+                        .background { if recording { MicRipple(color: Palette.red) } }
                     Text(recording ? L("Запись") : L("Распознаю")).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
+                        .contentTransition(.interpolate)
                 }
+                .animation(Motion.quick, value: recording)
                 .foregroundStyle(.white.opacity(0.9))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 10)
