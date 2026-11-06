@@ -7,11 +7,11 @@ import SwiftUI
 
 /// Sections of the Settings window, in sidebar order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, panel, launcher, snippets, notch, notifications, dictation, agents, privacy, updates, thanks
+    case general, panel, launcher, snippets, clipboard, notch, notifications, dictation, agents, privacy, updates, thanks
 
     var id: String { rawValue }
     /// The first group in the sidebar: what Nook does. The second one is about Nook itself.
-    static let settings: [SettingsPane] = [.general, .panel, .launcher, .snippets, .notch, .notifications, .dictation, .agents, .privacy]
+    static let settings: [SettingsPane] = [.general, .panel, .launcher, .snippets, .clipboard, .notch, .notifications, .dictation, .agents, .privacy]
     static let about: [SettingsPane] = [.updates, .thanks]
 
     var title: String {
@@ -20,6 +20,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .panel: "Панель"
         case .launcher: "Поиск"
         case .snippets: "Сниппеты"
+        case .clipboard: "Буфер обмена"
         case .notch: "Вырез"
         case .notifications: "Уведомления"
         case .dictation: "Диктовка"
@@ -36,6 +37,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .panel: "rectangle.3.group.fill"
         case .launcher: "magnifyingglass"
         case .snippets: "text.quote"
+        case .clipboard: "doc.on.clipboard.fill"
         case .notch: "rectangle.topthird.inset.filled"
         case .notifications: "bell.badge.fill"
         case .dictation: "waveform"
@@ -52,6 +54,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .panel: Palette.yellow
         case .launcher: Palette.cyan
         case .snippets: Palette.green
+        case .clipboard: Palette.blue
         case .notch: Palette.orange
         case .notifications: Palette.red
         case .dictation: Palette.violet
@@ -451,6 +454,7 @@ struct SettingsView: View {
                 case .panel: PanelPane(state: state)
                 case .launcher: LauncherPane(state: state)
                 case .snippets: SnippetsPane(state: state, snippets: state.model.snippets)
+                case .clipboard: ClipboardPane(state: state)
                 case .notch: NotchPane(state: state)
                 case .notifications: NotificationsPane(state: state)
                 case .dictation: DictationPane(state: state, dictation: state.model.dictation)
@@ -722,6 +726,58 @@ struct AliasField: View {
             .onChange(of: alias) { _, new in if !focused { text = new } }
             .onSubmit { save(text) }
             .onChange(of: focused) { _, now in if !now { save(text) } }
+    }
+}
+
+struct ClipboardPane: View {
+    @ObservedObject var state: SettingsState
+    @State private var ignored = Settings.clipboardIgnoredApps
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Хранить записи", selection: state.bind({ Settings.clipboardKeepDays }, {
+                    Settings.clipboardKeepDays = $0
+                    state.model.clipboard.applyKeepTime()
+                })) {
+                    Text("Всегда (до 300)").tag(0)
+                    Text("1 день").tag(1)
+                    Text("7 дней").tag(7)
+                    Text("30 дней").tag(30)
+                    Text("90 дней").tag(90)
+                    Text("1 год").tag(365)
+                }
+                LabeledContent("Открыть буфер") { Text("⌃⌘V").font(.system(size: 12, weight: .medium, design: .rounded)) }
+            }
+            Section("Не записывать из программ") {
+                ForEach(ignored, id: \.self) { id in
+                    HStack {
+                        Text(Self.name(id)).lineLimit(1)
+                        Spacer()
+                        Button { ignored.removeAll { $0 == id }; Settings.clipboardIgnoredApps = ignored } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                Button("Добавить программу…") { addApp() }
+            }
+        }
+    }
+
+    private func addApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK, let url = panel.url, let id = Bundle(url: url)?.bundleIdentifier,
+              !ignored.contains(id) else { return }
+        ignored.append(id)
+        Settings.clipboardIgnoredApps = ignored
+    }
+
+    private static func name(_ id: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return id }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
     }
 }
 

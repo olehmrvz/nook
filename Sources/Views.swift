@@ -682,6 +682,19 @@ struct ClipboardTab: View {
                     .onKeyPress(.upArrow) { move(-1, count: items.count); return .handled }
                     .onKeyPress(.escape) { model.collapse(); return .handled }
                     .onChange(of: store.query) { _, _ in store.selection = 0 }
+                Menu {
+                    Picker("Показывать", selection: $store.filter) {
+                        ForEach(ClipboardStore.Filter.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: store.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.filter == .all ? muted : Palette.blue.lifted())
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().focusable(false)
+                .help("Только текст, ссылки, картинки или файлы")
+                .onChange(of: store.filter) { _, _ in store.selection = 0 }
                 if AXIsProcessTrusted() {
                     Text("↩ вставить").font(.system(size: 11)).foregroundStyle(faint)
                 } else {
@@ -711,7 +724,7 @@ struct ClipboardTab: View {
                 VStack(spacing: 8) {
                     Badge(symbol: store.query.isEmpty ? "doc.on.clipboard" : "magnifyingglass",
                           colors: [Palette.blue, Palette.violet], size: 44)
-                    Text(store.query.isEmpty ? "Скопируйте что-нибудь — оно появится здесь" : "Ничего не найдено")
+                    Text(store.query.isEmpty && store.filter == .all ? "Скопируйте что-нибудь — оно появится здесь" : "Ничего не найдено")
                         .font(.system(size: 12)).foregroundStyle(muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

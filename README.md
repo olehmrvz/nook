@@ -44,7 +44,9 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 
 **Every day**
 - Music from any app: Spotify, Music, a browser tab, podcasts.
-- Clipboard (⌃⌘V): 300 items, pins, search, text from images. Password-manager items are never saved.
+- Clipboard (⌃⌘V): 300 items, pins, search, a filter (text, links, images, files), text from images, a keep time,
+  apps to ignore (Keychain Access and Passwords by default), and "paste the next one" for pasting a list in order.
+  Password-manager items are never saved.
 - Shelf: drop a file on the notch, drag it out later or AirDrop it. Screenshots land there by themselves.
 - Calendar and reminders, a "Join" button 5 minutes before a meeting.
 - Timer and Pomodoro, notes, mirror (camera), teleprompter for video (`Nook --prompt`).

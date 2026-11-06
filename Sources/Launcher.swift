@@ -62,11 +62,12 @@ extension Settings {
 
 /// Nook's own actions, found by name like apps.
 enum NookCommand: String, CaseIterable {
-    case clipboard, shelf, notes, calendar, agents, timer, pomodoro, focus, coffee, keyLock, settings, updates, thanks
+    case clipboard, pasteNext, shelf, notes, calendar, agents, timer, pomodoro, focus, coffee, keyLock, settings, updates, thanks
 
     var title: String {
         switch self {
         case .clipboard: "Буфер обмена"
+        case .pasteNext: "Вставить следующее из буфера"
         case .shelf: "Полка"
         case .notes: "Заметки"
         case .calendar: "Календарь"
@@ -85,6 +86,7 @@ enum NookCommand: String, CaseIterable {
     var symbol: String {
         switch self {
         case .clipboard: "doc.on.clipboard.fill"
+        case .pasteNext: "list.number"
         case .shelf: "tray.full.fill"
         case .notes: "note.text"
         case .calendar: "calendar"
@@ -101,7 +103,7 @@ enum NookCommand: String, CaseIterable {
 
     var color: Color {
         switch self {
-        case .clipboard: Palette.blue
+        case .clipboard, .pasteNext: Palette.blue
         case .shelf: Palette.cyan
         case .notes: Palette.yellow
         case .calendar: Palette.red
@@ -119,6 +121,7 @@ enum NookCommand: String, CaseIterable {
     var aliases: [String] {
         switch self {
         case .clipboard: ["clipboard", "history", "история", "копировать"]
+        case .pasteNext: ["paste sequentially", "по очереди", "следующее", "вставить"]
         case .shelf: ["shelf", "files", "файлы", "airdrop"]
         case .notes: ["notes", "заметка"]
         case .calendar: ["calendar", "meeting", "встреча", "события"]

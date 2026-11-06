@@ -22,8 +22,36 @@ struct ClipItem: Codable, Identifiable, Equatable {
     }
 }
 
+extension Settings {
+    /// Apps whose copies are never kept (bundle ids).
+    static var clipboardIgnoredApps: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "clipboardIgnoredApps") ?? ["com.apple.keychainaccess", "com.apple.Passwords"] }
+        set { UserDefaults.standard.set(newValue, forKey: "clipboardIgnoredApps") }
+    }
+    /// Unpinned entries older than this many days go; 0 keeps them (up to 300).
+    static var clipboardKeepDays: Int {
+        get { UserDefaults.standard.integer(forKey: "clipboardKeepDays") }
+        set { UserDefaults.standard.set(newValue, forKey: "clipboardKeepDays") }
+    }
+}
+
 /// Clipboard history. Items marked concealed or transient by password managers are never stored.
 final class ClipboardStore: ObservableObject {
+    enum Filter: String, CaseIterable, Identifiable {
+        case all, text, links, images, files
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .all: "Всё"
+            case .text: "Текст"
+            case .links: "Ссылки"
+            case .images: "Картинки"
+            case .files: "Файлы"
+            }
+        }
+    }
+
+    @Published var filter = Filter.all
     @Published private(set) var items: [ClipItem] = []
     @Published var query = ""
     @Published var selection = 0
@@ -51,9 +79,24 @@ final class ClipboardStore: ObservableObject {
 
     var filtered: [ClipItem] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let base = items.filter { $0.pinned } + items.filter { !$0.pinned }
+        let kept = items.filter { item in
+            switch filter {
+            case .all: true
+            case .text: item.kind == .text && !Self.isLink(item)
+            case .links: Self.isLink(item)
+            case .images: item.kind == .image
+            case .files: item.kind == .files
+            }
+        }
+        let base = kept.filter { $0.pinned } + kept.filter { !$0.pinned }
         guard !q.isEmpty else { return base }
         return base.filter { $0.preview.lowercased().contains(q) || ($0.sourceApp ?? "").lowercased().contains(q) }
+    }
+
+    private static func isLink(_ item: ClipItem) -> Bool {
+        guard item.kind == .text, let text = item.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.contains(" "), !text.contains("\n") else { return false }
+        return text.hasPrefix("http://") || text.hasPrefix("https://")
     }
 
     /// Text bigger than this is not kept: it would be re-encoded on every later change.
@@ -82,7 +125,9 @@ final class ClipboardStore: ObservableObject {
         guard changeCount != ownChange else { return }
         let types = Set((pb.types ?? []).map(\.rawValue))
         guard types.isDisjoint(with: Self.ignoredTypes) else { return }
-        let app = NSWorkspace.shared.frontmostApplication?.localizedName
+        let front = NSWorkspace.shared.frontmostApplication
+        if let id = front?.bundleIdentifier, Settings.clipboardIgnoredApps.contains(id) { return }
+        let app = front?.localizedName
 
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !urls.isEmpty {
@@ -119,14 +164,30 @@ final class ClipboardStore: ObservableObject {
     private func trim() {
         var unpinned = 0
         var dropped: [ClipItem] = []
+        let days = Settings.clipboardKeepDays
+        let oldest = days > 0 ? Date().addingTimeInterval(-Double(days) * 86_400) : .distantPast
+        var expired = 0
         items.removeAll { item in
             guard !item.pinned else { return false }
             unpinned += 1
             if unpinned > maxUnpinned { dropped.append(item); return true }
+            // Older than the chosen keep time (Settings → Буфер); pins always stay.
+            if item.date < oldest { dropped.append(item); expired += 1; return true }
             return false
         }
         dropped.forEach(deleteImage)
+        if expired > 0 { logEvent("expired=\(expired) days=\(days)") }
     }
+
+    /// Applied at once when the keep time changes.
+    func applyKeepTime() {
+        let before = items.count
+        trim()
+        if items.count != before { save() }
+    }
+
+    /// Text entries, newest first, without pins: for "paste the next one".
+    var history: [String] { items.filter { !$0.pinned && $0.kind == .text }.compactMap(\.text) }
 
     func imageURL(for item: ClipItem) -> URL? {
         item.imageFile.map { imagesDir.appendingPathComponent($0) }

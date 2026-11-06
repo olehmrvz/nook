@@ -643,6 +643,9 @@ final class NotchModel: ObservableObject {
     func run(_ command: NookCommand) {
         switch command {
         case .clipboard: select(.clipboard)
+        case .pasteNext:
+            collapse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.pasteNext() }
         case .shelf: select(.shelf)
         case .notes: select(.notes)
         case .calendar: select(.calendar)
@@ -668,6 +671,26 @@ final class NotchModel: ObservableObject {
         case .updates: onOpenSettings?(.updates)
         case .thanks: onOpenSettings?(.thanks)
         }
+    }
+
+    private var sequence = (index: 0, first: String?.none, last: Date.distantPast)
+
+    /// "Вставить следующее из буфера" (best with its own shortcut): each press pastes the next older text, without
+    /// moving it to the top. A new copy or a minute of quiet starts again from the newest.
+    func pasteNext() {
+        guard Date().timeIntervalSince(sequence.last) > 0.25 else { return }
+        let history = clipboard.history
+        if Date().timeIntervalSince(sequence.last) > 60 || history.first != sequence.first {
+            sequence = (0, history.first, sequence.last)
+        }
+        sequence.last = Date()
+        guard history.indices.contains(sequence.index) else {
+            present(Island(kind: .notice(symbol: "list.number", title: "Больше нечего вставить",
+                                         detail: "Это была самая старая запись", ok: true), seconds: 3))
+            return
+        }
+        TextInsertion.paste(history[sequence.index])
+        sequence.index += 1
     }
 
     func toggleClipboardFromHotkey() {
