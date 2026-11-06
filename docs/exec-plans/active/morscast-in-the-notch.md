@@ -17,7 +17,11 @@ features are rewritten from their behaviour (its docs, our specs). MorsCast: 963
 Done so far (commits on olehmrvz/feature): 1347a7b settings window · 4f004d7 dictation · 2fa0389 search, recorded
 shortcuts, header · 5dcd858 calculator + currencies (ExchangeRate-API) · 49377bc aliases, item shortcuts, fallbacks ·
 4f3a4c1 windows (Rectangle-style) · a5a299b snippets · 66391ed files, Apple Shortcuts, emoji, quicklinks, own commands ·
-3c3a987 menu items + open windows · f7d9fe6 clipboard extras · 45ce2df crypto + Russian currency words · AI (this commit).
+3c3a987 menu items + open windows · f7d9fe6 clipboard extras · 45ce2df crypto + Russian currency words · c007f91 AI ·
+cff532d settings text fields without stray labels · ccdcc3f README rewritten by section (merges cleanly with
+olehmrvz/certificate: `git merge-tree` exit 0). README screenshots: the user wants English ones, which need the
+English UI first; candidate captures (Russian UI) and the crop/flatten helpers are in the session scratchpad.
+The README reaches GitHub only through main; the published release (v10) has none of these features yet.
 Left from MorsCast (LATER in the specs): AI chat window with history, MCP, Raycast extensions, window layouts/rooms,
 OpenAI-compatible provider, dates/time zones in the calculator, uninstaller, backup/import. Then localization
 (after olehmrvz/certificate is merged).
