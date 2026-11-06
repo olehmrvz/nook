@@ -11,13 +11,23 @@ Constraints:
   while a text field is focused, see CLAUDE.md); results and actions live in the panel (262 pt tab area).
 - Branch `olehmrvz/certificate` (another agent) is not merged yet: avoid `Updater.swift`, `install.sh`, `release.sh`.
 
+License decision (user, 2026-11-06, asked explicitly): Nook stays MIT; MorsCast code is NOT ported or translated,
+features are rewritten from their behaviour (its docs, our specs). MorsCast: 963 Swift files, ~170k lines, no packages.
+
+Done so far (commits on olehmrvz/feature): 1347a7b settings window · 4f004d7 dictation · 2fa0389 search, recorded
+shortcuts, header · 5dcd858 calculator + currencies (ExchangeRate-API) · 49377bc aliases, item shortcuts, fallbacks.
+Next, in order: window management + snippets + clipboard extras (spec B) → quicklinks, custom commands, Apple
+Shortcuts, dictionary, emoji, file search, menu search, window switcher (spec A [L]) → crypto rates → AI (spec C)
+→ localization. Not yet checked on screen by the user: dictation (key, paste), search on the second display,
+aliases/shortcuts UI, softer glow in the real panel.
+
 Decisions (user, 2026-11-06): dictation engine = Parakeet right away (not Apple's DictationTranscriber);
 UI languages = EN RU UK DE ES FR PT-BR IT PL ZH-Hans + "as in system"; scope = dictation first, then everything else.
 
 ## Phases
 
 1. **Dictation** (in progress, `docs/exec-plans/active/dictation.md` section below).
-2. **Launcher core** — done (2026-11-06, not committed yet at the time of writing): recorded shortcut (default
+2. **Launcher core** — done (2026-11-06): recorded shortcut (default
    ⌥Space), opens on the pointer's display, apps + System Settings panes + Nook commands, ranking with layout
    fallback and usage boost, ↩ opens, ⌘↩ reveals. Specs of all MorsCast features (behaviour only, from its docs):
    scratchpad specs A-palette (calculator, currency, aliases, palette), B-tools (windows, snippets, clipboard
