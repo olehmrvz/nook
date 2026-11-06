@@ -18,9 +18,9 @@ enum AIProvider: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .claudeCode: "Claude Code (ваша подписка)"
-        case .anthropic: "Claude API (свой ключ)"
-        case .apple: "Apple Intelligence (на этом Mac)"
+        case .claudeCode: L("Claude Code (ваша подписка)")
+        case .anthropic: L("Claude API (свой ключ)")
+        case .apple: L("Apple Intelligence (на этом Mac)")
         }
     }
 }
@@ -43,12 +43,12 @@ enum AIAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .fix: "Исправить ошибки в выделенном"
-        case .rewrite: "Переписать выделенное понятнее"
-        case .shorter: "Сократить выделенное"
-        case .summarize: "Кратко пересказать выделенное"
-        case .toEnglish: "Перевести выделенное на английский"
-        case .toRussian: "Перевести выделенное на русский"
+        case .fix: L("Исправить ошибки в выделенном")
+        case .rewrite: L("Переписать выделенное понятнее")
+        case .shorter: L("Сократить выделенное")
+        case .summarize: L("Кратко пересказать выделенное")
+        case .toEnglish: L("Перевести выделенное на английский")
+        case .toRussian: L("Перевести выделенное на русский")
         }
     }
 
@@ -122,15 +122,15 @@ final class Assistant: ObservableObject {
             case .available: return nil
             case .unavailable(let reason):
                 switch reason {
-                case .deviceNotEligible: return "Этот Mac не поддерживает Apple Intelligence"
-                case .appleIntelligenceNotEnabled: return "Включите Apple Intelligence в Системных настройках"
-                case .modelNotReady: return "Модель Apple ещё загружается"
-                @unknown default: return "Модель Apple недоступна"
+                case .deviceNotEligible: return L("Этот Mac не поддерживает Apple Intelligence")
+                case .appleIntelligenceNotEnabled: return L("Включите Apple Intelligence в Системных настройках")
+                case .modelNotReady: return L("Модель Apple ещё загружается")
+                @unknown default: return L("Модель Apple недоступна")
                 }
             }
         }
         #endif
-        return "Нужна macOS 26"
+        return L("Нужна macOS 26")
     }
 
     /// `effort` "low" for simple rewrites; nil keeps the model's default.
@@ -185,7 +185,7 @@ final class Assistant: ObservableObject {
     /// notch), no tools, nothing saved. The text goes in on stdin, not in the arguments other processes can read.
     private func runClaudeCode(_ prompt: String, system: String?, effort: String?,
                                append: @escaping (String) -> Void, finish: @escaping (Result<String, Error>) -> Void) {
-        guard let binary = Self.claudeBinary else { return finish(.failure(Failure(message: "Claude Code не найден"))) }
+        guard let binary = Self.claudeBinary else { return finish(.failure(Failure(message: L("Claude Code не найден")))) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         var arguments = ["-p", "--setting-sources", "project", "--no-session-persistence", "--tools", "",
@@ -215,7 +215,7 @@ final class Assistant: ObservableObject {
                     text += piece
                     append(piece)
                 } else if json["type"] as? String == "result", json["is_error"] as? Bool == true {
-                    resultError = json["result"] as? String ?? "Claude Code не ответил"
+                    resultError = json["result"] as? String ?? L("Claude Code не ответил")
                 }
             }
         }
@@ -223,7 +223,7 @@ final class Assistant: ObservableObject {
             output.fileHandleForReading.readabilityHandler = nil
             if let resultError { return finish(.failure(Failure(message: resultError))) }
             if finished.terminationStatus != 0 && text.isEmpty {
-                return finish(.failure(Failure(message: "Claude Code завершился с кодом \(finished.terminationStatus)")))
+                return finish(.failure(Failure(message: L("Claude Code завершился с кодом \(finished.terminationStatus)"))))
             }
             finish(.success(text))
         }
@@ -242,7 +242,7 @@ final class Assistant: ObservableObject {
     /// The Messages API, streamed (server-sent events). Fallback on a refusal is on (`fallbacks: "default"`).
     private func runAPI(_ prompt: String, system: String?, effort: String?,
                         append: @escaping (String) -> Void, finish: @escaping (Result<String, Error>) -> Void) async {
-        guard let key = Keychain.read("anthropic") else { return finish(.failure(Failure(message: "Нет ключа Claude API"))) }
+        guard let key = Keychain.read("anthropic") else { return finish(.failure(Failure(message: L("Нет ключа Claude API")))) }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -275,22 +275,22 @@ final class Assistant: ObservableObject {
                     }
                 case "message_delta":
                     if (event["delta"] as? [String: Any])?["stop_reason"] as? String == "refusal" {
-                        return finish(.failure(Failure(message: "Модель отказалась отвечать на этот запрос")))
+                        return finish(.failure(Failure(message: L("Модель отказалась отвечать на этот запрос"))))
                     }
                 case "error":
-                    let message = (event["error"] as? [String: Any])?["message"] as? String ?? "Ошибка Claude API"
+                    let message = (event["error"] as? [String: Any])?["message"] as? String ?? L("Ошибка Claude API")
                     return finish(.failure(Failure(message: message)))
                 default: break
                 }
             }
             if status != 200 {
                 let json = try? JSONSerialization.jsonObject(with: Data(errorBody.utf8)) as? [String: Any]
-                let message = (json?["error"] as? [String: Any])?["message"] as? String ?? "Claude API: код \(status)"
-                return finish(.failure(Failure(message: status == 401 ? "Ключ Claude API не подошёл" : message)))
+                let message = (json?["error"] as? [String: Any])?["message"] as? String ?? L("Claude API: код \(status)")
+                return finish(.failure(Failure(message: status == 401 ? L("Ключ Claude API не подошёл") : message)))
             }
             finish(.success(text))
         } catch is CancellationError {
-            finish(.failure(Failure(message: "Отменено")))
+            finish(.failure(Failure(message: L("Отменено"))))
         } catch {
             finish(.failure(error))
         }
@@ -316,7 +316,7 @@ final class Assistant: ObservableObject {
             }
         }
         #endif
-        finish(.failure(Failure(message: Self.appleStatus ?? "Модель Apple недоступна")))
+        finish(.failure(Failure(message: Self.appleStatus ?? L("Модель Apple недоступна"))))
     }
 }
 

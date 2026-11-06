@@ -19,7 +19,7 @@ struct RequestHeader: View {
                     .font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
             }
             Spacer(minLength: 0)
-            if more > 0 { Chip(text: "ещё \(more)", color: .white) }
+            if more > 0 { Chip(text: L("ещё \(more)"), color: .white) }
         }
     }
 }
@@ -85,13 +85,13 @@ struct QuestionCard: View {
                 }
                 .disabled(!armed)
                 HStack(spacing: 8) {
-                    TextField(q.multi ? "Свой вариант (добавится к выбранным)" : "Свой ответ", text: $custom)
+                    TextField(q.multi ? L("Свой вариант (добавится к выбранным)") : L("Свой ответ"), text: $custom)
                         .textFieldStyle(.plain).font(.system(size: 12))
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .glass(radius: 9)
                         .onSubmit { submit(q, total: all.count) }
                     if q.multi || !custom.isEmpty {
-                        Button(step == all.count - 1 ? "Ответить" : "Дальше") { submit(q, total: all.count) }
+                        Button(step == all.count - 1 ? L("Ответить") : L("Дальше")) { submit(q, total: all.count) }
                             .buttonStyle(.pill(.primary, small: true))
                             .disabled(picked.isEmpty && custom.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
@@ -111,7 +111,7 @@ struct QuestionCard: View {
 
     /// "Вопрос · Дизайн", "Вопрос 2 из 3 · Порядок".
     static func title(_ q: Question?, step: Int, total: Int) -> String {
-        let number = total > 1 ? "Вопрос \(step + 1) из \(total)" : "Вопрос"
+        let number = total > 1 ? L("Вопрос \(step + 1) из \(total)") : L("Вопрос")
         guard let header = q?.header, !header.isEmpty else { return number }
         return "\(number) · \(header)"
     }
@@ -173,7 +173,7 @@ struct PlanCard: View {
     var body: some View {
         let plan = request.input["plan"] as? String ?? ""
         VStack(alignment: .leading, spacing: 10) {
-            RequestHeader(request: request, title: "План готов — посмотрите", more: more)
+            RequestHeader(request: request, title: L("План готов — посмотрите"), more: more)
             ScrollView(showsIndicators: true) {
                 Text(Self.render(plan))
                     .font(.system(size: 12))
@@ -186,10 +186,10 @@ struct PlanCard: View {
                         // The link text can differ from where it leads: show the real address first.
                         guard url.scheme == "https" else { return .discarded }
                         let alert = NSAlert()
-                        alert.messageText = "Открыть ссылку из плана?"
+                        alert.messageText = L("Открыть ссылку из плана?")
                         alert.informativeText = url.absoluteString
-                        alert.addButton(withTitle: "Открыть")
-                        alert.addButton(withTitle: "Отмена")
+                        alert.addButton(withTitle: L("Открыть"))
+                        alert.addButton(withTitle: L("Отмена"))
                         NSApp.activate(ignoringOtherApps: true)
                         return alert.runModal() == .alertFirstButtonReturn ? .systemAction : .discarded
                     })
@@ -231,7 +231,7 @@ struct PlanCard: View {
     private func sendBack() {
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        agents.answer(request.id, with: .deny, message: "Доработай план: \(text)")
+        agents.answer(request.id, with: .deny, message: L("Доработай план: \(text)"))
     }
 
     /// Light markdown: headings become bold lines without "#", the rest keeps inline emphasis and code.

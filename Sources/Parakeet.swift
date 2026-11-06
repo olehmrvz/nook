@@ -15,15 +15,15 @@ enum ParakeetModel: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .redux: "Быстрая"
-        case .ultra: "Точная"
+        case .redux: L("Быстрая")
+        case .ultra: L("Точная")
         }
     }
 
     var detail: String {
         switch self {
-        case .redux: "Parakeet Redux: меньше места и памяти"
-        case .ultra: "Parakeet Ultra: точнее, особенно для русского и украинского"
+        case .redux: L("Parakeet Redux: меньше места и памяти")
+        case .ultra: L("Parakeet Ultra: точнее, особенно для русского и украинского")
         }
     }
 
@@ -241,7 +241,7 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200, Self.size(location) == file.size, Self.sha256(location) == file.sha256 else {
             cancelled = true
-            return report(ParakeetError.download("Файл модели не прошёл проверку: \(file.path). Попробуйте ещё раз."))
+            return report(ParakeetError.download(L("Файл модели не прошёл проверку: \(file.path). Попробуйте ещё раз.")))
         }
         let target = model.staging.appendingPathComponent(file.path)
         let fm = FileManager.default
@@ -261,7 +261,7 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error, !cancelled else { return }
         cancelled = true
-        report(ParakeetError.download("Не удалось скачать модель: \(error.localizedDescription)"))
+        report(ParakeetError.download(L("Не удалось скачать модель: \(error.localizedDescription)")))
     }
 
     private static func size(_ url: URL) -> Int64 {
@@ -318,7 +318,7 @@ final class ParakeetEngine {
 
         let data = try Data(contentsOf: directory.appendingPathComponent(ParakeetFile.vocab))
         guard let table = try JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            throw ParakeetError.model("Словарь модели повреждён.")
+            throw ParakeetError.model(L("Словарь модели повреждён."))
         }
         var words = [String](repeating: "", count: Self.blank)
         for (key, value) in table { if let id = Int(key), words.indices.contains(id) { words[id] = value } }
@@ -385,14 +385,14 @@ final class ParakeetEngine {
         ]))
         guard let mel = features.featureValue(for: "mel")?.multiArrayValue,
               let melLength = features.featureValue(for: "mel_length")?.multiArrayValue else {
-            throw ParakeetError.model("Модель не вернула признаки звука.")
+            throw ParakeetError.model(L("Модель не вернула признаки звука."))
         }
         let encoded = try encoder.prediction(from: MLDictionaryFeatureProvider(dictionary: [
             "mel": mel, "mel_length": melLength,
         ]))
         guard let frames = encoded.featureValue(for: "encoder")?.multiArrayValue,
               let frameCount = encoded.featureValue(for: "encoder_length")?.multiArrayValue?[0].intValue else {
-            throw ParakeetError.model("Модель не вернула кадры кодировщика.")
+            throw ParakeetError.model(L("Модель не вернула кадры кодировщика."))
         }
         let view = try FrameView(frames, hidden: 1024)
         let length = min(frameCount, view.count)
@@ -409,7 +409,7 @@ final class ParakeetEngine {
             ]))
             guard let token = decision.featureValue(for: "token_id")?.multiArrayValue?[0].intValue,
                   let bin = decision.featureValue(for: "duration")?.multiArrayValue?[0].intValue else {
-                throw ParakeetError.model("Модель не вернула решение.")
+                throw ParakeetError.model(L("Модель не вернула решение."))
             }
             var advance = Self.durations[min(max(bin, 0), Self.durations.count - 1)]
             if token == Self.blank {
@@ -436,7 +436,7 @@ final class ParakeetEngine {
         guard let output = result.featureValue(for: "decoder")?.multiArrayValue,
               let h = result.featureValue(for: "h_out")?.multiArrayValue,
               let c = result.featureValue(for: "c_out")?.multiArrayValue else {
-            throw ParakeetError.model("Модель не вернула состояние декодера.")
+            throw ParakeetError.model(L("Модель не вернула состояние декодера."))
         }
         state.output = output
         state.h = h
@@ -465,7 +465,7 @@ final class ParakeetEngine {
     private static func copy(_ source: MLMultiArray, into destination: MLMultiArray, hidden: Int) throws {
         let shape = source.shape.map(\.intValue)
         guard shape.count == 3, let axis = [1, 2].first(where: { shape[$0] == hidden }) else {
-            throw ParakeetError.model("Неожиданная форма выхода модели: \(shape).")
+            throw ParakeetError.model(L("Неожиданная форма выхода модели: \(shape)."))
         }
         let stride = source.strides[axis].intValue
         let from = source.dataPointer.bindMemory(to: Float.self, capacity: source.count)
@@ -486,7 +486,7 @@ final class ParakeetEngine {
             let shape = array.shape.map(\.intValue)
             guard shape.count == 3, array.dataType == .float32,
                   let axis = [1, 2].first(where: { shape[$0] == hidden }) else {
-                throw ParakeetError.model("Неожиданная форма кадров: \(shape).")
+                throw ParakeetError.model(L("Неожиданная форма кадров: \(shape)."))
             }
             let time = axis == 1 ? 2 : 1
             self.array = array

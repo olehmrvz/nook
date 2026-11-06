@@ -7,16 +7,16 @@ enum Tab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .home: return "Главная"
-        case .clipboard: return "Буфер"
-        case .shelf: return "Полка"
-        case .ai: return "Агенты"
-        case .notes: return "Заметки"
-        case .mirror: return "Зеркало"
-        case .calendar: return "Календарь"
-        case .timer: return "Таймер"
+        case .home: return L("Главная")
+        case .clipboard: return L("Буфер")
+        case .shelf: return L("Полка")
+        case .ai: return L("Агенты")
+        case .notes: return L("Заметки")
+        case .mirror: return L("Зеркало")
+        case .calendar: return L("Календарь")
+        case .timer: return L("Таймер")
         case .cuely: return "Cuely"
-        case .launcher: return "Поиск"
+        case .launcher: return L("Поиск")
         }
     }
     var icon: String {
@@ -68,11 +68,11 @@ enum HeaderItem: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .weather: "Погода"
-        case .battery: "Батарея"
-        case .keyLock: "Блокировка клавиатуры"
-        case .coffee: "Кофеин"
-        case .search: "Поиск"
+        case .weather: L("Погода")
+        case .battery: L("Батарея")
+        case .keyLock: L("Блокировка клавиатуры")
+        case .coffee: L("Кофеин")
+        case .search: L("Поиск")
         }
     }
 
@@ -315,7 +315,7 @@ final class NotchModel: ObservableObject {
             guard !self.limitWarnings.contains(key) else { return }
             // Seen at launch already low: warn for the lower level only once, not for both.
             self.limitWarnings.formUnion([5, 15].filter { $0 >= level }.map { "\(window.resetsAt?.timeIntervalSince1970 ?? 0)-\($0)" })
-            self.present(Island(kind: .limit(title: "Claude · 5 ч", left: left, resets: window.resetsAt), seconds: 8))
+            self.present(Island(kind: .limit(title: L("Claude · 5 ч"), left: left, resets: window.resetsAt), seconds: 8))
         }
         .store(in: &bag)
         calendar.start { [weak self] island in self?.present(island) }
@@ -647,7 +647,7 @@ final class NotchModel: ObservableObject {
     func runAI(_ action: AIAction) {
         collapse()
         guard assistant.isReady else {
-            present(Island(kind: .notice(symbol: "sparkles", title: "AI не настроен", detail: "Настройки Nook → AI", ok: false), seconds: 4))
+            present(Island(kind: .notice(symbol: "sparkles", title: L("AI не настроен"), detail: L("Настройки Nook → AI"), ok: false), seconds: 4))
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
@@ -655,7 +655,7 @@ final class NotchModel: ObservableObject {
             Selection.read { text in
                 guard let self else { return }
                 guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    self.present(Island(kind: .notice(symbol: "text.cursor", title: "Выделите текст",
+                    self.present(Island(kind: .notice(symbol: "text.cursor", title: L("Выделите текст"),
                                                       detail: action.title, ok: false), seconds: 3))
                     return
                 }
@@ -734,8 +734,8 @@ final class NotchModel: ObservableObject {
         }
         sequence.last = Date()
         guard history.indices.contains(sequence.index) else {
-            present(Island(kind: .notice(symbol: "list.number", title: "Больше нечего вставить",
-                                         detail: "Это была самая старая запись", ok: true), seconds: 3))
+            present(Island(kind: .notice(symbol: "list.number", title: L("Больше нечего вставить"),
+                                         detail: L("Это была самая старая запись"), ok: true), seconds: 3))
             return
         }
         TextInsertion.paste(history[sequence.index])

@@ -74,35 +74,35 @@ enum Format {
     /// "45 с", "12 мин", "1 ч 5 мин".
     static func span(_ seconds: TimeInterval) -> String {
         let s = Int(max(0, seconds))
-        if s < 5 { return "сейчас" }
-        if s < 60 { return "\(s) с" }
-        if s < 3600 { return "\(s / 60) мин" }
-        return "\(s / 3600) ч \(s / 60 % 60) мин"
+        if s < 5 { return L("сейчас") }
+        if s < 60 { return L("\(s) с") }
+        if s < 3600 { return L("\(s / 60) мин") }
+        return L("\(s / 3600) ч \(s / 60 % 60) мин")
     }
 
     /// Time until something: "45 мин", "1 ч 50 мин", "4 дн 6 ч".
     static func until(_ seconds: TimeInterval) -> String {
         let m = Int(max(0, seconds) / 60)
-        if m < 60 { return "\(max(1, m)) мин" }
-        if m < 24 * 60 { return m % 60 == 0 ? "\(m / 60) ч" : "\(m / 60) ч \(m % 60) мин" }
+        if m < 60 { return L("\(max(1, m)) мин") }
+        if m < 24 * 60 { return m % 60 == 0 ? L("\(m / 60) ч") : L("\(m / 60) ч \(m % 60) мин") }
         let h = m / 60
-        return h % 24 == 0 ? "\(h / 24) дн" : "\(h / 24) дн \(h % 24) ч"
+        return h % 24 == 0 ? L("\(h / 24) дн") : L("\(h / 24) дн \(h % 24) ч")
     }
 
     /// A moment in words: "сегодня в 02:40", "завтра в 09:00", "пн в 14:00", "21 нояб.".
     static func when(_ date: Date) -> String {
         let cal = Calendar.current
         let time = date.formatted(date: .omitted, time: .shortened)
-        if cal.isDateInToday(date) { return "сегодня в \(time)" }
-        if cal.isDateInTomorrow(date) { return "завтра в \(time)" }
+        if cal.isDateInToday(date) { return L("сегодня в \(time)") }
+        if cal.isDateInTomorrow(date) { return L("завтра в \(time)") }
         if date.timeIntervalSinceNow < 6 * 86400 { return date.formatted(.dateTime.weekday(.abbreviated)) + " в \(time)" }
         return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     /// "840 токенов", "35 тыс. токенов", "1,2 млн токенов".
     static func tokens(_ n: Int) -> String {
-        if n >= 1_000_000 { return (Double(n) / 1_000_000).formatted(.number.precision(.fractionLength(n >= 10_000_000 ? 0 : 1))) + " млн токенов" }
-        if n >= 1_000 { return "\(n / 1_000) тыс. токенов" }
+        if n >= 1_000_000 { return (Double(n) / 1_000_000).formatted(.number.precision(.fractionLength(n >= 10_000_000 ? 0 : 1))) + L(" млн токенов") }
+        if n >= 1_000 { return L("\(n / 1_000) тыс. токенов") }
         return count(n, "токен", "токена", "токенов")
     }
 
@@ -112,8 +112,10 @@ enum Format {
         return "≈ $" + value.formatted(.number.precision(.fractionLength(value >= 100 ? 0 : 2)).locale(Locale(identifier: "en_US")))
     }
 
-    /// Russian plural: count(3, "файл", "файла", "файлов") → "3 файла".
+    /// Russian plural: count(3, "файл", "файла", "файлов") → "3 файла". In English the words are looked up:
+    /// `one` for 1, `many` for the rest ("1 file", "3 files").
     static func count(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
+        guard Language.shown == .ru else { return "\(n) \(Language.text(n == 1 ? one : many))" }
         let tens = n % 100, ones = n % 10
         let word = (11...14).contains(tens) ? many : (ones == 1 ? one : ((2...4).contains(ones) ? few : many))
         return "\(n) \(word)"

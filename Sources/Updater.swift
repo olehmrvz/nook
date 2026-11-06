@@ -34,9 +34,9 @@ final class Updater {
     /// `manual`: from the menu; runs even with automatic updates off, and reports "up to date".
     func check(manual: Bool = false, done: ((String) -> Void)? = nil) {
         guard manual || Settings.autoUpdate else { return }
-        guard !busy, staged == nil else { done?(staged != nil ? "Обновление скачано и установится, когда Nook закрыт." : "Проверка уже идёт."); return }
+        guard !busy, staged == nil else { done?(staged != nil ? L("Обновление скачано и установится, когда Nook закрыт.") : L("Проверка уже идёт.")); return }
         if Bundle.main.bundlePath.contains("/AppTranslocation/") {
-            finish("Перенесите Nook в папку «Программы», тогда он сможет обновляться.", done)
+            finish(L("Перенесите Nook в папку «Программы», тогда он сможет обновляться."), done)
             return
         }
         busy = true
@@ -53,11 +53,11 @@ final class Updater {
                   let link = asset["browser_download_url"] as? String, let url = URL(string: link),
                   (asset["size"] as? Int ?? 0) < Self.maxDownload
             else {
-                self.finish("Не удалось проверить обновления. Попробую позже.", done)
+                self.finish(L("Не удалось проверить обновления. Попробую позже."), done)
                 return
             }
             guard version > Self.build else {
-                self.finish("Установлена последняя версия.", done)
+                self.finish(L("Установлена последняя версия."), done)
                 return
             }
             self.download(url, version: version, done: done)
@@ -69,7 +69,7 @@ final class Updater {
             guard let self else { return }
             let size = (try? file?.resourceValues(forKeys: [.fileSizeKey]))??.fileSize ?? 0
             guard let file, (response as? HTTPURLResponse)?.statusCode == 200, size < Self.maxDownload else {
-                self.finish("Не удалось скачать обновление. Попробую позже.", done)
+                self.finish(L("Не удалось скачать обновление. Попробую позже."), done)
                 return
             }
             // The downloaded file is deleted when this handler returns: unpack it right here.
@@ -84,13 +84,13 @@ final class Updater {
                       Int(plist["CFBundleVersion"] as? String ?? "") == version
                 else {
                     try? FileManager.default.removeItem(at: dir)
-                    self.finish("Обновление не прошло проверку подписи и не установлено.", done)
+                    self.finish(L("Обновление не прошло проверку подписи и не установлено."), done)
                     return
                 }
                 DispatchQueue.main.async {
                     self.busy = false
                     self.staged = (app, version)
-                    self.status = "Скачана версия 1.\(version), установится, когда Nook закрыт."
+                    self.status = L("Скачана версия 1.\(version), установится, когда Nook закрыт.")
                     done?(self.status)
                     self.installWhenIdle()
                 }
@@ -126,7 +126,7 @@ final class Updater {
             guard Self.sameSigner(staged.app) else {
                 DispatchQueue.main.async {
                     self.staged = nil
-                    self.status = "Обновление изменилось после скачивания и не установлено."
+                    self.status = L("Обновление изменилось после скачивания и не установлено.")
                 }
                 return
             }
@@ -135,7 +135,7 @@ final class Updater {
             } catch {
                 DispatchQueue.main.async {
                     self.staged = nil
-                    self.status = "Не удалось установить обновление: \(error.localizedDescription)"
+                    self.status = L("Не удалось установить обновление: \(error.localizedDescription)")
                 }
                 return
             }

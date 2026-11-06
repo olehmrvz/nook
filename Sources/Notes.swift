@@ -10,7 +10,7 @@ final class NotesStore: ObservableObject {
 
         var title: String {
             let line = text.split(whereSeparator: \.isNewline).first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            return line.map { String($0.trimmingCharacters(in: .whitespaces).prefix(60)) } ?? "Новая заметка"
+            return line.map { String($0.trimmingCharacters(in: .whitespaces).prefix(60)) } ?? L("Новая заметка")
         }
     }
 

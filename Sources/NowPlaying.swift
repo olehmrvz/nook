@@ -16,7 +16,7 @@ final class NowPlaying: ObservableObject {
         case spotify = "Spotify"
         case music = "Music"
         var bundleID: String { self == .spotify ? "com.spotify.client" : "com.apple.Music" }
-        var title: String { self == .spotify ? "Spotify" : "Музыка" }
+        var title: String { self == .spotify ? "Spotify" : L("Музыка") }
     }
 
     @Published private(set) var source: Source?
@@ -144,7 +144,7 @@ final class NowPlaying: ObservableObject {
         let trackChanged = newTitle != title || newArtist != artist
         if source?.pid != pid {
             let app = NSRunningApplication(processIdentifier: pid)
-            source = Source(name: app?.localizedName ?? "Плеер", bundleID: app?.bundleIdentifier, pid: pid)
+            source = Source(name: app?.localizedName ?? L("Плеер"), bundleID: app?.bundleIdentifier, pid: pid)
         }
         set(\.title, newTitle)
         set(\.artist, newArtist)

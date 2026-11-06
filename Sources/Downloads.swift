@@ -59,7 +59,7 @@ final class Downloads: ObservableObject {
             return
         }
         let url = progress.fileURL ?? (progress.userInfo[.fileURLKey] as? URL)
-        let name = Self.cleanName(url?.lastPathComponent ?? "Загрузка")
+        let name = Self.cleanName(url?.lastPathComponent ?? L("Загрузка"))
         let fraction = progress.totalUnitCount > 0 ? progress.fractionCompleted : nil
         active = Active(name: name, fraction: fraction)
     }

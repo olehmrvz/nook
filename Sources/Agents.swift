@@ -362,7 +362,7 @@ final class AgentHub: ObservableObject {
                 }
             }
         case "PermissionRequest":
-            let tool = raw["tool_name"] as? String ?? "Инструмент"
+            let tool = raw["tool_name"] as? String ?? L("Инструмент")
             let request = Permission(sessionKey: key, provider: provider, tool: tool,
                                      summary: Self.summary(tool: tool, input: raw["tool_input"]),
                                      project: index.map { sessions[$0].project } ?? provider.title,
@@ -423,7 +423,7 @@ final class AgentHub: ObservableObject {
         let request = permissions.remove(at: index)
         if let decision {
             var body: [String: Any] = ["behavior": decision == .deny ? "deny" : "allow"]
-            if decision == .deny { body["message"] = message ?? "Отклонено в Nook" }
+            if decision == .deny { body["message"] = message ?? L("Отклонено в Nook") }
             if decision == .always, let suggestions = request.suggestions { body["updatedPermissions"] = suggestions }
             if decision != .deny, let mode { body["updatedPermissions"] = [["type": "setMode", "mode": mode, "destination": "session"]] }
             if decision != .deny, let updatedInput { body["updatedInput"] = updatedInput }
@@ -535,9 +535,9 @@ final class AgentHub: ObservableObject {
         }
         if let passed = s.testsPassed {
             // The mark and the colour carry the result; the word stays short for the island.
-            facts.append(TurnFact(text: "тесты", symbol: passed ? "checkmark" : "xmark", good: passed))
+            facts.append(TurnFact(text: L("тесты"), symbol: passed ? "checkmark" : "xmark", good: passed))
         }
-        if s.committed { facts.append(TurnFact(text: "коммит", symbol: "smallcircle.filled.circle", good: nil)) }
+        if s.committed { facts.append(TurnFact(text: L("коммит"), symbol: "smallcircle.filled.circle", good: nil)) }
         if s.pushed { facts.append(TurnFact(text: "push", symbol: "arrow.up", good: nil)) }
         return facts
     }
@@ -688,7 +688,7 @@ final class AgentHub: ObservableObject {
         writeShellScript()
         let rc = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".zshrc")
         let existing = (try? String(contentsOf: rc, encoding: .utf8)) ?? ""
-        if existing.contains(shellScriptURL.path) { return (true, "Уже подключено. Новые вкладки терминала сообщают о долгих командах.") }
+        if existing.contains(shellScriptURL.path) { return (true, L("Уже подключено. Новые вкладки терминала сообщают о долгих командах.")) }
         do {
             if !existing.isEmpty {
                 let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -708,8 +708,8 @@ final class AgentHub: ObservableObject {
                 // `.withoutOverwriting` fails instead of replacing anything that appeared meanwhile.
                 try Data(line.utf8).write(to: rc, options: .withoutOverwriting)
             }
-            let done = existing.isEmpty ? "Добавлено в ~/.zshrc." : "Добавлено в ~/.zshrc (копия рядом)."
-            return (true, "\(done) Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS.")
+            let done = existing.isEmpty ? L("Добавлено в ~/.zshrc.") : L("Добавлено в ~/.zshrc (копия рядом).")
+            return (true, L("\(done) Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS."))
         } catch {
             return (false, error.localizedDescription)
         }
@@ -915,7 +915,7 @@ final class AgentHub: ObservableObject {
         if tool == "AskUserQuestion", let first = (input["questions"] as? [[String: Any]])?.first?["question"] as? String {
             return first
         }
-        if tool == "ExitPlanMode", let plan = input["plan"] as? String { return firstLine(plan, limit: 200) ?? "План" }
+        if tool == "ExitPlanMode", let plan = input["plan"] as? String { return firstLine(plan, limit: 200) ?? L("План") }
         // The main field first, then every other field in full: what you approve is exactly what you can read.
         // (A tool could put a harmless "description" first and the real action in another field.)
         var rest = input
@@ -1035,11 +1035,11 @@ final class AgentHub: ObservableObject {
                 notes.append("✗ ~/\(agent.file): \(error.localizedDescription)")
             }
         }
-        if notes.isEmpty { return (false, "Claude Code и Codex не найдены: нет папок ~/.claude и ~/.codex.") }
+        if notes.isEmpty { return (false, L("Claude Code и Codex не найдены: нет папок ~/.claude и ~/.codex.")) }
         if agentConfigs.contains(where: { $0.provider == "codex" && FileManager.default.fileExists(atPath: home.appendingPathComponent($0.dir).path) }) {
-            notes.append("Codex может один раз спросить, доверять ли хукам Nook — разреши.")
+            notes.append(L("Codex может один раз спросить, доверять ли хукам Nook — разреши."))
         }
-        notes.append("Уже запущенные агенты перезапусти, чтобы они подхватили хуки.")
+        notes.append(L("Уже запущенные агенты перезапусти, чтобы они подхватили хуки."))
         return (ok, notes.joined(separator: "\n"))
     }
 
@@ -1095,7 +1095,7 @@ final class AgentHub: ObservableObject {
         var root: [String: Any] = [:]
         if let data = try? Data(contentsOf: url), !data.isEmpty {
             guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw NSError(domain: "Nook", code: 1, userInfo: [NSLocalizedDescriptionKey: "не JSON-объект"])
+                throw NSError(domain: "Nook", code: 1, userInfo: [NSLocalizedDescriptionKey: L("не JSON-объект")])
             }
             root = parsed
             try backup(data, of: url)

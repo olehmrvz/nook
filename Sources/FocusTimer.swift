@@ -5,10 +5,10 @@ final class FocusTimer: ObservableObject {
     enum Phase: Equatable { case plain, focus, shortBreak, longBreak
         var title: String {
             switch self {
-            case .plain: return "Таймер"
-            case .focus: return "Фокус"
-            case .shortBreak: return "Перерыв"
-            case .longBreak: return "Длинный перерыв"
+            case .plain: return L("Таймер")
+            case .focus: return L("Фокус")
+            case .shortBreak: return L("Перерыв")
+            case .longBreak: return L("Длинный перерыв")
             }
         }
     }
@@ -97,16 +97,16 @@ final class FocusTimer: ObservableObject {
         NSSound(named: "Glass")?.play()
         switch phase {
         case .plain:
-            onFinish?("Время вышло", "Таймер на \(Self.format(total)) закончился")
+            onFinish?(L("Время вышло"), L("Таймер на \(Self.format(total)) закончился"))
             phase = .plain
         case .focus:
             completedFocus += 1
             let long = completedFocus % 4 == 0
-            onFinish?("Фокус завершён · \(completedFocus)", long ? "Длинный перерыв 15 мин" : "Перерыв 5 мин")
+            onFinish?(L("Фокус завершён · \(completedFocus)"), long ? L("Длинный перерыв 15 мин") : L("Перерыв 5 мин"))
             phase = long ? .longBreak : .shortBreak
             run(seconds: (long ? 15 : 5) * 60)
         case .shortBreak, .longBreak:
-            onFinish?("Перерыв окончен", "Следующий фокус 25 мин")
+            onFinish?(L("Перерыв окончен"), L("Следующий фокус 25 мин"))
             phase = .focus
             run(seconds: 25 * 60)
         }

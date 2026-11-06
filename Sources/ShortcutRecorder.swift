@@ -13,8 +13,8 @@ struct Shortcut: Equatable {
 
     /// Modifier keys that work alone: key code → their device-dependent flag bit (NX_DEVICE…KEYMASK) and name.
     static let modifierKeys: [UInt32: (mask: UInt64, name: String)] = [
-        54: (0x10, "Правый ⌘"), 55: (0x08, "Левый ⌘"), 61: (0x40, "Правый ⌥"), 58: (0x20, "Левый ⌥"),
-        62: (0x2000, "Правый ⌃"), 59: (0x01, "Левый ⌃"), 60: (0x04, "Правый ⇧"), 56: (0x02, "Левый ⇧"),
+        54: (0x10, L("Правый ⌘")), 55: (0x08, L("Левый ⌘")), 61: (0x40, L("Правый ⌥")), 58: (0x20, L("Левый ⌥")),
+        62: (0x2000, L("Правый ⌃")), 59: (0x01, L("Левый ⌃")), 60: (0x04, L("Правый ⇧")), 56: (0x02, L("Левый ⇧")),
         63: (CGEventFlags.maskSecondaryFn.rawValue, "fn"),
     ]
 
@@ -66,7 +66,7 @@ struct Shortcut: Equatable {
     ]
 
     private static let named: [UInt32: String] = [
-        49: "Пробел", 36: "↩", 76: "⌤", 48: "⇥", 51: "⌫", 117: "⌦", 53: "⎋",
+        49: L("Пробел"), 36: "↩", 76: "⌤", 48: "⇥", 51: "⌫", 117: "⌦", 53: "⎋",
         123: "←", 124: "→", 125: "↓", 126: "↑", 115: "↖", 119: "↘", 116: "⇞", 121: "⇟",
     ]
 
@@ -109,7 +109,7 @@ struct ShortcutRecorder: View {
     var body: some View {
         HStack(spacing: 8) {
             Button { recording ? stop() : start() } label: {
-                Text(recording ? "Нажмите сочетание…" : shortcut?.title ?? "Записать")
+                Text(recording ? L("Нажмите сочетание…") : shortcut?.title ?? L("Записать"))
                     .font(.system(size: 12.5, weight: .medium, design: .rounded))
                     .foregroundStyle(shortcut == nil && !recording ? .secondary : .primary)
                     .frame(minWidth: 130)

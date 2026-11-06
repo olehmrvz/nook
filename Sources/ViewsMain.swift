@@ -323,7 +323,7 @@ struct CollapsedView: View {
                         .foregroundStyle(recording ? Palette.red : Palette.violet.lifted())
                         .symbolEffect(.pulse, isActive: recording && !Motion.reduce)
                         .frame(width: 16)
-                    Text(recording ? "Запись" : "Распознаю").font(.system(size: 12.5, weight: .medium)).lineLimit(1)
+                    Text(recording ? L("Запись") : L("Распознаю")).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
                 }
                 .foregroundStyle(.white.opacity(0.9))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -360,7 +360,7 @@ struct CollapsedView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
         case .focus(let on, _, _):
-            Text(on ? "Вкл" : "Выкл").font(.system(size: 12.5, weight: .semibold))
+            Text(on ? L("Вкл") : L("Выкл")).font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(on ? Palette.violet.lifted() : .white.opacity(0.55))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 14)
@@ -425,8 +425,8 @@ struct KeyLockPill: View {
         .foregroundStyle(lock.isLocked ? Palette.orange : (hover ? Color.white : Color.white.opacity(0.6)))
         .animation(Motion.quick, value: hover)
         .onHover { hover = $0 }
-        .help(denied ? "Нужен Универсальный доступ: разрешите Nook в Настройках и нажмите ещё раз"
-                     : "Заблокировать клавиатуру на 30 секунд, чтобы её протереть")
+        .help(denied ? L("Нужен Универсальный доступ: разрешите Nook в Настройках и нажмите ещё раз")
+                     : L("Заблокировать клавиатуру на 30 секунд, чтобы её протереть"))
     }
 }
 
@@ -574,7 +574,7 @@ struct IslandView: View {
         case .agentDone(let turn):
             HStack(spacing: 6) {
                 Text("\(turn.project) — готово").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text([turn.provider == "codex" ? "Codex" : "Claude", turn.duration.map { "за " + Format.span($0) }]
+                Text([turn.provider == "codex" ? "Codex" : "Claude", turn.duration.map { L("за ") + Format.span($0) }]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
             }
@@ -588,7 +588,7 @@ struct IslandView: View {
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             if !body.isEmpty { Text(body).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(2) }
         case .call(let name, let bundleID):
-            Text(name.isEmpty ? "Входящий звонок" : name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+            Text(name.isEmpty ? L("Входящий звонок") : name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
             Text("Звонок · \(NotificationWatcher.appName(for: bundleID))").font(.system(size: 11)).foregroundStyle(muted)
         case .airpods(let name, let levels):
             Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
@@ -612,24 +612,24 @@ struct IslandView: View {
             Text(title).font(.system(size: 14, weight: .semibold))
             Text(subtitle).font(.system(size: 11)).foregroundStyle(muted)
         case .command(let text, let seconds, let exit, _, _):
-            Text(exit == 0 ? "Команда завершилась" : "Команда с ошибкой · код \(exit)")
+            Text(exit == 0 ? L("Команда завершилась") : L("Команда с ошибкой · код \(exit)"))
                 .font(.system(size: 10.5, weight: .medium)).foregroundStyle(exit == 0 ? faint : Palette.salmon)
             Text(text).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
             Text("шла " + Format.until(seconds)).font(.system(size: 11)).foregroundStyle(muted)
         case .hog(let hog, let agent):
-            Text(agent.map { "Грузит Mac · запущен агентом в \($0)" } ?? "Грузит Mac")
+            Text(agent.map { L("Грузит Mac · запущен агентом в \($0)") } ?? L("Грузит Mac"))
                 .font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint).lineLimit(1)
             Text(hog.command).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
             Text(hog.memory >= ProcessWatch.memoryLimit
-                 ? "память \(ByteCountFormatter.string(fromByteCount: Int64(hog.memory), countStyle: .memory))"
+                 ? L("память \(ByteCountFormatter.string(fromByteCount: Int64(hog.memory), countStyle: .memory))")
                  // Share of the whole Mac, not of one core: "138 %" (1.4 cores) confused the user.
-                 : "\(max(1, Int((Double(hog.cpu) / Double(ProcessInfo.processInfo.activeProcessorCount)).rounded())))% всего процессора · больше 2 мин")
+                 : L("\(max(1, Int((Double(hog.cpu) / Double(ProcessInfo.processInfo.activeProcessorCount)).rounded())))% всего процессора · больше 2 мин"))
                 .font(.system(size: 11)).foregroundStyle(muted)
         case .limit(let title, let left, let resets):
             Text("Лимит почти исчерпан").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
             Text("\(title): осталось \(left)%").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            Text(resets.map { "Сброс " + Format.when($0) + " · через " + Format.until(max(0, $0.timeIntervalSinceNow)) }
-                 ?? "Время сброса неизвестно")
+            Text(resets.map { L("Сброс ") + Format.when($0) + L(" · через ") + Format.until(max(0, $0.timeIntervalSinceNow)) }
+                 ?? L("Время сброса неизвестно"))
                 .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
         case .notice(_, let title, let detail, _):
             Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
@@ -743,7 +743,7 @@ struct KillButton: View {
     @State private var armed = false
 
     var body: some View {
-        Button(armed ? "Точно?" : "Завершить") {
+        Button(armed ? L("Точно?") : L("Завершить")) {
             if armed {
                 ProcessWatch.terminate(hog)
                 done()
@@ -797,7 +797,7 @@ struct PrompterView: View {
                     Text("\(Int(cuely.wordsPerMinute)) сл/мин").font(.rounded(10, .medium)).monospacedDigit().foregroundStyle(muted)
                     small("hare.fill") { cuely.changeSpeed(10) }
                 } else {
-                    Label(cuely.status ?? "Голос", systemImage: "waveform").font(.system(size: 10)).foregroundStyle(muted).lineLimit(1)
+                    Label(cuely.status ?? L("Голос"), systemImage: "waveform").font(.system(size: 10)).foregroundStyle(muted).lineLimit(1)
                 }
                 small("backward.end.fill") { cuely.restart() }
                 small("xmark") { cuely.stop() }
@@ -931,18 +931,18 @@ struct ExpandedView: View {
                 if HeaderItem.coffee.isShown {
                     HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
                                  active: caffeine.on, tint: Palette.orange,
-                                 help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
-                                                   : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
+                                 help: caffeine.on ? L("Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить")
+                                                   : L("Кофеин: Mac не будет засыпать (например, пока работают агенты)")) {
                         withAnimation(Motion.quick) { caffeine.toggle() }
                     }
                 }
                 if HeaderItem.search.isShown {
                     HeaderButton(symbol: "magnifyingglass", active: model.tab == .launcher, tint: Palette.blue,
-                                 help: "Поиск программ и команд (\(Settings.launcherShortcut.title))") {
+                                 help: L("Поиск программ и команд (\(Settings.launcherShortcut.title))")) {
                         model.toggleLauncherFromHotkey()
                     }
                 }
-                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenSettings?(nil) }
+                HeaderButton(symbol: "gearshape", help: L("Настройки Nook")) { model.onOpenSettings?(nil) }
             }
             .padding(2)
             .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
@@ -1005,7 +1005,7 @@ struct ExpandedView: View {
             .background { if model.showPower { Capsule().fill(Color.white.opacity(0.18)) } }
             .contentShape(Capsule())
             .help([hasWeather ? "\(weather.place): \(weather.summary)" : nil,
-                   battery.hasBattery ? "Батарея \(battery.percent)% · нажмите для подробностей" : nil]
+                   battery.hasBattery ? L("Батарея \(battery.percent)% · нажмите для подробностей") : nil]
                 .compactMap { $0 }.joined(separator: " · "))
     }
 
@@ -1115,7 +1115,7 @@ struct NextEventCard: View {
                     if let e = store.nextEvent {
                         HStack(spacing: 6) {
                             Image(systemName: "calendar").font(.system(size: 11, weight: .semibold))
-                            Text(e.start <= Date() ? "Идёт сейчас" : e.start.formatted(.relative(presentation: .named)).capitalizedFirst)
+                            Text(e.start <= Date() ? L("Идёт сейчас") : e.start.formatted(.relative(presentation: .named)).capitalizedFirst)
                                 .lineLimit(1)
                         }
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(accent)
@@ -1128,15 +1128,15 @@ struct NextEventCard: View {
                                 .help("Подключиться: \(Self.meetingName(url))")
                         }
                     } else if !store.calendarAccess {
-                        Caps(text: "Календарь")
+                        Caps(text: L("Календарь"))
                         Text("Нет доступа").font(.system(size: 14, weight: .semibold))
                         Text("Покажу встречи").font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(1)
                         Spacer(minLength: 4)
                         Button("Разрешить") { store.requestAccess() }.buttonStyle(.pill(.primary, small: true))
                     } else {
-                        Caps(text: "Календарь")
+                        Caps(text: L("Календарь"))
                         Text("Сегодня свободно").font(.system(size: 14, weight: .semibold)).lineLimit(2)
-                        Text(store.reminders.isEmpty ? "Напоминаний нет" : Format.count(store.reminders.count, "напоминание", "напоминания", "напоминаний"))
+                        Text(store.reminders.isEmpty ? L("Напоминаний нет") : Format.count(store.reminders.count, "напоминание", "напоминания", "напоминаний"))
                             .font(.system(size: 11.5)).foregroundStyle(muted)
                     }
                 }
@@ -1146,7 +1146,7 @@ struct NextEventCard: View {
     }
 
     static func subtitle(_ e: CalendarStore.Event) -> String {
-        e.allDay ? "Весь день"
+        e.allDay ? L("Весь день")
             : "\(e.start.formatted(date: .omitted, time: .shortened))–\(e.end.formatted(date: .omitted, time: .shortened))"
     }
 
@@ -1172,7 +1172,7 @@ struct WeatherCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 4) {
-                Text(weather.place.isEmpty ? "Погода" : weather.place)
+                Text(weather.place.isEmpty ? L("Погода") : weather.place)
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 20))
@@ -1204,7 +1204,7 @@ struct CalendarTab: View {
                 VStack(spacing: 10) {
                     Badge(symbol: "calendar.badge.plus", colors: [Palette.orange, Palette.red], size: 52)
                     Text("Покажу события и напоминания прямо в вырезе").font(.system(size: 15, weight: .semibold))
-                    Button(store.asked ? "Открыть настройки доступа" : "Разрешить доступ") { store.requestAccess() }
+                    Button(store.asked ? L("Открыть настройки доступа") : L("Разрешить доступ")) { store.requestAccess() }
                         .buttonStyle(.pill(.primary))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1286,8 +1286,8 @@ struct CalendarTab: View {
     }
 
     private static func when(_ e: CalendarStore.Event) -> String {
-        let day = Calendar.current.isDateInToday(e.start) ? "Сегодня" : (Calendar.current.isDateInTomorrow(e.start) ? "Завтра" : e.start.formatted(date: .abbreviated, time: .omitted))
-        if e.allDay { return "\(day) · весь день" }
+        let day = Calendar.current.isDateInToday(e.start) ? L("Сегодня") : (Calendar.current.isDateInTomorrow(e.start) ? L("Завтра") : e.start.formatted(date: .abbreviated, time: .omitted))
+        if e.allDay { return L("\(day) · весь день") }
         let time = "\(e.start.formatted(date: .omitted, time: .shortened))–\(e.end.formatted(date: .omitted, time: .shortened))"
         return [day, time, e.location].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
@@ -1323,20 +1323,20 @@ struct TimerTab: View {
                     VStack(alignment: .leading, spacing: 10) {
                         if timer.isRunning || timer.isPaused {
                             HStack(spacing: 8) {
-                                Button(timer.isPaused ? "Продолжить" : "Пауза") { timer.pauseResume() }.buttonStyle(.pill(.primary))
-                                Button(model.focusMode ? "Стоп" : "Сброс") { timer.reset() }.buttonStyle(.pill())
+                                Button(timer.isPaused ? L("Продолжить") : L("Пауза")) { timer.pauseResume() }.buttonStyle(.pill(.primary))
+                                Button(model.focusMode ? L("Стоп") : L("Сброс")) { timer.reset() }.buttonStyle(.pill())
                             }
                             HStack(spacing: 8) {
                                 Button("+1 мин") { timer.add(minutes: 1) }.buttonStyle(.pill())
                                 Button("+5 мин") { timer.add(minutes: 5) }.buttonStyle(.pill())
                             }
                         } else {
-                            Caps(text: "Таймер")
+                            Caps(text: L("Таймер"))
                             Text("Выберите время справа").font(.system(size: 15, weight: .semibold))
                             Text("или запустите Помодоро 25 / 5").font(.system(size: 12)).foregroundStyle(muted)
                         }
                         if model.focusMode {
-                            Label(model.focusQuiet ? "Фокус: уведомления ждут, кофеин" : "Перерыв: уведомления снова видны",
+                            Label(model.focusQuiet ? L("Фокус: уведомления ждут, кофеин") : L("Перерыв: уведомления снова видны"),
                                   systemImage: model.focusQuiet ? "moon.fill" : "cup.and.saucer.fill")
                                 .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.violet.lifted())
                                 .lineLimit(1)
@@ -1359,10 +1359,10 @@ struct TimerTab: View {
             .entrance(0)
             Card {
                 VStack(alignment: .leading, spacing: 10) {
-                    Caps(text: "Быстрый старт")
+                    Caps(text: L("Быстрый старт"))
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                         ForEach(presets, id: \.self) { m in
-                            Button(m >= 60 ? "1 ч" : "\(Int(m)) м") { timer.pomodoro = false; timer.start(minutes: m) }
+                            Button(m >= 60 ? L("1 ч") : L("\(Int(m)) м")) { timer.pomodoro = false; timer.start(minutes: m) }
                                 .buttonStyle(TileStyle())
                         }
                     }
@@ -1374,7 +1374,7 @@ struct TimerTab: View {
                         .buttonStyle(.pill(.gradient(FocusTimer.Phase.focus.colors)))
                         .help("25 минут работы, 5 минут отдыха")
                         Button { model.startFocusMode() } label: {
-                            Label(model.focusMode ? "Режим фокуса включён" : "Режим фокуса", systemImage: "moon.fill")
+                            Label(model.focusMode ? L("Режим фокуса включён") : L("Режим фокуса"), systemImage: "moon.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.pill(.gradient([Palette.violet, Palette.blue])))
@@ -1460,7 +1460,7 @@ struct CuelyTab: View {
                 .entrance(1)
 
             VStack(alignment: .leading, spacing: 12) {
-                GlassSegmented(selection: $cuely.voiceFollow, options: [(false, "Авто"), (true, "Голос")])
+                GlassSegmented(selection: $cuely.voiceFollow, options: [(false, L("Авто")), (true, L("Голос"))])
                 if cuely.voiceFollow {
                     Picker("Язык", selection: $cuely.language) {
                         ForEach(Cuely.languages, id: \.0) { Text($0.1).tag($0.0) }

@@ -14,7 +14,7 @@ final class AudioDevices: NSObject, ObservableObject {
     }
 
     @objc private func connected(_ note: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        let name = device.name ?? "Наушники"
+        let name = device.name ?? L("Наушники")
         let lower = name.lowercased()
         let isAudio = device.deviceClassMajor == kBluetoothDeviceClassMajorAudio
         guard isAudio || lower.contains("airpods") || lower.contains("beats") else { return }
@@ -49,7 +49,7 @@ final class AudioDevices: NSObject, ObservableObject {
                     guard let info = entry[name] as? [String: Any] else { continue }
                     var levels: [String: Int] = [:]
                     let map = ["device_batteryLevelLeft": "L", "device_batteryLevelRight": "R",
-                               "device_batteryLevelCase": "Кейс", "device_batteryLevelMain": "Заряд"]
+                               "device_batteryLevelCase": L("Кейс"), "device_batteryLevelMain": L("Заряд")]
                     for (k, label) in map {
                         if let s = info[k] as? String, let v = Int(s.filter(\.isNumber)) { levels[label] = v }
                     }
@@ -162,15 +162,15 @@ final class Weather: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     var summary: String {
         switch code {
-        case 0: return "Ясно"
-        case 1, 2: return "Переменная облачность"
-        case 3: return "Пасмурно"
-        case 45, 48: return "Туман"
-        case 51...57: return "Морось"
-        case 61...67: return "Дождь"
-        case 80...82: return "Ливень"
-        case 71...77, 85, 86: return "Снег"
-        case 95...99: return "Гроза"
+        case 0: return L("Ясно")
+        case 1, 2: return L("Переменная облачность")
+        case 3: return L("Пасмурно")
+        case 45, 48: return L("Туман")
+        case 51...57: return L("Морось")
+        case 61...67: return L("Дождь")
+        case 80...82: return L("Ливень")
+        case 71...77, 85, 86: return L("Снег")
+        case 95...99: return L("Гроза")
         default: return ""
         }
     }

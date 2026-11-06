@@ -118,7 +118,7 @@ final class NotificationWatcher: ObservableObject {
         }
         let heading = subtitle.isEmpty ? title : "\(title) · \(subtitle)"
         let text = Settings.notificationText ? body : ""
-        show(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading.isEmpty ? "Новое уведомление" : heading,
+        show(Island(kind: .notification(bundleID: bundleID, app: appName, title: heading.isEmpty ? L("Новое уведомление") : heading,
                                         body: text), seconds: 6))
     }
 

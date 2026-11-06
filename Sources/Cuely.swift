@@ -44,7 +44,7 @@ final class Cuely: ObservableObject {
         load()
         loading = false
         if scripts.isEmpty {
-            scripts = [Script(title: "Новый сценарий", body: "Вставьте сюда текст. Nook покажет его прямо под камерой, чтобы взгляд оставался в объективе.")]
+            scripts = [Script(title: L("Новый сценарий"), body: L("Вставьте сюда текст. Nook покажет его прямо под камерой, чтобы взгляд оставался в объективе."))]
             currentID = scripts[0].id
         }
     }
@@ -61,11 +61,11 @@ final class Cuely: ObservableObject {
         guard let id = current?.id, let i = scripts.firstIndex(where: { $0.id == id }) else { return }
         scripts[i].body = body
         let firstLine = body.split(separator: "\n").first.map(String.init) ?? ""
-        scripts[i].title = firstLine.isEmpty ? "Без названия" : String(firstLine.prefix(40))
+        scripts[i].title = firstLine.isEmpty ? L("Без названия") : String(firstLine.prefix(40))
     }
 
     func newScript() {
-        let script = Script(title: "Новый сценарий", body: "")
+        let script = Script(title: L("Новый сценарий"), body: "")
         scripts.insert(script, at: 0)
         currentID = script.id
     }
@@ -144,7 +144,7 @@ final class Cuely: ObservableObject {
             AVCaptureDevice.requestAccess(for: .audio) { mic in
                 DispatchQueue.main.async {
                     guard auth == .authorized, mic else {
-                        self.status = "Нет доступа к микрофону или распознаванию речи — включаю автопрокрутку"
+                        self.status = L("Нет доступа к микрофону или распознаванию речи — включаю автопрокрутку")
                         self.startTicker()
                         return
                     }
@@ -157,13 +157,13 @@ final class Cuely: ObservableObject {
     private func beginRecognition() {
         guard isPresenting, !isPaused else { return }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: language)), recognizer.isAvailable else {
-            status = "Распознавание для этого языка недоступно — автопрокрутка"
+            status = L("Распознавание для этого языка недоступно — автопрокрутка")
             startTicker()
             return
         }
         // Only on the Mac: without an on-device model the speech would go to Apple's servers.
         guard recognizer.supportsOnDeviceRecognition else {
-            status = "Распознавание на этом Mac для языка недоступно — автопрокрутка"
+            status = L("Распознавание на этом Mac для языка недоступно — автопрокрутка")
             startTicker()
             return
         }
@@ -178,11 +178,11 @@ final class Cuely: ObservableObject {
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
         engine.prepare()
         do { try engine.start() } catch {
-            status = "Микрофон недоступен — автопрокрутка"
+            status = L("Микрофон недоступен — автопрокрутка")
             startTicker()
             return
         }
-        status = "Слушаю…"
+        status = L("Слушаю…")
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
             if let result {

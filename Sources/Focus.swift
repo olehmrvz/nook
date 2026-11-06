@@ -85,7 +85,7 @@ final class FocusWatcher {
         return (true, name, symbol, "on:\(mode)")
     }
 
-    private static let defaultName = "Не беспокоить"
+    private static let defaultName = L("Не беспокоить")
 
     private func json(_ file: String) -> [String: Any]? {
         guard let data = try? Data(contentsOf: folder.appendingPathComponent(file)) else { return nil }

@@ -124,10 +124,10 @@ final class Battery: ObservableObject {
     }
 
     var headline: String {
-        if held { return "Держу заряд" }
-        if charging { return "Заряжается" }
-        if pluggedIn { return "От сети" }
-        return "От батареи"
+        if held { return L("Держу заряд") }
+        if charging { return L("Заряжается") }
+        if pluggedIn { return L("От сети") }
+        return L("От батареи")
     }
 
     var tint: Color {
@@ -136,10 +136,10 @@ final class Battery: ObservableObject {
     }
 
     var detail: String {
-        if held { return "Адаптер подключён, зарядка на паузе: работает лимит заряда или оптимизированная зарядка." }
-        if let m = minutesToFull { return "Полная зарядка через " + Format.span(Double(m) * 60) + "." }
-        if let m = minutesToEmpty { return "Хватит примерно на " + Format.span(Double(m) * 60) + "." }
-        return pluggedIn ? "Адаптер подключён." : "Считаю оставшееся время…"
+        if held { return L("Адаптер подключён, зарядка на паузе: работает лимит заряда или оптимизированная зарядка.") }
+        if let m = minutesToFull { return L("Полная зарядка через ") + Format.span(Double(m) * 60) + "." }
+        if let m = minutesToEmpty { return L("Хватит примерно на ") + Format.span(Double(m) * 60) + "." }
+        return pluggedIn ? L("Адаптер подключён.") : L("Считаю оставшееся время…")
     }
 
     static func openChargeLimitSettings() {

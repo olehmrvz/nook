@@ -16,7 +16,7 @@ struct ClipItem: Codable, Identifiable, Equatable {
     var preview: String {
         switch kind {
         case .text: return (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        case .image: return "Изображение"
+        case .image: return L("Изображение")
         case .files: return (files ?? []).map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
         }
     }
@@ -42,11 +42,11 @@ final class ClipboardStore: ObservableObject {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .all: "Всё"
-            case .text: "Текст"
-            case .links: "Ссылки"
-            case .images: "Картинки"
-            case .files: "Файлы"
+            case .all: L("Всё")
+            case .text: L("Текст")
+            case .links: L("Ссылки")
+            case .images: L("Картинки")
+            case .files: L("Файлы")
             }
         }
     }

@@ -66,20 +66,20 @@ enum NookCommand: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .clipboard: "Буфер обмена"
-        case .pasteNext: "Вставить следующее из буфера"
-        case .shelf: "Полка"
-        case .notes: "Заметки"
-        case .calendar: "Календарь"
-        case .agents: "Агенты"
-        case .timer: "Таймер на 25 минут"
-        case .pomodoro: "Помодоро"
-        case .focus: "Режим фокуса"
-        case .coffee: "Кофеин"
-        case .keyLock: "Заблокировать клавиатуру на 30 с"
-        case .settings: "Настройки Nook"
-        case .updates: "Проверить обновления Nook"
-        case .thanks: "Сказать спасибо автору Nook"
+        case .clipboard: L("Буфер обмена")
+        case .pasteNext: L("Вставить следующее из буфера")
+        case .shelf: L("Полка")
+        case .notes: L("Заметки")
+        case .calendar: L("Календарь")
+        case .agents: L("Агенты")
+        case .timer: L("Таймер на 25 минут")
+        case .pomodoro: L("Помодоро")
+        case .focus: L("Режим фокуса")
+        case .coffee: L("Кофеин")
+        case .keyLock: L("Заблокировать клавиатуру на 30 с")
+        case .settings: L("Настройки Nook")
+        case .updates: L("Проверить обновления Nook")
+        case .thanks: L("Сказать спасибо автору Nook")
         }
     }
 
@@ -245,7 +245,7 @@ final class Launcher: ObservableObject {
                    terms: [action.title, action.english, "ai"].map(LaunchItem.Term.init), kind: .ai(action))
     }
     private let windows: [LaunchItem] = WindowAction.allCases.map { action in
-        LaunchItem(id: "window:\(action.rawValue)", title: action.title, subtitle: "Окна",
+        LaunchItem(id: "window:\(action.rawValue)", title: action.title, subtitle: L("Окна"),
                    terms: [action.title, action.english, "window", "окно"].map(LaunchItem.Term.init), kind: .window(action))
     }
     private var indexedAt = Date.distantPast
@@ -276,7 +276,7 @@ final class Launcher: ObservableObject {
             let panes = Self.scanPanes()
             let emoji = Emoji.load()
             let shortcuts = Settings.launcherShortcuts ? AppleShortcuts.list().map { shortcut in
-                LaunchItem(id: "shortcut:\(shortcut.id)", title: shortcut.name, subtitle: "Быстрая команда",
+                LaunchItem(id: "shortcut:\(shortcut.id)", title: shortcut.name, subtitle: L("Быстрая команда"),
                            terms: [LaunchItem.Term(shortcut.name)], kind: .shortcut(shortcut.id))
             } : []
             var icons: [String: NSImage] = [:]
@@ -410,7 +410,7 @@ final class Launcher: ObservableObject {
             if Settings.launcherOpenWindows {
                 for window in WindowList.all() {
                     items.append(LaunchItem(id: "openwindow:\(window.pid)/\(window.title)", title: window.title,
-                                            subtitle: "Окно · \(window.app)" + (window.minimized ? " · свёрнуто" : ""),
+                                            subtitle: L("Окно · \(window.app)") + (window.minimized ? L(" · свёрнуто") : ""),
                                             terms: [LaunchItem.Term(window.title), LaunchItem.Term(window.app)],
                                             kind: .openWindow(window)))
                     if let path = window.bundle?.path, icons[path] == nil { icons[path] = NSWorkspace.shared.icon(forFile: path) }
@@ -428,7 +428,7 @@ final class Launcher: ObservableObject {
     private var customCommands: [LaunchItem] {
         Settings.customCommands.compactMap { pair in
             guard pair.count == 2, !pair[0].isEmpty, !pair[1].isEmpty else { return nil }
-            return LaunchItem(id: "command:\(pair[0])", title: pair[0], subtitle: "Своя команда",
+            return LaunchItem(id: "command:\(pair[0])", title: pair[0], subtitle: L("Своя команда"),
                               terms: [LaunchItem.Term(pair[0])], kind: .command(pair[1]))
         }
     }
@@ -439,7 +439,7 @@ final class Launcher: ObservableObject {
             + (Settings.launcherShortcuts ? shortcuts : []) + customCommands
             + snippets().filter(\.enabled).map { snippet in
                 LaunchItem(id: "snippet:\(snippet.file.lastPathComponent)", title: snippet.name,
-                           subtitle: snippet.keyword.isEmpty ? "Сниппет" : "Сниппет · \(snippet.keyword)",
+                           subtitle: snippet.keyword.isEmpty ? L("Сниппет") : L("Сниппет · \(snippet.keyword)"),
                            terms: [snippet.name, snippet.keyword].filter { !$0.isEmpty }.map(LaunchItem.Term.init),
                            kind: .snippet(snippet))
             }
@@ -457,7 +457,7 @@ final class Launcher: ObservableObject {
         // ":heart": emoji only.
         if query.hasPrefix(":") {
             results = Emoji.search(String(query.dropFirst()), in: emoji).prefix(30).map { emoji in
-                LaunchItem(id: "emoji:\(emoji.character)", title: emoji.title, subtitle: "Эмодзи",
+                LaunchItem(id: "emoji:\(emoji.character)", title: emoji.title, subtitle: L("Эмодзи"),
                            terms: [], kind: .emoji(emoji.character))
             }
             selection = 0
@@ -510,30 +510,30 @@ final class Launcher: ObservableObject {
             guard !argument.isEmpty else { continue }
             let encoded = argument.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? argument
             if let url = URL(string: template.replacingOccurrences(of: "{query}", with: encoded)) {
-                rows.insert(LaunchItem(id: "quicklink:\(name)", title: "\(name): «\(argument)»", subtitle: url.host ?? "Ссылка",
+                rows.insert(LaunchItem(id: "quicklink:\(name)", title: "\(name): «\(argument)»", subtitle: url.host ?? L("Ссылка"),
                                        terms: [], kind: .link(url, symbol: "link")), at: 0)
             }
         }
         if let url = Self.webAddress(trimmed) {
-            rows.insert(LaunchItem(id: "url", title: "Открыть \(trimmed)", subtitle: "Браузер", terms: [],
+            rows.insert(LaunchItem(id: "url", title: L("Открыть \(trimmed)"), subtitle: L("Браузер"), terms: [],
                                    kind: .link(url, symbol: "safari.fill")), at: 0)
         }
         if let answer = Calculator.evaluate(query, rates: .shared) {
             rows.insert(LaunchItem(id: "answer", title: answer.result, subtitle: answer.detail, terms: [], kind: .answer(answer)), at: 0)
         }
         if !trimmed.isEmpty, rows.first.map({ if case .answer = $0.kind { false } else { true } }) ?? true {
-            rows.append(LaunchItem(id: "ask", title: "Спросить AI: «\(trimmed)»", subtitle: "Tab", terms: [], kind: .ask(trimmed)))
+            rows.append(LaunchItem(id: "ask", title: L("Спросить AI: «\(trimmed)»"), subtitle: "Tab", terms: [], kind: .ask(trimmed)))
         }
         if !trimmed.isEmpty, Settings.launcherFallbacks {
             // Always under the results: "Use «query» with…".
             let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
             if let google = URL(string: "https://www.google.com/search?q=\(encoded)") {
-                rows.append(LaunchItem(id: "fallback:google", title: "Искать «\(trimmed)» в Google", subtitle: "Интернет",
+                rows.append(LaunchItem(id: "fallback:google", title: L("Искать «\(trimmed)» в Google"), subtitle: L("Интернет"),
                                        terms: [], kind: .link(google, symbol: "magnifyingglass")))
             }
             if !trimmed.contains(" "), let word = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
                let dictionary = URL(string: "dict://\(word)") {
-                rows.append(LaunchItem(id: "fallback:dictionary", title: "Определить «\(trimmed)»", subtitle: "Словарь",
+                rows.append(LaunchItem(id: "fallback:dictionary", title: L("Определить «\(trimmed)»"), subtitle: L("Словарь"),
                                        terms: [], kind: .link(dictionary, symbol: "character.book.closed.fill")))
             }
         }
@@ -624,7 +624,7 @@ final class Launcher: ObservableObject {
             CustomCommands.run(name: item.title, script: script) { [weak self] ok, text in
                 let seconds = Int(Date().timeIntervalSince(started))
                 self?.notify?(ok ? "terminal.fill" : "exclamationmark.triangle.fill", item.title,
-                              seconds > 1 ? "\(text) · \(seconds) с" : text, ok)
+                              seconds > 1 ? L("\(text) · \(seconds) с") : text, ok)
             }
         case .answer, .link:
             break
@@ -670,7 +670,7 @@ final class Launcher: ObservableObject {
             if local.hasSuffix(".app") { local.removeLast(4) }
             let english = (info["CFBundleDisplayName"] ?? info["CFBundleName"]) as? String
             let names = [local, english, url.deletingPathExtension().lastPathComponent].compactMap { $0 }
-            items.append(LaunchItem(id: "app:\(id)", title: local, subtitle: "Программа",
+            items.append(LaunchItem(id: "app:\(id)", title: local, subtitle: L("Программа"),
                                     terms: Array(Set(names)).map(LaunchItem.Term.init), kind: .app(url)))
         }
         return items
@@ -680,7 +680,7 @@ final class Launcher: ObservableObject {
     private static func scanPanes() -> [LaunchItem] {
         let folder = URL(fileURLWithPath: "/System/Library/ExtensionKit/Extensions", isDirectory: true)
         // Names the extension itself does not carry.
-        let names = ["com.apple.Battery-Settings.extension": ("Аккумулятор", "Battery")]
+        let names = ["com.apple.Battery-Settings.extension": (L("Аккумулятор"), "Battery")]
         var items: [LaunchItem] = []
         for url in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         where url.pathExtension == "appex" {
@@ -693,7 +693,7 @@ final class Launcher: ObservableObject {
             if let fixed = names[id] { title = fixed.0; english = fixed.1 }
             guard let title, !title.hasSuffix("Extension") else { continue }
             let terms = [title, english].compactMap { $0 }
-            items.append(LaunchItem(id: "setting:\(id)", title: title, subtitle: "Системные настройки",
+            items.append(LaunchItem(id: "setting:\(id)", title: title, subtitle: L("Системные настройки"),
                                     terms: Array(Set(terms)).map(LaunchItem.Term.init), kind: .setting(id)))
         }
         return items
@@ -772,7 +772,7 @@ struct LauncherTab: View {
             } else if items.isEmpty {
                 VStack(spacing: 8) {
                     Badge(symbol: "magnifyingglass", colors: [Palette.blue, Palette.violet], size: 44)
-                    Text(launcher.query.isEmpty ? "Начните печатать название программы" : "Ничего не найдено")
+                    Text(launcher.query.isEmpty ? L("Начните печатать название программы") : L("Ничего не найдено"))
                         .font(.system(size: 12)).foregroundStyle(muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -842,15 +842,15 @@ struct LauncherTab: View {
     private func selectedHint(_ items: [LaunchItem]) -> String {
         guard items.indices.contains(launcher.selection) else { return "" }
         switch items[launcher.selection].kind {
-        case .app: return "↩ открыть · ⌘↩ в Finder"
-        case .snippet, .emoji: return "↩ вставить"
-        case .menu: return "↩ выполнить"
-        case .ask: return "↩ или Tab: спросить"
-        case .ai: return "↩ с выделенным текстом"
-        case .openWindow: return "↩ перейти"
-        case .file: return "↩ открыть · ⌘↩ в Finder"
-        case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
-        default: return "↩ открыть"
+        case .app: return L("↩ открыть · ⌘↩ в Finder")
+        case .snippet, .emoji: return L("↩ вставить")
+        case .menu: return L("↩ выполнить")
+        case .ask: return L("↩ или Tab: спросить")
+        case .ai: return L("↩ с выделенным текстом")
+        case .openWindow: return L("↩ перейти")
+        case .file: return L("↩ открыть · ⌘↩ в Finder")
+        case .answer(let answer): return answer.isError ? "" : L("↩ скопировать · ⌘↩ считать дальше")
+        default: return L("↩ открыть")
         }
     }
 
@@ -1027,7 +1027,7 @@ struct AnswerPanel: View {
 
     /// Bold, italics and code from Markdown; line breaks kept.
     private var rendered: AttributedString {
-        let text = assistant.answer.isEmpty ? (assistant.working ? "Думаю…" : "") : assistant.answer
+        let text = assistant.answer.isEmpty ? (assistant.working ? L("Думаю…") : "") : assistant.answer
         return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
     }

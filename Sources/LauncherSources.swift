@@ -102,7 +102,7 @@ enum CustomCommands {
             process.waitUntilExit()
             let ok = process.terminationStatus == 0
             let last = (ok ? output : (errors.isEmpty ? output : errors))
-                .split(separator: "\n").last.map(String.init) ?? (ok ? "Готово" : "Код \(process.terminationStatus)")
+                .split(separator: "\n").last.map(String.init) ?? (ok ? L("Готово") : L("Код \(process.terminationStatus)"))
             DispatchQueue.main.async { done(ok, String(last.prefix(200))) }
         }
     }

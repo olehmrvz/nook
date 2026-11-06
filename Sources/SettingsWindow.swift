@@ -16,19 +16,19 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "Основные"
-        case .panel: "Панель"
-        case .launcher: "Поиск"
-        case .snippets: "Сниппеты"
-        case .clipboard: "Буфер обмена"
+        case .general: L("Основные")
+        case .panel: L("Панель")
+        case .launcher: L("Поиск")
+        case .snippets: L("Сниппеты")
+        case .clipboard: L("Буфер обмена")
         case .ai: "AI"
-        case .notch: "Вырез"
-        case .notifications: "Уведомления"
-        case .dictation: "Диктовка"
-        case .agents: "Агенты"
-        case .privacy: "Приватность"
-        case .updates: "Обновления"
-        case .thanks: "Спасибо автору"
+        case .notch: L("Вырез")
+        case .notifications: L("Уведомления")
+        case .dictation: L("Диктовка")
+        case .agents: L("Агенты")
+        case .privacy: L("Приватность")
+        case .updates: L("Обновления")
+        case .thanks: L("Спасибо автору")
         }
     }
 
@@ -109,7 +109,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let window = SettingsNSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
                                       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                       backing: .buffered, defer: false)
-        window.title = "Настройки Nook"
+        window.title = L("Настройки Nook")
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
@@ -402,24 +402,24 @@ struct Signature: Equatable {
     var title: String {
         switch kind {
         case .developerID: "Developer ID · \(name)"
-        case .local: "Локальный сертификат Nook"
+        case .local: L("Локальный сертификат Nook")
         case .other: name
-        case .adHoc: "Без постоянной подписи"
+        case .adHoc: L("Без постоянной подписи")
         }
     }
 
     var explanation: String {
         switch kind {
         case .developerID where notarized:
-            "Подписано сертификатом разработчика и проверено Apple: macOS открывает Nook без предупреждений."
+            L("Подписано сертификатом разработчика и проверено Apple: macOS открывает Nook без предупреждений.")
         case .developerID:
-            "Подписано сертификатом разработчика. Эту сборку Apple ещё не проверяла (нотаризация), её собрали на этом Mac."
+            L("Подписано сертификатом разработчика. Эту сборку Apple ещё не проверяла (нотаризация), её собрали на этом Mac.")
         case .local:
-            "Подписано сертификатом «Nook Local Signing». macOS сохраняет разрешения между сборками."
+            L("Подписано сертификатом «Nook Local Signing». macOS сохраняет разрешения между сборками.")
         case .other:
-            "Обновление установится, только если оно подписано так же, как эта копия."
+            L("Обновление установится, только если оно подписано так же, как эта копия.")
         case .adHoc:
-            "Сборка без сертификата: macOS будет заново спрашивать разрешения, а обновления с GitHub не установятся."
+            L("Сборка без сертификата: macOS будет заново спрашивать разрешения, а обновления с GitHub не установятся.")
         }
     }
 }
@@ -540,7 +540,7 @@ struct GeneralPane: View {
             }
             Section {
                 Picker("Вырез на экране", selection: state.bind({ Settings.screenID }, state.chooseScreen)) {
-                    Text(NSScreen.screens.contains { $0.safeAreaInsets.top > 0 } ? "Автоматически (экран с вырезом)" : "Автоматически")
+                    Text(NSScreen.screens.contains { $0.safeAreaInsets.top > 0 } ? L("Автоматически (экран с вырезом)") : L("Автоматически"))
                         .tag(String?.none)
                     Divider()
                     ForEach(NSScreen.screens, id: \.self) { screen in
@@ -621,9 +621,9 @@ struct LauncherPane: View {
                 Toggle("Google и словарь внизу списка",
                        isOn: state.bind({ Settings.launcherFallbacks }, { Settings.launcherFallbacks = $0 }))
             }
-            PairsSection(title: "Быстрые ссылки", first: "имя", second: "https://…{query}…",
+            PairsSection(title: L("Быстрые ссылки"), first: L("имя"), second: "https://…{query}…",
                          load: { Settings.quicklinks }, save: { Settings.quicklinks = $0 })
-            PairsSection(title: "Свои команды", first: "название", second: "команда для zsh",
+            PairsSection(title: L("Свои команды"), first: L("название"), second: L("команда для zsh"),
                          load: { Settings.customCommands }, save: { Settings.customCommands = $0 })
             Section("Окна") {
                 Toggle("Команды для окон: половины, трети, развернуть",
@@ -755,12 +755,12 @@ struct AIPane: View {
                 switch provider {
                 case .claudeCode:
                     LabeledContent("Claude Code") {
-                        StatusText(ok: Assistant.claudeBinary != nil, yes: "Найден", no: "Не установлен")
+                        StatusText(ok: Assistant.claudeBinary != nil, yes: L("Найден"), no: L("Не установлен"))
                     }
                 case .anthropic:
                     LabeledContent("Ключ API") {
                         HStack(spacing: 8) {
-                            SecureField(hasKey ? "сохранён в Связке ключей" : "sk-ant-…", text: $key).frame(width: 220)
+                            SecureField(hasKey ? L("сохранён в Связке ключей") : "sk-ant-…", text: $key).frame(width: 220)
                             Button("Сохранить") {
                                 Keychain.save(key.trimmingCharacters(in: .whitespaces), for: "anthropic")
                                 hasKey = Keychain.read("anthropic") != nil
@@ -778,7 +778,7 @@ struct AIPane: View {
                     }
                 case .apple:
                     LabeledContent("Модель Apple") {
-                        StatusText(ok: Assistant.appleStatus == nil, yes: "Готова", no: Assistant.appleStatus ?? "")
+                        StatusText(ok: Assistant.appleStatus == nil, yes: L("Готова"), no: Assistant.appleStatus ?? "")
                     }
                 }
                 LabeledContent("Проверка") {
@@ -787,7 +787,7 @@ struct AIPane: View {
                         if assistant.working { ProgressView().controlSize(.small) }
                         Button("Проверить") {
                             tested = nil
-                            assistant.ask("Ответь одним словом: столица Франции?", title: "Проверка") { result in
+                            assistant.ask(L("Ответь одним словом: столица Франции?"), title: L("Проверка")) { result in
                                 switch result {
                                 case .success(let text): tested = "✓ " + text.trimmingCharacters(in: .whitespacesAndNewlines)
                                 case .failure(let error): tested = "✗ " + error.localizedDescription
@@ -928,9 +928,9 @@ struct SnippetEditor: View {
     let done: (Snippet?) -> Void
 
     private static let placeholders: [(String, String)] = [
-        ("Буфер обмена", "{clipboard}"), ("Дата", "{date}"), ("Время", "{time}"), ("Дата и время", "{datetime}"),
-        ("День недели", "{day}"), ("Дата в своём формате", "{date format=\"dd.MM.yyyy\"}"),
-        ("Время через 1 час", "{time offset=\"+1h\"}"), ("UUID", "{uuid}"), ("Место курсора", "{cursor}"),
+        (L("Буфер обмена"), "{clipboard}"), (L("Дата"), "{date}"), (L("Время"), "{time}"), (L("Дата и время"), "{datetime}"),
+        (L("День недели"), "{day}"), (L("Дата в своём формате"), "{date format=\"dd.MM.yyyy\"}"),
+        (L("Время через 1 час"), "{time offset=\"+1h\"}"), ("UUID", "{uuid}"), (L("Место курсора"), "{cursor}"),
     ]
 
     var body: some View {
@@ -950,12 +950,12 @@ struct SnippetEditor: View {
                 .fixedSize()
                 Spacer()
                 Button("Отмена") { done(nil) }
-                Button(isNew ? "Создать" : "Сохранить") { done(snippet) }
+                Button(isNew ? L("Создать") : L("Сохранить")) { done(snippet) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(snippet.name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         } header: {
-            Text(isNew ? "Новый сниппет" : snippet.name)
+            Text(isNew ? L("Новый сниппет") : snippet.name)
         }
     }
 }
@@ -970,7 +970,7 @@ struct NotchPane: View {
                 if Settings.volumeHUD {
                     LabeledContent("Системное окно громкости") {
                         if state.model.volume.hasKeys {
-                            StatusText(ok: true, yes: "Скрыто", no: "")
+                            StatusText(ok: true, yes: L("Скрыто"), no: "")
                         } else {
                             Button("Скрыть…") { state.askAccessibility() }
                         }
@@ -1018,7 +1018,7 @@ struct NotificationsPane: View {
             Section {
                 LabeledContent("Полный доступ к диску") {
                     HStack(spacing: 10) {
-                        StatusText(ok: state.fullDiskAccess, yes: "Разрешён", no: "Нет доступа")
+                        StatusText(ok: state.fullDiskAccess, yes: L("Разрешён"), no: L("Нет доступа"))
                         if !state.fullDiskAccess { Button("Открыть…") { state.openFullDiskAccess() } }
                     }
                 }
@@ -1113,8 +1113,8 @@ struct DictationPane: View {
             Section {
                 LabeledContent("Микрофон") {
                     HStack(spacing: 10) {
-                        StatusText(ok: state.microphone == .authorized, yes: "Разрешён",
-                                   no: state.microphone == .notDetermined ? "Спросит при первой записи" : "Нет доступа")
+                        StatusText(ok: state.microphone == .authorized, yes: L("Разрешён"),
+                                   no: state.microphone == .notDetermined ? L("Спросит при первой записи") : L("Нет доступа"))
                         if state.microphone == .denied || state.microphone == .restricted {
                             Button("Открыть…") { state.openMicrophone() }
                         }
@@ -1122,7 +1122,7 @@ struct DictationPane: View {
                 }
                 LabeledContent("Универсальный доступ") {
                     HStack(spacing: 10) {
-                        StatusText(ok: state.accessibility, yes: "Разрешён", no: "Нет доступа")
+                        StatusText(ok: state.accessibility, yes: L("Разрешён"), no: L("Нет доступа"))
                         if !state.accessibility { Button("Открыть…") { state.askAccessibility() } }
                     }
                 }
@@ -1135,7 +1135,7 @@ struct DictationPane: View {
     @ViewBuilder private func modelStatus(_ model: ParakeetModel) -> some View {
         let _ = dictation.installs
         if let download = dictation.download, download.model == model {
-            LabeledContent(download.preparing ? "Готовлю модель для этого Mac…" : "Скачиваю \(Self.size(download.done)) из \(Self.size(download.total))") {
+            LabeledContent(download.preparing ? L("Готовлю модель для этого Mac…") : L("Скачиваю \(Self.size(download.done)) из \(Self.size(download.total))")) {
                 HStack(spacing: 10) {
                     if download.preparing {
                         ProgressView().controlSize(.small)
@@ -1153,7 +1153,7 @@ struct DictationPane: View {
                 }
             }
         } else {
-            LabeledContent(model.isSupported ? "Не скачана" : "Нужна macOS 15") {
+            LabeledContent(model.isSupported ? L("Не скачана") : L("Нужна macOS 15")) {
                 Button("Скачать") { dictation.startDownload(model) }
                     .disabled(!model.isSupported || dictation.download != nil)
             }
@@ -1188,8 +1188,8 @@ struct AgentsPane: View {
             Section {
                 LabeledContent("Claude Code и Codex") {
                     HStack(spacing: 10) {
-                        StatusText(ok: agents.hooksInstalled, yes: "Подключены", no: "Не подключены")
-                        Button(agents.hooksInstalled ? "Подключить заново" : "Подключить") { state.connectAgents() }
+                        StatusText(ok: agents.hooksInstalled, yes: L("Подключены"), no: L("Не подключены"))
+                        Button(agents.hooksInstalled ? L("Подключить заново") : L("Подключить")) { state.connectAgents() }
                     }
                 }
                 if let note = state.agentsNote { NoteText(note: note) }
@@ -1206,7 +1206,7 @@ struct AgentsPane: View {
             Section {
                 LabeledContent("Острова для долгих команд (zsh)") {
                     if state.shellConnected {
-                        StatusText(ok: true, yes: "Подключено", no: "")
+                        StatusText(ok: true, yes: L("Подключено"), no: "")
                     } else {
                         Button("Подключить") { state.connectShell() }
                     }
@@ -1225,8 +1225,8 @@ struct PrivacyPane: View {
     var body: some View {
         Form {
             Section {
-                permission("Универсальный доступ", granted: state.accessibility, open: state.askAccessibility)
-                permission("Полный доступ к диску", granted: state.fullDiskAccess, open: state.openFullDiskAccess)
+                permission(L("Универсальный доступ"), granted: state.accessibility, open: state.askAccessibility)
+                permission(L("Полный доступ к диску"), granted: state.fullDiskAccess, open: state.openFullDiskAccess)
             } header: {
                 Text("Разрешения macOS")
             }
@@ -1245,7 +1245,7 @@ struct PrivacyPane: View {
     private func permission(_ title: String, granted: Bool, open: @escaping () -> Void) -> some View {
         LabeledContent(title) {
             HStack(spacing: 10) {
-                StatusText(ok: granted, yes: "Разрешён", no: "Нет доступа")
+                StatusText(ok: granted, yes: L("Разрешён"), no: L("Нет доступа"))
                 if !granted { Button("Открыть…", action: open) }
             }
         }
@@ -1287,7 +1287,7 @@ struct UpdatesPane: View {
                     LabeledContent("Подпись", value: signature.title)
                     if signature.kind == .developerID {
                         LabeledContent("Проверка Apple") {
-                            StatusText(ok: signature.notarized, yes: "Нотаризовано", no: "Нет")
+                            StatusText(ok: signature.notarized, yes: L("Нотаризовано"), no: L("Нет"))
                         }
                     }
                 } header: {
@@ -1303,11 +1303,11 @@ struct UpdatesPane: View {
     }
 
     private var statusLine: String {
-        if state.checking { return "Проверяю…" }
+        if state.checking { return L("Проверяю…") }
         var text = state.updateText.isEmpty
-            ? (Settings.autoUpdate ? "Nook сам проверит обновления." : "Автоматическая проверка выключена.")
+            ? (Settings.autoUpdate ? L("Nook сам проверит обновления.") : L("Автоматическая проверка выключена."))
             : state.updateText
-        if let checkedAt = state.checkedAt { text += " Проверено \(Format.when(checkedAt))." }
+        if let checkedAt = state.checkedAt { text += L(" Проверено \(Format.when(checkedAt)).") }
         return text
     }
 }
@@ -1391,7 +1391,7 @@ struct ThanksPane: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Button(action: copy) {
-                            Label(copied ? "Скопировано" : "Скопировать адрес", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            Label(copied ? L("Скопировано") : L("Скопировать адрес"), systemImage: copied ? "checkmark" : "doc.on.doc")
                         }
                         Label("Только USDT и только через сеть \(wallet.network), иначе перевод пропадёт.",
                               systemImage: "exclamationmark.triangle.fill")

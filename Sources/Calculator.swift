@@ -34,7 +34,7 @@ enum Calculator {
             }
             return answer(value, rates: rates, bare: parser.bareQuantity, pair: pair)
         } catch let error as Failure {
-            return Answer(result: error.message, copy: error.message, detail: "Калькулятор", chain: text, isError: true)
+            return Answer(result: error.message, copy: error.message, detail: L("Калькулятор"), chain: text, isError: true)
         } catch {
             return nil
         }
@@ -70,7 +70,7 @@ enum Calculator {
 
     private static func answer(_ value: Value, rates: Rates, bare: Bool, pair: (String, String)?) -> Answer? {
         var value = value
-        var detail = "Калькулятор"
+        var detail = L("Калькулятор")
         if value.percent { value.number /= 100; value.percent = false }
         guard value.number.isFinite else { return nil }
         switch value.unit {
@@ -340,7 +340,7 @@ enum Calculator {
             if case .symbol("^")? = peek {
                 i += 1
                 guard let exponent = try power() else { return base }
-                guard base.unit == nil, exponent.unit == nil else { throw Failure(message: "Степень только для чисел") }
+                guard base.unit == nil, exponent.unit == nil else { throw Failure(message: L("Степень только для чисел")) }
                 operators += 1
                 looksLikeMaths = true
                 return Value(number: pow(base.number, exponent.number))
@@ -484,7 +484,7 @@ enum Calculator {
             if Functions.lists.contains(name) {
                 let unit = args.first?.unit
                 let numbers = try args.map { arg -> Double in
-                    guard arg.unit == unit else { throw Failure(message: "Разные единицы в \(name)") }
+                    guard arg.unit == unit else { throw Failure(message: L("Разные единицы в \(name)")) }
                     return arg.number
                 }
                 let result: Double = switch name {
@@ -544,7 +544,7 @@ enum Calculator {
                 let left = try convert(Value(number: a.number, unit: ua), to: ub)
                 return Value(number: left.number / b.number)
             default:
-                throw Failure(message: "Так единицы не перемножить")
+                throw Failure(message: L("Так единицы не перемножить"))
             }
         }
 
@@ -555,18 +555,18 @@ enum Calculator {
             case (.measure(let from)?, .measure(let to)):
                 guard from.kind == to.kind else {
                     let a = Units.kindTitle[from.kind]?.lowercased() ?? "", b = Units.kindTitle[to.kind]?.lowercased() ?? ""
-                    throw Failure(message: "Разные величины: \(a) и \(b)")
+                    throw Failure(message: L("Разные величины: \(a) и \(b)"))
                 }
                 return Value(number: Units.convert(value.number, from: from, to: to), unit: target)
             case (.currency(let from)?, .currency(let to)):
-                guard let rate = try rates.rate(from, to) else { throw Failure(message: "Нет курса для \(from) или \(to)") }
+                guard let rate = try rates.rate(from, to) else { throw Failure(message: L("Нет курса для \(from) или \(to)")) }
                 currencyPair = (from, to)
                 return Value(number: value.number * rate, unit: target)
             case (.measure(let from)?, .currency(let to)) where from.symbol == "lb":
                 // "10 pounds to euros": money, not weight.
                 return try convert(Value(number: value.number, unit: .currency("GBP")), to: .currency(to))
             default:
-                throw Failure(message: "Деньги и единицы не переводятся друг в друга")
+                throw Failure(message: L("Деньги и единицы не переводятся друг в друга"))
             }
         }
     }
@@ -649,8 +649,8 @@ enum Calculator {
         ]
 
         static let kindTitle: [Measure.Kind: String] = [
-            .length: "Длина", .mass: "Масса", .time: "Время", .temperature: "Температура", .volume: "Объём",
-            .data: "Данные", .speed: "Скорость",
+            .length: L("Длина"), .mass: L("Масса"), .time: L("Время"), .temperature: L("Температура"), .volume: L("Объём"),
+            .data: L("Данные"), .speed: L("Скорость"),
         ]
     }
 
@@ -715,19 +715,19 @@ final class Rates {
 
     var source: String {
         let when = fetchedAt.map { " · " + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""
-        return "Курс ExchangeRate-API" + when
+        return L("Курс ExchangeRate-API") + when
     }
 
-    var cryptoSource: String { "Курс currency-api (fawazahmed0)" }
+    var cryptoSource: String { L("Курс currency-api (fawazahmed0)") }
 
     /// nil when the rates are not here yet; throws for a code the feed does not know.
     func rate(_ from: String, _ to: String) throws -> Double? {
-        guard !perDollar.isEmpty else { throw Calculator.Failure(message: "Курсы валют ещё не загрузились") }
+        guard !perDollar.isEmpty else { throw Calculator.Failure(message: L("Курсы валют ещё не загрузились")) }
         if (Self.crypto.contains(from) || Self.crypto.contains(to)) && cryptoPerDollar.isEmpty {
-            throw Calculator.Failure(message: "Курсы криптовалют ещё не загрузились")
+            throw Calculator.Failure(message: L("Курсы криптовалют ещё не загрузились"))
         }
-        guard let a = perDollar[from] else { throw Calculator.Failure(message: "Нет курса для \(from)") }
-        guard let b = perDollar[to] else { throw Calculator.Failure(message: "Нет курса для \(to)") }
+        guard let a = perDollar[from] else { throw Calculator.Failure(message: L("Нет курса для \(from)")) }
+        guard let b = perDollar[to] else { throw Calculator.Failure(message: L("Нет курса для \(to)")) }
         return b / a
     }
 

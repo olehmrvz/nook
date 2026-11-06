@@ -117,14 +117,14 @@ struct MirrorTab: View {
 
             Card(tint: [Palette.cyan.opacity(0.12), .clear], padding: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Caps(text: "Зеркало")
+                    Caps(text: L("Зеркало"))
                     Text("Свет и кадр перед созвоном").font(.system(size: 15, weight: .semibold))
                     Text("Камера работает, только пока открыта эта вкладка. Ничего не записывается и не отправляется.")
                         .font(.system(size: 12)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
                         Circle().fill(camera.state == .running ? Palette.green : faint).frame(width: 7, height: 7)
-                        Text(camera.state == .running ? "Камера включена" : "Камера выключена")
+                        Text(camera.state == .running ? L("Камера включена") : L("Камера выключена"))
                             .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
                     }
                 }
@@ -170,9 +170,9 @@ struct PowerCard: View {
                     height: 6)
             Text(battery.detail).font(.system(size: 12)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 14) {
-                stat("Ёмкость", battery.health.map { "\($0)%" } ?? "—")
-                stat("Циклы", battery.cycles.map(String.init) ?? "—")
-                stat("Энергосбережение", ProcessInfo.processInfo.isLowPowerModeEnabled ? "вкл" : "выкл")
+                stat(L("Ёмкость"), battery.health.map { "\($0)%" } ?? "—")
+                stat(L("Циклы"), battery.cycles.map(String.init) ?? "—")
+                stat(L("Энергосбережение"), ProcessInfo.processInfo.isLowPowerModeEnabled ? L("вкл") : L("выкл"))
             }
             Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
             Text("Лимит заряда 80–100 % задаётся в macOS и работает даже без Nook.")

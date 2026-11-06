@@ -172,7 +172,7 @@ final class CalendarStore: ObservableObject {
                     .sorted { $0.startDate < $1.startDate }
                     .prefix(30)
                     .map { e in
-                        Event(id: e.eventIdentifier ?? UUID().uuidString, title: e.title ?? "Без названия",
+                        Event(id: e.eventIdentifier ?? UUID().uuidString, title: e.title ?? L("Без названия"),
                               start: e.startDate, end: e.endDate, allDay: e.isAllDay,
                               color: e.calendar.color ?? .systemBlue, location: e.location,
                               meetingURL: Self.meetingURL(in: [e.url?.absoluteString, e.location, e.notes]))

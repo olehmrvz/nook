@@ -36,6 +36,7 @@ plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$STAGE/Contents/Info.pl
 plutil -replace CFBundleShortVersionString -string "1.$BUILD_NUMBER" "$STAGE/Contents/Info.plist"
 cp "$BUILD/Nook" "$STAGE/Contents/MacOS/Nook"
 cp "$BUILD/AppIcon.icns" "$STAGE/Contents/Resources/AppIcon.icns"
+cp -R "$PROJECT_DIR"/Sources/Localization/*.lproj "$STAGE/Contents/Resources/"
 cp "$BUILD/libNookMediaRemote.dylib" "$PROJECT_DIR/Sources/MediaRemote/nook-media.pl" "$STAGE/Contents/Resources/"
 # A stable identity keeps macOS permissions across rebuilds (see make-cert.sh); ad-hoc otherwise.
 IDENTITY="-"

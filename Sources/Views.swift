@@ -211,7 +211,7 @@ struct NowPlayingCard: View {
                 .buttonStyle(.icon)
                 .help("Открыть \(np.source?.name ?? "плеер")")
                 VStack(alignment: .leading, spacing: 4) {
-                    Caps(text: np.isPlaying ? "Сейчас играет" : "На паузе").contentTransition(.opacity)
+                    Caps(text: np.isPlaying ? L("Сейчас играет") : L("На паузе")).contentTransition(.opacity)
                     Text(np.title).font(.system(size: compact ? 16 : 20, weight: .bold)).tracking(-0.3).lineLimit(2)
                         .contentTransition(.opacity)
                     Text(np.artist).font(.system(size: compact ? 12 : 13)).foregroundStyle(muted).lineLimit(1)
@@ -334,11 +334,11 @@ extension AgentHub.Session {
     /// First word of the second line, in colour: the state at a glance.
     var stateWord: String {
         switch status {
-        case .working: return "Работает"
-        case .waiting: return "Ждёт разрешения"
-        case .attention: return "Ждёт вас"
-        case .done: return "Готово"
-        case .idle: return "Ожидает"
+        case .working: return L("Работает")
+        case .waiting: return L("Ждёт разрешения")
+        case .attention: return L("Ждёт вас")
+        case .done: return L("Готово")
+        case .idle: return L("Ожидает")
         }
     }
 
@@ -354,10 +354,10 @@ extension AgentHub.Session {
     /// The rest of the second line: what is happening now, or how the turn ended.
     var detail: String {
         switch status {
-        case .working: return action ?? "думает…"
+        case .working: return action ?? L("думает…")
         case .waiting: return action ?? ""
         case .attention: return note ?? ""
-        case .done, .idle: return lastMessage ?? (status == .done ? "ждёт новую задачу" : "")
+        case .done, .idle: return lastMessage ?? (status == .done ? L("ждёт новую задачу") : "")
         }
     }
 
@@ -383,9 +383,9 @@ extension AgentHub.Session {
 
     /// Working: "идёт 3 мин". Otherwise: "8 мин назад".
     var timeText: String {
-        if status == .working, let start = turnStarted { return "идёт " + Format.span(Date().timeIntervalSince(start)) }
+        if status == .working, let start = turnStarted { return L("идёт ") + Format.span(Date().timeIntervalSince(start)) }
         let ago = Date().timeIntervalSince(updated)
-        return ago < 5 ? "сейчас" : Format.span(ago) + " назад"
+        return ago < 5 ? L("сейчас") : Format.span(ago) + L(" назад")
     }
 }
 
@@ -484,7 +484,7 @@ struct SessionBlock: View {
         .animation(Motion.quick, value: hover)
         .animation(Motion.smooth, value: session.status)
         .animation(Motion.smooth, value: session.detail)
-        .help(session.terminal?["HERDR_TAB_ID"] != nil ? "Открыть вкладку herdr этой сессии" : "Открыть терминал этой сессии")
+        .help(session.terminal?["HERDR_TAB_ID"] != nil ? L("Открыть вкладку herdr этой сессии") : L("Открыть терминал этой сессии"))
     }
 
     /// "12 действий · изменено: Views.swift, Theme.swift и ещё 2".
@@ -496,10 +496,10 @@ struct SessionBlock: View {
         if s.toolCount > 0 { parts.append(Format.count(s.toolCount, "действие", "действия", "действий")) }
         if !s.edited.isEmpty {
             let shown = s.edited.prefix(2).joined(separator: ", ")
-            parts.append("изменено: " + shown + (s.edited.count > 2 ? " и ещё \(s.edited.count - 2)" : ""))
+            parts.append(L("изменено: ") + shown + (s.edited.count > 2 ? L(" и ещё \(s.edited.count - 2)") : ""))
         }
-        if let passed = s.testsPassed { parts.append(passed ? "тесты ✓" : "тесты ✗") }
-        if s.committed { parts.append(s.pushed ? "коммит и push" : "коммит") } else if s.pushed { parts.append("push") }
+        if let passed = s.testsPassed { parts.append(passed ? L("тесты ✓") : L("тесты ✗")) }
+        if s.committed { parts.append(s.pushed ? L("коммит и push") : L("коммит")) } else if s.pushed { parts.append("push") }
         return parts.joined(separator: " · ")
     }
 }
@@ -520,7 +520,7 @@ struct MiniLimit: View {
                 .contentTransition(.numericText())
         }
         .help("\(title): осталось \(left.map { "\($0)%" } ?? "—")"
-              + (window?.resetsAt.map { ", сброс " + $0.formatted(.relative(presentation: .named)) } ?? ""))
+              + (window?.resetsAt.map { L(", сброс ") + $0.formatted(.relative(presentation: .named)) } ?? ""))
     }
 }
 
@@ -546,22 +546,22 @@ struct AgentsSummary: View {
                     .buttonStyle(.icon)
                     .help("Все сессии  ⌘4")
                     if waiting > 0 {
-                        Chip(text: "\(waiting) ждёт", color: accent).transition(.scale(scale: 0.8).combined(with: .opacity))
+                        Chip(text: L("\(waiting) ждёт"), color: accent).transition(.scale(scale: 0.8).combined(with: .opacity))
                     } else if working > 0 {
-                        Chip(text: "\(working) в работе", color: Palette.claude).transition(.scale(scale: 0.8).combined(with: .opacity))
+                        Chip(text: L("\(working) в работе"), color: Palette.claude).transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
                     Spacer(minLength: 4)
-                    MiniLimit(title: "Claude · 5 ч", window: limits.claudeSession, colors: [Palette.pink, Palette.violet])
-                    MiniLimit(title: "Claude · неделя", window: limits.claudeWeek, colors: [Palette.orange, Palette.claude])
+                    MiniLimit(title: L("Claude · 5 ч"), window: limits.claudeSession, colors: [Palette.pink, Palette.violet])
+                    MiniLimit(title: L("Claude · неделя"), window: limits.claudeWeek, colors: [Palette.orange, Palette.claude])
                 }
                 .padding(.horizontal, 2)
                 if sorted.isEmpty {
                     Spacer(minLength: 0)
                     VStack(spacing: 6) {
-                        Text(agents.hooksInstalled ? "Нет активных сессий" : "Nook не подключён к агентам")
+                        Text(agents.hooksInstalled ? L("Нет активных сессий") : L("Nook не подключён к агентам"))
                             .font(.system(size: 13, weight: .medium))
-                        Text(agents.hooksInstalled ? "Запущенные Claude Code и Codex появятся здесь"
-                                                   : "Откройте вкладку «Агенты», чтобы подключить")
+                        Text(agents.hooksInstalled ? L("Запущенные Claude Code и Codex появятся здесь")
+                                                   : L("Откройте вкладку «Агенты», чтобы подключить"))
                             .font(.system(size: 11)).foregroundStyle(muted)
                     }
                     .frame(maxWidth: .infinity)
@@ -621,11 +621,11 @@ struct ReplyField: View {
         let blank = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         HStack(spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 11)).foregroundStyle(Palette.claude.lifted())
-            TextField(failed ? "Не дошло — откройте терминал" : "Что ответить агенту в \(session.project)?", text: $text)
+            TextField(failed ? L("Не дошло — откройте терминал") : L("Что ответить агенту в \(session.project)?"), text: $text)
                 .textFieldStyle(.plain).font(.system(size: 12.5))
                 .focused($focused)
                 .onSubmit(send)
-            Button(sending ? "Отправляю…" : "Отправить", action: send)
+            Button(sending ? L("Отправляю…") : L("Отправить"), action: send)
                 .buttonStyle(.pill(.primary, small: true))
                 .disabled(blank || sending)
             Button { model.replyTo = nil } label: {
@@ -724,7 +724,7 @@ struct ClipboardTab: View {
                 VStack(spacing: 8) {
                     Badge(symbol: store.query.isEmpty ? "doc.on.clipboard" : "magnifyingglass",
                           colors: [Palette.blue, Palette.violet], size: 44)
-                    Text(store.query.isEmpty && store.filter == .all ? "Скопируйте что-нибудь — оно появится здесь" : "Ничего не найдено")
+                    Text(store.query.isEmpty && store.filter == .all ? L("Скопируйте что-нибудь — оно появится здесь") : L("Ничего не найдено"))
                         .font(.system(size: 12)).foregroundStyle(muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -738,13 +738,13 @@ struct ClipboardTab: View {
                                     model.pick(item)
                                 }
                                 .contextMenu {
-                                    Button(model.sticky && AXIsProcessTrusted() ? "Вставить" : "Скопировать") { model.pick(item) }
+                                    Button(model.sticky && AXIsProcessTrusted() ? L("Вставить") : L("Скопировать")) { model.pick(item) }
                                     if let url = store.imageURL(for: item) {
                                         Button("Скопировать текст с картинки") {
                                             TextRecognizer.copyText(from: url) { ok in model.show(ok ? .copied : .noText, for: 1.6) }
                                         }
                                     }
-                                    Button(item.pinned ? "Открепить" : "Закрепить") { store.togglePin(item) }
+                                    Button(item.pinned ? L("Открепить") : L("Закрепить")) { store.togglePin(item) }
                                     Divider()
                                     Button("Удалить") { store.delete(item, source: "menu") }
                                 }
@@ -985,8 +985,8 @@ struct AgentsTab: View {
                             Badge(symbol: "sparkles", colors: [Palette.claude, Palette.orange], size: 48)
                             Text("Нет активных сессий").font(.system(size: 15, weight: .semibold))
                             Text(agents.hooksInstalled
-                                 ? "Запустите Claude Code или Codex — статус и запросы на разрешение появятся здесь"
-                                 : "Nook ещё не подключён к Claude Code и Codex")
+                                 ? L("Запустите Claude Code или Codex — статус и запросы на разрешение появятся здесь")
+                                 : L("Nook ещё не подключён к Claude Code и Codex"))
                                 .font(.system(size: 12)).foregroundStyle(muted).multilineTextAlignment(.center)
                             if !agents.hooksInstalled {
                                 Button("Подключить") {
@@ -1074,8 +1074,8 @@ struct PermissionCard: View {
                         .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                if lines > 1 { Chip(text: "\(lines) строк", color: Palette.orange) }
-                if more > 0 { Chip(text: "ещё \(more)", color: .white) }
+                if lines > 1 { Chip(text: L("\(lines) строк"), color: Palette.orange) }
+                if more > 0 { Chip(text: L("ещё \(more)"), color: .white) }
             }
             // The whole input, scrollable: what you approve is exactly what you can read here.
             ScrollView(showsIndicators: true) {
@@ -1112,8 +1112,8 @@ struct PermissionCard: View {
 
     /// Human words for Claude's permission_suggestions: rules, mode switch, extra folders, and where they go.
     static func describe(_ suggestions: Any?) -> String {
-        let places = ["localSettings": "этот проект, только у вас", "projectSettings": "проект",
-                      "userSettings": "все проекты", "session": "до конца сессии"]
+        let places = ["localSettings": L("этот проект, только у вас"), "projectSettings": L("проект"),
+                      "userSettings": L("все проекты"), "session": L("до конца сессии")]
         let parts = (suggestions as? [[String: Any]] ?? []).map { s -> String in
             let place = places[s["destination"] as? String ?? ""] ?? (s["destination"] as? String ?? "")
             switch s["type"] as? String {
@@ -1123,14 +1123,14 @@ struct PermissionCard: View {
                     return (r["ruleContent"] as? String).map { "\(tool)(\($0))" } ?? tool
                 }
                 return rules.joined(separator: ", ") + (place.isEmpty ? "" : " → \(place)")
-            case "setMode": return "режим \(s["mode"] as? String ?? "?")" + (place.isEmpty ? "" : " → \(place)")
+            case "setMode": return L("режим \(s["mode"] as? String ?? "?")") + (place.isEmpty ? "" : " → \(place)")
             case "addDirectories":
                 let dirs = (s["directories"] as? [String] ?? []).map { ($0 as NSString).lastPathComponent }
-                return "доступ к папкам: " + dirs.joined(separator: ", ")
-            default: return s["type"] as? String ?? "правило"
+                return L("доступ к папкам: ") + dirs.joined(separator: ", ")
+            default: return s["type"] as? String ?? L("правило")
             }
         }
-        return parts.isEmpty ? "правило из предложения Claude" : parts.joined(separator: "; ")
+        return parts.isEmpty ? L("правило из предложения Claude") : parts.joined(separator: "; ")
     }
 }
 
@@ -1142,8 +1142,8 @@ struct LimitsCard: View {
         Card(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Лимиты · осталось").font(.system(size: 13, weight: .semibold))
-                LimitRow(title: "Claude · 5 ч", window: limits.claudeSession, length: 5 * 3600)
-                LimitRow(title: "Claude · неделя", window: limits.claudeWeek, length: 7 * 86400)
+                LimitRow(title: L("Claude · 5 ч"), window: limits.claudeSession, length: 5 * 3600)
+                LimitRow(title: L("Claude · неделя"), window: limits.claudeWeek, length: 7 * 86400)
                 LimitRow(title: codexTitle, window: limits.codexPrimary,
                          length: limits.codexWindowMinutes > 0 ? Double(limits.codexWindowMinutes) * 60 : nil)
                 Spacer(minLength: 0)
@@ -1156,8 +1156,8 @@ struct LimitsCard: View {
                     }
                     .lineLimit(1)
                     .help("Claude за сегодня: \(Format.tokens(usage.today.tokens)). Стоимость по ценам API"
-                          + (usage.today.unpriced ? " (без моделей с неизвестной ценой)" : "")
-                          + "; с подпиской Claude платите не вы, это ориентир.")
+                          + (usage.today.unpriced ? L(" (без моделей с неизвестной ценой)") : "")
+                          + L("; с подпиской Claude платите не вы, это ориентир."))
                 }
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 1).fill(Color.white.opacity(0.85)).frame(width: 2, height: 9)
@@ -1169,9 +1169,9 @@ struct LimitsCard: View {
 
     private var codexTitle: String {
         let m = limits.codexWindowMinutes
-        if m >= 10000 { return "Codex · месяц" }
-        if m >= 1440 { return "Codex · неделя" }
-        return m > 0 ? "Codex · \(m / 60) ч" : "Codex"
+        if m >= 10000 { return L("Codex · месяц") }
+        if m >= 1440 { return L("Codex · неделя") }
+        return m > 0 ? L("Codex · \(m / 60) ч") : "Codex"
     }
 }
 
@@ -1211,12 +1211,12 @@ struct LimitRow: View {
             }
             .frame(height: 9)
             HStack {
-                Text(window?.resetsAt.map { "сброс " + Format.when($0) } ?? (window == nil ? "нет данных" : "время сброса неизвестно"))
+                Text(window?.resetsAt.map { L("сброс ") + Format.when($0) } ?? (window == nil ? L("нет данных") : L("время сброса неизвестно")))
                 Spacer(minLength: 4)
                 if let timeLeft { Text("через " + Format.until(timeLeft)) }
             }
             .font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
         }
-        .help(fast ? "Расход опережает время: при таком темпе лимит закончится раньше сброса." : title)
+        .help(fast ? L("Расход опережает время: при таком темпе лимит закончится раньше сброса.") : title)
     }
 }

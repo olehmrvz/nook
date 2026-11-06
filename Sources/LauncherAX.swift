@@ -55,7 +55,7 @@ enum MenuSearch {
         if mods & 1 != 0 { text += "⇧" }
         if mods & 8 == 0 { text += "⌘" }
         // Control characters stand for keys: delete, escape, return, tab.
-        let named: [String: String] = ["\u{08}": "⌫", "\u{7F}": "⌦", "\u{1B}": "⎋", "\r": "↩", "\u{03}": "⌤", "\t": "⇥", " ": "Пробел"]
+        let named: [String: String] = ["\u{08}": "⌫", "\u{7F}": "⌦", "\u{1B}": "⎋", "\r": "↩", "\u{03}": "⌤", "\t": "⇥", " ": L("Пробел")]
         return text + (named[char] ?? char.uppercased())
     }
 

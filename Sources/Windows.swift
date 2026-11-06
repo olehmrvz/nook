@@ -11,29 +11,29 @@ enum WindowAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .leftHalf: "Левая половина"
-        case .rightHalf: "Правая половина"
-        case .topHalf: "Верхняя половина"
-        case .bottomHalf: "Нижняя половина"
-        case .centerHalf: "Половина по центру"
-        case .topLeft: "Левая верхняя четверть"
-        case .topRight: "Правая верхняя четверть"
-        case .bottomLeft: "Левая нижняя четверть"
-        case .bottomRight: "Правая нижняя четверть"
-        case .firstThird: "Левая треть"
-        case .centerThird: "Треть по центру"
-        case .lastThird: "Правая треть"
-        case .firstTwoThirds: "Две трети слева"
-        case .centerTwoThirds: "Две трети по центру"
-        case .lastTwoThirds: "Две трети справа"
-        case .maximize: "Развернуть окно"
-        case .center: "Окно по центру"
-        case .reasonableSize: "Удобный размер окна"
-        case .larger: "Окно больше"
-        case .smaller: "Окно меньше"
-        case .nextDisplay: "Окно на следующий дисплей"
-        case .previousDisplay: "Окно на предыдущий дисплей"
-        case .restore: "Вернуть окно как было"
+        case .leftHalf: L("Левая половина")
+        case .rightHalf: L("Правая половина")
+        case .topHalf: L("Верхняя половина")
+        case .bottomHalf: L("Нижняя половина")
+        case .centerHalf: L("Половина по центру")
+        case .topLeft: L("Левая верхняя четверть")
+        case .topRight: L("Правая верхняя четверть")
+        case .bottomLeft: L("Левая нижняя четверть")
+        case .bottomRight: L("Правая нижняя четверть")
+        case .firstThird: L("Левая треть")
+        case .centerThird: L("Треть по центру")
+        case .lastThird: L("Правая треть")
+        case .firstTwoThirds: L("Две трети слева")
+        case .centerTwoThirds: L("Две трети по центру")
+        case .lastTwoThirds: L("Две трети справа")
+        case .maximize: L("Развернуть окно")
+        case .center: L("Окно по центру")
+        case .reasonableSize: L("Удобный размер окна")
+        case .larger: L("Окно больше")
+        case .smaller: L("Окно меньше")
+        case .nextDisplay: L("Окно на следующий дисплей")
+        case .previousDisplay: L("Окно на предыдущий дисплей")
+        case .restore: L("Вернуть окно как было")
         }
     }
 

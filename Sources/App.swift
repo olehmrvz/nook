@@ -153,16 +153,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return entry
         }
 
-        item("Открыть Nook", #selector(openHome), symbol: "rectangle.topthird.inset.filled")
-        item("Буфер обмена  ⌃⌘V", #selector(openClipboard), symbol: "doc.on.clipboard")
-        item(model.caffeine.on ? "Кофеин включён — Mac не засыпает" : "Кофеин: не давать Mac засыпать",
+        item(L("Открыть Nook"), #selector(openHome), symbol: "rectangle.topthird.inset.filled")
+        item(L("Буфер обмена  ⌃⌘V"), #selector(openClipboard), symbol: "doc.on.clipboard")
+        item(model.caffeine.on ? L("Кофеин включён — Mac не засыпает") : L("Кофеин: не давать Mac засыпать"),
              #selector(toggleCaffeine), symbol: "cup.and.saucer").state = model.caffeine.on ? .on : .off
         menu.addItem(.separator())
-        item("Настройки…", #selector(openSettings), symbol: "gearshape", key: ",")
-        item("Проверить обновления…", #selector(checkUpdates), symbol: "arrow.down.circle")
-        item("Сказать спасибо…", #selector(openThanks), symbol: "heart")
+        item(L("Настройки…"), #selector(openSettings), symbol: "gearshape", key: ",")
+        item(L("Проверить обновления…"), #selector(checkUpdates), symbol: "arrow.down.circle")
+        item(L("Сказать спасибо…"), #selector(openThanks), symbol: "heart")
         menu.addItem(.separator())
-        item("Выйти из Nook", #selector(NSApplication.terminate(_:)), symbol: "power", key: "q").target = NSApp
+        item(L("Выйти из Nook"), #selector(NSApplication.terminate(_:)), symbol: "power", key: "q").target = NSApp
     }
 
     @objc private func openHome() { model.open(tab: .home) }
