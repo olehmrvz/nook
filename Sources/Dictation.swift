@@ -412,14 +412,22 @@ final class Dictation: ObservableObject {
     }
 
     private func transcribe(_ audio: [Float]) {
-        guard audio.count > ParakeetEngine.sampleRate / 3 else { phase = .idle; return }
+        let seconds = Double(audio.count) / Double(ParakeetEngine.sampleRate)
+        guard audio.count > ParakeetEngine.sampleRate / 3 else {
+            note(String(format: "too short: %.2f s of audio", seconds))
+            phase = .idle
+            return
+        }
         Self.play(Settings.dictationEndSound)
         let model = Settings.dictationModel
         let target = self.target
         queue.async { [weak self] in
             guard let self else { return }
             let context = Settings.dictationSmartCase ? Self.textBeforeCursor() : nil
+            let started = Date()
             let result = Result { try self.engine(for: model).transcribe(audio) }
+            self.note(String(format: "%.1f s of audio recognized in %.2f s: ", seconds, Date().timeIntervalSince(started))
+                      + ((try? result.get()).map { "\($0.count) characters" } ?? String(describing: result)))
             DispatchQueue.main.async {
                 self.phase = .idle
                 switch result {
@@ -486,9 +494,11 @@ final class Dictation: ObservableObject {
         guard Settings.dictationPaste else {
             board.clearContents()
             board.setString(text, forType: .string)
+            note("copied")
             onNotice?(L("Текст скопирован"), L("Вставьте его: ⌘V"), false)
             return
         }
+        note("pasted")
         TextInsertion.paste(text, into: target)
     }
 
@@ -614,19 +624,16 @@ final class Dictation: ObservableObject {
         }
     }
 
-    /// Times and error codes only (no audio, no text), 40 lines at most, on `audioQueue`.
+    /// From any thread.
+    private func note(_ text: String) { audioQueue.async { self.log(text) } }
+
+    /// Times, sizes and error codes only (no audio, no text); the last 100–200 lines; on `audioQueue`.
     private func log(_ text: String) {
-        let lines = (try? String(contentsOf: logURL, encoding: .utf8))?.split(separator: "\n").count ?? 0
-        guard lines < 40 else { return }
-        let line = "\(Date()) \(text)\n"
-        if let handle = try? FileHandle(forWritingTo: logURL) {
-            handle.seekToEndOfFile()
-            handle.write(Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? line.write(to: logURL, atomically: true, encoding: .utf8)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: logURL.path)
-        }
+        var lines = (try? String(contentsOf: logURL, encoding: .utf8))?.split(separator: "\n").map(String.init) ?? []
+        if lines.count >= 200 { lines.removeFirst(100) }
+        lines.append("\(Date()) \(text)")
+        try? (lines.joined(separator: "\n") + "\n").write(to: logURL, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: logURL.path)
     }
 
     // MARK: Sounds
