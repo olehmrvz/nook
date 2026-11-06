@@ -10,7 +10,7 @@ Claude Code and Codex agents, music, clipboard, files, calendar and timer — ri
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%E2%80%93M4-black)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[**Download**](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) · [Development](docs/DEVELOPMENT.md)
+[**Download**](https://github.com/olehmrvz/nook/releases/latest/download/Nook.dmg) · [Development](docs/DEVELOPMENT.md)
 
 <img src="docs/images/request.jpg" alt="Nook: an agent asks for permission right in the notch" width="820">
 
@@ -56,15 +56,11 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 
 ## Install
 
-1. Download [Nook.zip](https://github.com/olehmrvz/nook/releases/latest/download/Nook.zip) and unpack it.
-2. Move `Nook.app` to Applications and open it.
-3. macOS says it cannot verify the developer: Nook is not notarized by Apple.
-   Open **System Settings → Privacy & Security → "Open Anyway"**.
-   If macOS says the app is damaged, run this in Terminal and open it again:
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/Nook.app
-   ```
-4. Hover the notch to open the panel. Settings: ⚙︎ in the panel or the menu bar icon.
+1. Download [Nook.dmg](https://github.com/olehmrvz/nook/releases/latest/download/Nook.dmg) and open it.
+2. Drag Nook to Applications, then open it from Applications.
+   Nook is signed with a Developer ID and notarized by Apple: macOS only asks once whether to open an app
+   downloaded from the internet.
+3. Hover the notch to open the panel. Settings: ⚙︎ in the panel or the menu bar icon.
 
 Claude Code and Codex connect by themselves on first launch. Restart agents that are already running.
 Codex may ask once whether to trust Nook's hooks — allow it.
@@ -82,22 +78,22 @@ Nook checks for a new version every 6 hours and installs it when the panel is cl
 - No analytics, account or ads. Network access only for weather (Open-Meteo, location rounded to ~1 km) and
   updates (GitHub).
 - All data stays on your Mac in `~/Library/Application Support/Nook`, readable only by your user account.
-- An update is installed only if it is signed with the same certificate as your copy.
+- An update is installed only if it is signed with Nook's Developer ID (or the same certificate as your copy).
 - An agent cannot approve its own request: only your answer counts.
 - Notification text is hidden in the notch until you turn it on.
 
 Check that your copy is genuine:
 ```sh
-codesign -d -r- /Applications/Nook.app
-# must end with: certificate leaf = H"76a699582536149bb53212178f4a1b2a2dc15cc1"
+codesign -dv /Applications/Nook.app 2>&1 | grep TeamIdentifier   # must be: TeamIdentifier=T2KMY2TV9W
+spctl -a -vv /Applications/Nook.app                                # must say: source=Notarized Developer ID
 ```
-Each release lists the SHA-256 of the zip. Found a vulnerability? See [SECURITY.md](SECURITY.md).
+Each release lists the SHA-256 of its files. Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 ## Build from source
 
 ```sh
 xcode-select --install   # once: build tools
-./make-cert.sh           # once: a certificate, so macOS keeps permissions across builds
+./make-cert.sh           # once, without a Developer ID: a certificate, so macOS keeps permissions across builds
 ./install.sh             # build, install to /Applications and start
 ```
 Details: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

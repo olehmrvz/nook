@@ -7,5 +7,5 @@ Only the latest release gets fixes.
 
 What matters most:
 - anything that lets another process approve an agent's request or read Nook's data;
-- anything that makes the updater install a build not signed with Nook's certificate;
+- anything that makes the updater install a build not signed with Nook's Developer ID (team T2KMY2TV9W);
 - leaks of clipboard, notes or notification content.
