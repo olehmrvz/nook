@@ -870,7 +870,7 @@ struct ExpandedView: View {
                                                : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
                     withAnimation(Motion.quick) { caffeine.toggle() }
                 }
-                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenMenu?() }
+                HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenSettings?() }
             }
             .padding(2)
             .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))

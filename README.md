@@ -74,8 +74,8 @@ Requires an Apple Silicon Mac with macOS 14 or later. On a Mac without a notch, 
 ## Updates
 
 Nook checks for a new version every 6 hours and installs it when the panel is closed. Check by hand:
-⚙︎ → Updates (Обновления) → Check now (Проверить сейчас). Turn off: same menu, Update automatically
-(Обновлять автоматически).
+Settings (⚙︎ in the panel or the menu bar icon) → Updates (Обновления) → Check now (Проверить сейчас).
+Turn off: same page, Update automatically (Обновлять автоматически).
 
 ## Security and privacy
 

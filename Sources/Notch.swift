@@ -174,8 +174,8 @@ final class NotchModel: ObservableObject {
     let focus = FocusWatcher()
     let keyboardLock = KeyboardLock()
     let updater = Updater()
-    /// Opens Nook's menu (the gear in the panel), set by the app delegate.
-    var onOpenMenu: (() -> Void)?
+    /// Opens the Settings window (the gear in the panel), set by the app delegate.
+    var onOpenSettings: (() -> Void)?
 
     weak var panel: NotchPanel?
     /// Opened from the hotkey: stays open until Esc, a pick or a click outside.

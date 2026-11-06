@@ -29,7 +29,8 @@ is ad-hoc signed and macOS may ask again.
 ## Command line
 
 `Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
-app (`power` opens Home with the battery card).
+app (`power` opens Home with the battery card); `Nook --show settings[:pane]` opens the Settings window
+(panes: general, notch, notifications, agents, privacy, updates, thanks).
 `Nook --timer 25|stop|pomodoro` and `Nook --prompt` (start Cuely) for Raycast / Shortcuts.
 `Nook --answer allow|always|deny|terminal` answers the oldest pending agent request. It works from your own
 terminal, not from a process an agent started (an agent must not approve its own request).
@@ -40,8 +41,11 @@ terminal, not from a process an agent started (an agent must not approve its own
   `clipboard.json.bak` is a safety copy (hourly, and before an unexplained large drop); entries you delete
   leave it too. `clipboard-events.log` records loads, deletes and clears with counts only, never content.
 - The panel closes by itself after 2 minutes without input and while the screen is locked or asleep.
-- Menu: the menu bar icon, or ⚙︎ in the panel header (the icon can be hidden; opening Nook.app again brings it
-  back). Display (Экран): pick the display for the notch (on a display without a notch it is a small pill).
+- Settings (`Sources/SettingsWindow.swift`): a normal window opened by ⚙︎ in the panel header, the menu bar icon
+  (Настройки… ⌘,) or `Nook --show settings[:pane]`. The menu bar menu keeps quick actions only; the icon can be
+  hidden (opening Nook.app again brings it back). Display (Экран): pick the display for the notch (on a display
+  without a notch it is a small pill). Permission status there reads live state (AXIsProcessTrusted, whether the
+  notification database opens), because a toggle in System Settings can look on while it does not work.
 - ☕ in the header: "coffee" keeps the Mac awake while idle (agents left working). The display still sleeps.
 - Reply to an agent (`ReplyField`, `AgentHub.reply`): only for sessions in herdr (`pane send-text` + `send-keys enter`)
   or tmux (`send-keys -l`), and only when the session is done or idle — never while a request or a terminal dialog
