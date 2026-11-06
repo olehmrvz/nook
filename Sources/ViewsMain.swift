@@ -395,8 +395,7 @@ struct CollapsedView: View {
                 if model.nowPlaying.isPlaying {
                     Artwork(image: model.nowPlaying.artwork, size: 22, radius: 6)
                 } else {
-                    let working = model.agents.workingProjects
-                    AgentCursor(projects: working.projects, beat: AnyHashable(working.last))
+                    AgentCursor(projects: model.agents.workingProjects)
                 }
             case .music: Artwork(image: model.nowPlaying.artwork, size: 22, radius: 6)
             case .prompter, nil: EmptyView()

@@ -161,14 +161,23 @@ struct Spinner: View {
 }
 
 /// The project's first letter in a terminal cell (Figma «3+5 · А · Курсор на букве»). While the agent works, the
-/// cursor, a block in the project's colour, blinks on the letter as in a terminal; each new action restarts the
-/// blink with a flash. Not blinking (a request waits for you): the block stays lit. Two projects at work: two
-/// letters, the cursor on the last one (it acted last).
+/// cursor, a block in the project's colour, slowly fades out and back on the letter; it comes in with a short
+/// flash. Not blinking (a request waits for you): the block stays lit. Two projects at work: two letters, the
+/// cursor on the last one (it acted last).
 struct AgentCursor: View {
     var projects: [String]
     var blinking = true
-    /// Changes with each action of the agent the cursor is on.
-    var beat: AnyHashable = 0
+
+    /// Lit 1.4 s, fades out in 0.4 s, off 0.4 s, back in 0.4 s.
+    private static let blinkPeriod = 2.6
+    private static func blink(_ t: Double) -> Double {
+        let p = t.truncatingRemainder(dividingBy: blinkPeriod)
+        let ease = { (x: Double) in 0.5 - 0.5 * cos(.pi * x) }
+        if p < 1.4 { return 1 }
+        if p < 1.8 { return 1 - ease((p - 1.4) / 0.4) }
+        if p < 2.2 { return 0 }
+        return ease((p - 2.2) / 0.4)
+    }
 
     private static let cell = CGSize(width: 11, height: 15)
     private static let gap: CGFloat = 1.5
@@ -188,7 +197,7 @@ struct AgentCursor: View {
 
     var body: some View {
         let cells = projects.suffix(2).map { (Self.letter($0), NSColor(Self.color($0))) }
-        LayerLoop(key: [AnyHashable(projects), AnyHashable(blinking), beat]) { root, size, animated in
+        LayerLoop(key: [AnyHashable(projects), AnyHashable(blinking)]) { root, size, animated in
             let scale = max(root.contentsScale, 2)
             for (i, (letter, color)) in cells.enumerated() {
                 let frame = CGRect(x: CGFloat(i) * (Self.cell.width + Self.gap), y: (size.height - Self.cell.height) / 2,
@@ -203,8 +212,7 @@ struct AgentCursor: View {
                 cursor.cornerRadius = 2
                 cursor.addSublayer(Self.text(letter, color: .black, in: cursor.bounds, scale: scale))
                 if animated {
-                    // On 0.5 s, off 0.5 s, with soft edges.
-                    if blinking { cursor.add(LayerLoop.loop("opacity", period: 1) { 0.5 + 0.5 * tanh(8 * cos(2 * .pi * $0)) }, forKey: "blink") }
+                    if blinking { cursor.add(LayerLoop.loop("opacity", period: Self.blinkPeriod, samples: 52, Self.blink), forKey: "blink") }
                     cursor.shadowColor = color.cgColor
                     cursor.shadowRadius = 4
                     cursor.shadowOffset = .zero
