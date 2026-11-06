@@ -18,6 +18,10 @@ final class VolumeControl {
     private var tap: CFMachPort?
     private var deviceListener: AudioObjectPropertyListenerBlock?
     private var valueListener: AudioObjectPropertyListenerBlock?
+    /// Lowered for dictation: the level before, the level set, and on which device.
+    private var ducked: (from: Float, to: Float, device: AudioObjectID)?
+    /// Nook's own change is not shown in the notch.
+    private var silentUntil: Date?
 
     private static var defaultOutput = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,
@@ -89,9 +93,32 @@ final class VolumeControl {
 
     private func changed() {
         guard let now = current, Settings.volumeHUD else { return }
+        if let silentUntil, Date() < silentUntil { last = now; return }
         if let last, abs(last.level - now.level) < 0.001, last.muted == now.muted { return }
         last = now
         onChange?(now.level, now.muted)
+    }
+
+    // MARK: Ducking
+
+    /// Down to `level` while dictation listens; nothing to do when it is already this low or muted.
+    func duck(to level: Float) {
+        guard ducked == nil, let now = current, !now.muted, now.level > level + 0.001 else { return }
+        var target = level
+        silentUntil = Date().addingTimeInterval(0.5)
+        guard AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &target) == noErr
+        else { return }
+        ducked = (now.level, current?.level ?? level, device)
+    }
+
+    /// Back to the level before, unless the person changed the volume or the output in between.
+    func restore() {
+        guard let ducked else { return }
+        self.ducked = nil
+        guard ducked.device == device, let now = current, abs(now.level - ducked.to) < 0.01 else { return }
+        var level = ducked.from
+        silentUntil = Date().addingTimeInterval(0.5)
+        AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
     }
 
     // MARK: Volume keys

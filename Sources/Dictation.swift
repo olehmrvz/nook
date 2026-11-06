@@ -51,6 +51,11 @@ extension Settings {
         set { defaults.set(newValue, forKey: "dictationEndSound") }
     }
     private static var oldSoundsSwitch: Bool { defaults.object(forKey: "dictationSounds") as? Bool ?? true }
+    /// Other sound goes down to 5 % while the microphone is on.
+    static var dictationDuck: Bool {
+        get { defaults.object(forKey: "dictationDuck") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "dictationDuck") }
+    }
     /// Insert into the app in front; off: only copy the text.
     static var dictationPaste: Bool {
         get { defaults.object(forKey: "dictationPaste") as? Bool ?? true }
@@ -115,6 +120,8 @@ final class Dictation: ObservableObject {
     var onNotice: ((_ title: String, _ detail: String, _ settings: Bool) -> Void)?
     /// The level meter in the notch: 0…1, about 12 times a second while recording.
     var onLevel: ((Float) -> Void)?
+    /// On the main thread: the microphone is on (true, after the start sound) or off again.
+    var onRecording: ((Bool) -> Void)?
 
     /// The engine lives here; loading and recognition never run on the main thread.
     private let queue = DispatchQueue(label: "nook.dictation", qos: .userInitiated)
@@ -367,6 +374,11 @@ final class Dictation: ObservableObject {
                     self.openedSession = current
                     if self.session == current, self.phase == .recording {
                         Self.play(Settings.dictationStartSound)
+                        // Quieter after the start sound, which plays at the usual volume.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.soundLength) {
+                            guard self.session == current, self.phase == .recording else { return }
+                            self.onRecording?(true)
+                        }
                     } else if self.session == current, self.phase == .idle {
                         // The watchdog gave up first: nobody else closes it.
                         self.audioQueue.async { self.closeMicrophone() }
@@ -443,8 +455,9 @@ final class Dictation: ObservableObject {
         microphone = nil
     }
 
-    /// On the main thread: the keys, the time limit and the timer in the notch.
+    /// On the main thread: the keys, the time limit, the timer in the notch and the lowered volume.
     private func endRecording() {
+        onRecording?(false)
         removeKeys()
         limit?.invalidate()
         limit = nil
@@ -623,6 +636,7 @@ final class Dictation: ObservableObject {
         .filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
 
     private static var playing: NSSound?
+    private static var soundLength: TimeInterval { min(1, playing?.duration ?? 0) }
 
     /// One sound at a time: picking sounds one after another in Settings does not pile them up.
     static func play(_ name: String) {

@@ -1086,6 +1086,7 @@ struct DictationPane: View {
                 }
                 SoundPicker(title: "Звук в начале", sound: state.bind({ Settings.dictationStartSound }, { Settings.dictationStartSound = $0 }))
                 SoundPicker(title: "Звук в конце", sound: state.bind({ Settings.dictationEndSound }, { Settings.dictationEndSound = $0 }))
+                Toggle("Приглушать звук до 5 % во время записи", isOn: state.bind({ Settings.dictationDuck }, { Settings.dictationDuck = $0 }))
             } header: {
                 Text("Управление")
             }
