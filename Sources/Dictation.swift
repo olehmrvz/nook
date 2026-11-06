@@ -84,8 +84,8 @@ final class Dictation: ObservableObject {
         /// A modifier alone starts on a double tap (a single tap happens by accident); a combination on one press.
         func title(for shortcut: Shortcut) -> String {
             switch self {
-            case .hold: "Удерживать, чтобы говорить"
-            case .toggle: shortcut.isModifierOnly ? "Двойное нажатие — начать" : "Нажатие — начать и закончить"
+            case .hold: L("Удерживать, чтобы говорить")
+            case .toggle: shortcut.isModifierOnly ? L("Двойное нажатие — начать") : L("Нажатие — начать и закончить")
             }
         }
     }
@@ -123,7 +123,16 @@ final class Dictation: ObservableObject {
     private var unloadWork: DispatchWorkItem?
     private var downloader: ParakeetDownload?
 
-    private var audio: AVAudioEngine?
+    /// Opened and closed on `audioQueue`, never on the main thread: Core Audio once kept the main thread for
+    /// minutes inside AVAudioEngine's device lookup, and the whole notch froze.
+    private var microphone: AudioInput?
+    private let audioQueue = DispatchQueue(label: "nook.dictation.audio", qos: .userInteractive)
+    /// Each press gets a number; an answer from the microphone that comes late checks it.
+    private var session = 0
+    private var openedSession = 0
+    /// The microphone did not answer: new presses say so instead of waiting behind it.
+    private var microphoneStuck = false
+    private let logURL = supportDir.appendingPathComponent("dictation-debug.log")
     private let lock = NSLock()
     private var samples: [Float] = []
     private var target: NSRunningApplication?
@@ -183,7 +192,7 @@ final class Dictation: ObservableObject {
                                            userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
             // Without Accessibility trust a listening tap needs Input Monitoring instead.
             CGRequestListenEventAccess()
-            onNotice?("Nook не слышит клавишу", "Разрешите Nook «Мониторинг ввода» в Системных настройках", true)
+            onNotice?(L("Nook не слышит клавишу"), L("Разрешите Nook «Мониторинг ввода» в Системных настройках"), true)
             return
         }
         watch = port
@@ -304,12 +313,12 @@ final class Dictation: ObservableObject {
     func begin() {
         guard phase == .idle else { return }
         guard Settings.dictation else {
-            onNotice?("Диктовка выключена", "Включите её: Настройки Nook → Диктовка", true)
+            onNotice?(L("Диктовка выключена"), L("Включите её: Настройки Nook → Диктовка"), true)
             return
         }
         let model = Settings.dictationModel
         guard model.isInstalled else {
-            onNotice?("Модель не скачана", "Скачайте её: Настройки Nook → Диктовка", true)
+            onNotice?(L("Модель не скачана"), L("Скачайте её: Настройки Nook → Диктовка"), true)
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -319,32 +328,79 @@ final class Dictation: ObservableObject {
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
             return
         default:
-            onNotice?("Нет доступа к микрофону", "Разрешите микрофон для Nook в Системных настройках", true)
+            onNotice?(L("Нет доступа к микрофону"), L("Разрешите микрофон для Nook в Системных настройках"), true)
+            return
+        }
+        guard !microphoneStuck else {
+            onNotice?(L("Микрофон не отвечает"), L("Перезапустите Nook или выберите другой микрофон в настройках диктовки"), false)
             return
         }
         target = NSWorkspace.shared.frontmostApplication
-        do {
-            try startAudio()
-        } catch {
-            onNotice?("Микрофон не включился", error.localizedDescription, false)
-            return
-        }
+        session += 1
+        let current = session
+        lock.withLock { samples.removeAll(keepingCapacity: true) }
         phase = .recording
         startedAt = Date()
-        Self.play(Settings.dictationStartSound)
         installKeys()
         limit = Timer.scheduledTimer(withTimeInterval: Self.maxSeconds, repeats: false) { [weak self] _ in self?.finish() }
+        let watchdog = DispatchWorkItem { [weak self] in
+            guard let self, self.session == current, self.openedSession != current else { return }
+            self.microphoneStuck = true
+            self.endRecording()
+            self.phase = .idle
+            self.onNotice?(L("Микрофон не отвечает"), L("Перезапустите Nook или выберите другой микрофон в настройках диктовки"), false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: watchdog)
+        let device = Settings.dictationMicrophone
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            let started = Date()
+            let result = Result { try AudioInput(device: device) { [weak self] chunk in self?.append(chunk) } }
+            if case .success(let opened) = result { self.microphone = opened }
+            self.log(String(format: "open %.2f s, device %@: ", Date().timeIntervalSince(started), device ?? "default")
+                     + ((try? result.get()).map { _ in "ok" } ?? String(describing: result)))
+            DispatchQueue.main.async {
+                watchdog.cancel()
+                self.microphoneStuck = false
+                switch result {
+                case .success:
+                    self.openedSession = current
+                    if self.session == current, self.phase == .recording {
+                        Self.play(Settings.dictationStartSound)
+                    } else if self.session == current, self.phase == .idle {
+                        // The watchdog gave up first: nobody else closes it.
+                        self.audioQueue.async { self.closeMicrophone() }
+                    }
+                case .failure(let error):
+                    guard self.session == current, self.phase == .recording else { return }
+                    self.endRecording()
+                    self.phase = .idle
+                    self.onNotice?(L("Микрофон не включился"), error.localizedDescription, false)
+                }
+            }
+        }
         // Loads while the person speaks: the first words are not waiting for the model.
         preload()
     }
 
     func finish() {
         guard phase == .recording else { return }
-        stopAudio()
-        let audio = lock.withLock { samples }
-        lock.withLock { samples = [] }
-        guard audio.count > ParakeetEngine.sampleRate / 3 else { phase = .idle; return }
+        endRecording()
         phase = .transcribing
+        // After the microphone is closed: its last buffer is in.
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.closeMicrophone()
+            let audio = self.lock.withLock { () -> [Float] in
+                defer { self.samples = [] }
+                return self.samples
+            }
+            DispatchQueue.main.async { self.transcribe(audio) }
+        }
+    }
+
+    private func transcribe(_ audio: [Float]) {
+        guard audio.count > ParakeetEngine.sampleRate / 3 else { phase = .idle; return }
         Self.play(Settings.dictationEndSound)
         let model = Settings.dictationModel
         let target = self.target
@@ -358,12 +414,12 @@ final class Dictation: ObservableObject {
                 case .success(let text):
                     let fitted = Self.fit(text, after: context)
                     if fitted.isEmpty {
-                        self.onNotice?("Речь не распознана", "Говорите ближе к микрофону или громче", false)
+                        self.onNotice?(L("Речь не распознана"), L("Говорите ближе к микрофону или громче"), false)
                     } else {
                         self.insert(fitted, into: target)
                     }
                 case .failure(let error):
-                    self.onNotice?("Не удалось распознать речь", error.localizedDescription, false)
+                    self.onNotice?(L("Не удалось распознать речь"), error.localizedDescription, false)
                 }
                 self.scheduleUnload()
             }
@@ -372,59 +428,32 @@ final class Dictation: ObservableObject {
 
     func cancel() {
         guard phase == .recording else { return }
-        stopAudio()
-        lock.withLock { samples = [] }
+        endRecording()
         phase = .idle
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.closeMicrophone()
+            self.lock.withLock { self.samples = [] }
+        }
     }
 
-    private func startAudio() throws {
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        if let uid = Settings.dictationMicrophone, var device = Self.deviceID(uid), let unit = input.audioUnit {
-            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                 &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        }
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0,
-              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(ParakeetEngine.sampleRate),
-                                         channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: format, to: target) else {
-            throw ParakeetError.model("Нет входа звука.")
-        }
-        lock.withLock { samples.removeAll(keepingCapacity: true) }
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            self?.append(buffer, converter: converter, format: target)
-        }
-        engine.prepare()
-        try engine.start()
-        audio = engine
+    /// On `audioQueue`.
+    private func closeMicrophone() {
+        microphone?.close()
+        microphone = nil
     }
 
-    private func stopAudio() {
-        audio?.inputNode.removeTap(onBus: 0)
-        audio?.stop()
-        audio = nil
+    /// On the main thread: the keys, the time limit and the timer in the notch.
+    private func endRecording() {
         removeKeys()
         limit?.invalidate()
         limit = nil
         startedAt = nil
     }
 
-    /// On the audio thread: 16 kHz mono, plus a level for the meter.
-    private func append(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, format: AVAudioFormat) {
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / buffer.format.sampleRate) + 64
-        guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return }
-        var given = false
-        var error: NSError?
-        converter.convert(to: output, error: &error) { _, status in
-            // `.noDataNow`, not end of stream: the resampler keeps its state between buffers.
-            if given { status.pointee = .noDataNow; return nil }
-            given = true
-            status.pointee = .haveData
-            return buffer
-        }
-        guard let data = output.floatChannelData?[0], output.frameLength > 0 else { return }
-        let chunk = UnsafeBufferPointer(start: data, count: Int(output.frameLength))
+    /// On the microphone's queue: 16 kHz mono already, plus a level for the meter.
+    private func append(_ chunk: UnsafeBufferPointer<Float>) {
+        guard !chunk.isEmpty else { return }
         var sum: Float = 0
         for sample in chunk { sum += sample * sample }
         let level = min(1, sqrt(sqrt(sum / Float(chunk.count))) * 2.2)
@@ -444,7 +473,7 @@ final class Dictation: ObservableObject {
         guard Settings.dictationPaste else {
             board.clearContents()
             board.setString(text, forType: .string)
-            onNotice?("Текст скопирован", "Вставьте его: ⌘V", false)
+            onNotice?(L("Текст скопирован"), L("Вставьте его: ⌘V"), false)
             return
         }
         TextInsertion.paste(text, into: target)
@@ -572,6 +601,21 @@ final class Dictation: ObservableObject {
         }
     }
 
+    /// Times and error codes only (no audio, no text), 40 lines at most, on `audioQueue`.
+    private func log(_ text: String) {
+        let lines = (try? String(contentsOf: logURL, encoding: .utf8))?.split(separator: "\n").count ?? 0
+        guard lines < 40 else { return }
+        let line = "\(Date()) \(text)\n"
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? line.write(to: logURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: logURL.path)
+        }
+    }
+
     // MARK: Sounds
 
     /// The system's alert sounds, by name.
@@ -597,20 +641,6 @@ final class Dictation: ObservableObject {
     static var microphones: [Microphone] {
         AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
             .devices.map { Microphone(id: $0.uniqueID, name: $0.localizedName) }
-    }
-
-    private static func deviceID(_ uid: String) -> AudioDeviceID? {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
-                                                 mScope: kAudioObjectPropertyScopeGlobal,
-                                                 mElement: kAudioObjectPropertyElementMain)
-        var name = uid as CFString
-        var device = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let status = withUnsafePointer(to: &name) { pointer in
-            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
-                                       UInt32(MemoryLayout<CFString>.size), pointer, &size, &device)
-        }
-        return status == noErr && device != kAudioObjectUnknown ? device : nil
     }
 }
 
@@ -670,5 +700,67 @@ struct LevelMeter: NSViewRepresentable {
             }
             CATransaction.commit()
         }
+    }
+}
+
+/// The microphone through an Audio Queue, which converts to 16 kHz mono floats by itself. The first version used
+/// AVAudioEngine's input node: its lookup of the device's format once looped inside Core Audio and never returned.
+private final class AudioInput {
+    private var queue: AudioQueueRef?
+    /// Not `audioQueue`: stopping waits for the callbacks, which would wait for the stop.
+    private let callbacks = DispatchQueue(label: "nook.dictation.microphone", qos: .userInteractive)
+
+    /// `device` is a Core Audio device UID (what `AVCaptureDevice.uniqueID` is on the Mac); nil or a missing one
+    /// records from the system's input.
+    init(device: String?, onSamples: @escaping (UnsafeBufferPointer<Float>) -> Void) throws {
+        var format = AudioStreamBasicDescription(
+            mSampleRate: Double(ParakeetEngine.sampleRate), mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, mBytesPerPacket: 4, mFramesPerPacket: 1,
+            mBytesPerFrame: 4, mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0)
+        var made: AudioQueueRef?
+        try Self.check(AudioQueueNewInputWithDispatchQueue(&made, &format, 0, callbacks) { queue, buffer, _, _, _ in
+            let count = Int(buffer.pointee.mAudioDataByteSize) / MemoryLayout<Float>.size
+            if count > 0 {
+                onSamples(UnsafeBufferPointer(start: buffer.pointee.mAudioData.assumingMemoryBound(to: Float.self), count: count))
+            }
+            AudioQueueEnqueueBuffer(queue, buffer, 0, nil)
+        }, "new")
+        guard let made else { throw Self.failure("new", -1) }
+        queue = made
+        do {
+            if var uid = device.map({ $0 as CFString }) {
+                // A microphone that is gone: the system's input instead.
+                _ = AudioQueueSetProperty(made, kAudioQueueProperty_CurrentDevice, &uid, UInt32(MemoryLayout<CFString>.size))
+            }
+            // 50 ms buffers: little is lost when the key is let go.
+            let bytes = UInt32(ParakeetEngine.sampleRate / 20 * MemoryLayout<Float>.size)
+            for _ in 0..<4 {
+                var buffer: AudioQueueBufferRef?
+                try Self.check(AudioQueueAllocateBuffer(made, bytes, &buffer), "buffer")
+                if let buffer { AudioQueueEnqueueBuffer(made, buffer, 0, nil) }
+            }
+            try Self.check(AudioQueueStart(made, nil), "start")
+        } catch {
+            close()
+            throw error
+        }
+    }
+
+    func close() {
+        guard let queue else { return }
+        AudioQueueStop(queue, true)
+        AudioQueueDispose(queue, true)
+        self.queue = nil
+    }
+
+    deinit { close() }
+
+    private static func check(_ status: OSStatus, _ step: String) throws {
+        if status != noErr { throw failure(step, status) }
+    }
+
+    private static func failure(_ step: String, _ status: OSStatus) -> NSError {
+        NSError(domain: NSOSStatusErrorDomain, code: Int(status),
+                userInfo: [NSLocalizedDescriptionKey: L("Микрофон не открылся (\(step): \(Int(status)))")])
     }
 }
