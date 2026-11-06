@@ -465,7 +465,7 @@ final class ParakeetEngine {
     private static func copy(_ source: MLMultiArray, into destination: MLMultiArray, hidden: Int) throws {
         let shape = source.shape.map(\.intValue)
         guard shape.count == 3, let axis = [1, 2].first(where: { shape[$0] == hidden }) else {
-            throw ParakeetError.model(L("Неожиданная форма выхода модели: \(shape)."))
+            throw ParakeetError.model(L("Неожиданная форма выхода модели: \(String(describing: shape))."))
         }
         let stride = source.strides[axis].intValue
         let from = source.dataPointer.bindMemory(to: Float.self, capacity: source.count)
@@ -486,7 +486,7 @@ final class ParakeetEngine {
             let shape = array.shape.map(\.intValue)
             guard shape.count == 3, array.dataType == .float32,
                   let axis = [1, 2].first(where: { shape[$0] == hidden }) else {
-                throw ParakeetError.model(L("Неожиданная форма кадров: \(shape)."))
+                throw ParakeetError.model(L("Неожиданная форма кадров: \(String(describing: shape))."))
             }
             let time = axis == 1 ? 2 : 1
             self.array = array
