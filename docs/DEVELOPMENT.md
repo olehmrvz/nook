@@ -6,11 +6,44 @@ User-facing overview: [README.md](../README.md). Project rules for coding agents
 ## Build and install
 
 `./install.sh` builds with the Swift compiler from Command Line Tools, installs `/Applications/Nook.app`
-(signed with "Nook Local Signing" from `make-cert.sh`, ad-hoc without it) and starts it. The version is the
-number of commits (`1.<count>`). `./release.sh` publishes the current commit as a GitHub release; every
-installed Nook picks it up within 6 hours, checks that it is signed with the same certificate, and installs it
-when the panel is closed. Menu bar icon → Launch at login (Запускать при входе) adds a LaunchAgent
-`~/Library/LaunchAgents/dev.nook.app.plist`.
+and starts it. It signs with the first of: `NOOK_SIGN_IDENTITY`, a Developer ID Application certificate in the
+keychain, "Nook Local Signing" from `make-cert.sh`, ad-hoc. The version is the number of commits (`1.<count>`).
+`./release.sh` publishes the current commit as a GitHub release (see Releases); every installed Nook picks it
+up within 6 hours, checks the signature, and installs it when the panel is closed. Menu bar icon → Launch at
+login (Запускать при входе) adds a LaunchAgent `~/Library/LaunchAgents/dev.nook.app.plist`.
+
+## Releases
+
+A release is signed with Nook's Developer ID (team `T2KMY2TV9W`), notarized by Apple and stapled, so a
+download opens without "unidentified developer" warnings. Assets: `Nook.dmg` (drag to Applications) and
+`Nook.zip` (read by the updater). The updater accepts a build that satisfies the running copy's designated
+requirement or `Updater.releaseRequirement` (Developer ID of team `T2KMY2TV9W`, bundle id `dev.nook.app`);
+the requirement names the team, so a renewed certificate keeps updates working. The second requirement is
+used only by copies signed like the old releases (`Updater.legacyRequirement`, "Nook Local Signing" of this
+repository). A contributor's build (ad-hoc or another certificate) takes only builds signed like itself, so a
+release never replaces it.
+
+One-time setup on the release Mac (needs the paid Apple Developer Program; the account holder does it):
+1. Developer ID Application certificate: Xcode → Settings → Accounts → the Apple ID → team "Oleh Yaitsov" →
+   Manage Certificates… → + → Developer ID Application. Back up the certificate with its private key
+   (Keychain Access → My Certificates → Export, a `.p12` with a password) somewhere safe.
+2. App-specific password: account.apple.com → Sign-In and Security → App-Specific Passwords.
+3. Notary credentials in the keychain, in Terminal (it asks for that password):
+   `xcrun notarytool store-credentials nook --apple-id <Apple ID e-mail> --team-id T2KMY2TV9W`
+   (another profile name: `NOOK_NOTARY_PROFILE`).
+
+`./release.sh` then builds with a secure timestamp, notarizes the app (zip) and staples it, builds and
+notarizes `Nook.dmg`, checks both with `spctl`, and publishes. Notarization takes a few minutes; on a
+rejection the script prints Apple's log and publishes nothing.
+
+Copies released before Developer ID (v10 and earlier, signed with "Nook Local Signing") accept only that
+certificate. Move them once with a bridge release: `./release.sh --local-signing` (old signing, not notarized)
+ships the updater that also accepts Developer ID builds; the next `./release.sh` is notarized. A copy that
+skipped the bridge keeps working but does not update: download `Nook.dmg` once by hand.
+macOS ties granted permissions to the signature. After the update to Developer ID it may ask again for Calendar,
+Contacts, camera and the like; Full Disk Access and Accessibility stay switched on in System Settings but stop
+working until Nook is turned off and on there. `release.sh` puts this in the notes of the first notarized release
+(the previous release is not notarized); the same applies to your own copy after the first Developer ID build.
 
 Hooks: connected automatically on first launch for each agent found (`~/.claude`, `~/.codex`), once — hooks
 removed later are not put back. By hand: menu → Agents (Агенты) → Connect (Подключить), or `Nook --install-hooks`. For Codex,
@@ -22,9 +55,9 @@ Nook also sets `[features] hooks = true` in `~/.codex/config.toml`. This adds No
 
 Notifications and calls read the Notification Center database and need **Full Disk Access** for Nook.
 Calendar, Contacts, Bluetooth, Location, Microphone/Speech are asked when first used.
-Run `./make-cert.sh` once (asks for your password to trust the certificate): `install.sh` then signs with the
-stable "Nook Local Signing" identity, so macOS keeps these grants across rebuilds. Without it each rebuild
-is ad-hoc signed and macOS may ask again.
+`install.sh` keeps these grants across rebuilds when it signs with a stable identity: a Developer ID certificate,
+or "Nook Local Signing" (run `./make-cert.sh` once; it asks for your password to trust the certificate).
+Without either each rebuild is ad-hoc signed and macOS may ask again.
 
 ## Command line
 
@@ -66,8 +99,8 @@ terminal, not from a process an agent started (an agent must not approve its own
 - **Agents:** Claude Code and Codex hooks call `agent-hook.sh`, which sends the event over an owner-only unix
   socket with a random token. Permission requests wait for the answer in the notch (110 s, then the terminal).
 - **Updates:** `Sources/Updater.swift` reads the latest GitHub release, downloads `Nook.zip`, accepts it only if
-  it satisfies the running app's designated requirement (same bundle id and certificate), and installs it when
-  the panel is closed.
+  it is signed by Nook (`signedByNook`: the running app's designated requirement or Nook's Developer ID), and
+  installs it when the panel is closed.
 - **Volume:** `Sources/Volume.swift` watches the default output device (CoreAudio). With Accessibility access it
   also takes the volume keys (event tap on NX_SYSDEFINED), sets the level itself in 1/16 steps (⌥⇧: 1/64), so the
   macOS HUD does not appear. Without access the keys stay with macOS and Nook only shows the change.

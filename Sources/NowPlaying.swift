@@ -72,7 +72,7 @@ final class NowPlaying: ObservableObject {
         guard fm.fileExists(atPath: script), fm.fileExists(atPath: library), fm.isExecutableFile(atPath: "/usr/bin/perl") else { return nil }
         // perl has no library validation: it would load any dylib. Both files are sealed in Nook's signature,
         // so a replaced dylib or script fails this check and is never loaded (with Nook's permissions).
-        guard Updater.sameSigner(Bundle.main.bundleURL) else { return nil }
+        guard Updater.signedByNook(Bundle.main.bundleURL) else { return nil }
         return (script, library)
     }
 

@@ -196,3 +196,53 @@ with comment/space headers, arrays, duplicate tables; a changed bridge dylib fai
 card shows hidden fields; `Nook --answer allow` from under an agent is ignored; data folder is 0700.
 Not released yet (v6 is the latest release). Open, by design or for later: the signing key on the dev Mac is the
 single root of trust for updates (no offline key, no Developer ID); `hideFromCapture` stays off by default.
+
+## Developer ID and notarization (2026-11-06, branch `olehmrvz/certificate`)
+
+Goal: downloads open without Gatekeeper warnings, updates keep working, permissions survive rebuilds.
+Found: paid Individual team `T2KMY2TV9W` (Xcode: not a free team); keychain has only "Apple Development"
+(local testing, cannot be notarized) and "Nook Local Signing". No notary profile yet. Xcode 26 notarytool/stapler present.
+Installed copies (v10 and earlier) accept only "Nook Local Signing" (`certificate leaf = H"76a6…"`).
+
+Done (not committed, not released):
+- `Updater.signedByNook`: running app's designated requirement; a copy that satisfies `legacyRequirement`
+  (old releases, leaf 76a6…) also accepts `releaseRequirement` (Developer ID, team T2KMY2TV9W, `dev.nook.app`).
+  Contributor builds (ad-hoc, other certificates) take only builds signed like themselves. Checked with a test
+  binary built from the same function: signed like old releases it accepts a Developer ID stand-in (Claude.app with
+  its own id + team in the requirement) and the installed Nook; ad-hoc it rejects both; Claude.app fails the real
+  Nook requirement.
+- First notarized release notes tell users to turn Nook off and on in Full Disk Access and Accessibility
+  (TCC keeps the old signature's requirement; the toggles look on but do not work).
+- `install.sh`: identity order NOOK_SIGN_IDENTITY → Developer ID (by SHA-1) → Nook Local Signing → ad-hoc; the
+  bridge dylib now gets the same signature + hardened runtime; `NOOK_TIMESTAMP=1` adds a secure timestamp.
+  `./install.sh --build-only` builds and verifies (`codesign --verify --strict --deep`) with Nook Local Signing.
+- `release.sh`: Developer ID + notary preflight, notarize zip → staple app → DMG (Applications link) → sign →
+  notarize → staple → `spctl` both → publish Nook.dmg + Nook.zip. `--local-signing` = bridge release.
+- Docs: DEVELOPMENT.md → Releases (one-time setup), CLAUDE.md, README/SECURITY (text for the notarized release).
+
+2026-11-06 18:27: the user created "Developer ID Application: Oleh Yaitsov (T2KMY2TV9W)" (SHA-1 D0095295…, G2 CA,
+valid until 2027-12-06, about 13 months: renew before then; updates survive it, the requirement names the team) via
+developer.apple.com + a CSR from Keychain Access (Xcode's Manage Certificates failed with "only the Account Holder").
+`NOOK_TIMESTAMP=1 ./install.sh --build-only` picked it by itself: app and dylib signed, secure timestamp,
+`codesign --verify --strict --deep` valid, DR = the team form, `releaseRequirement` accepts the build, the installed
+local-signed Nook fails it; `spctl` says "rejected, source=Unnotarized Developer ID" (expected before notarization).
+18:35: the user stored the notary profile `nook`. Test notarization of build 1.22 (same steps as release.sh, nothing
+published): zip Accepted in 19 s, log without issues; app stapled, `spctl` accepted "Notarized Developer ID"; DMG
+(Applications link) signed, Accepted, stapled, `spctl --type open` accepted. The bridge from a copy with a Safari
+quarantine flag on every file loads the dylib in /usr/bin/perl (`{"ready":true}` + a state line), read-only.
+Not checked: first launch of a downloaded copy (a second Nook cannot run next to the user's), the in-app move
+bridge → Developer ID, `release.sh` end to end (it publishes).
+
+Order (each release needs the user's check first):
+1. User creates the Developer ID Application certificate and the notary profile `nook` (DEVELOPMENT.md → Releases).
+2. Commit code + dev docs; merge to main WITHOUT README/SECURITY; `./release.sh --local-signing` (bridge).
+3. Wait until old copies took the bridge (or accept that the few v10 users reinstall by hand).
+4. Merge README/SECURITY, `./release.sh` (first notarized). Then check on a fresh download: DMG opens with no
+   warning, `spctl` says Notarized Developer ID, Now Playing works (perl loads the dylib from a quarantined copy),
+   the bridge copy updates itself to the notarized build.
+5. Local daily build switches to Developer ID by itself: macOS asks for permissions once more.
+
+Not verified yet: the whole notarization path (no Developer ID certificate yet), a Developer ID build passing
+`signedByNook` inside the running app.
+Later: Homebrew tap (`brew install --cask olehmrvz/tap/nook`, `auto_updates true`); not in homebrew/cask yet
+(too few stars for its notability rule).
