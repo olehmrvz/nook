@@ -15,10 +15,13 @@ License decision (user, 2026-11-06, asked explicitly): Nook stays MIT; MorsCast 
 features are rewritten from their behaviour (its docs, our specs). MorsCast: 963 Swift files, ~170k lines, no packages.
 
 Done so far (commits on olehmrvz/feature): 1347a7b settings window · 4f004d7 dictation · 2fa0389 search, recorded
-shortcuts, header · 5dcd858 calculator + currencies (ExchangeRate-API) · 49377bc aliases, item shortcuts, fallbacks.
-Next, in order: window management + snippets + clipboard extras (spec B) → quicklinks, custom commands, Apple
-Shortcuts, dictionary, emoji, file search, menu search, window switcher (spec A [L]) → crypto rates → AI (spec C)
-→ localization. Not yet checked on screen by the user: dictation (key, paste), search on the second display,
+shortcuts, header · 5dcd858 calculator + currencies (ExchangeRate-API) · 49377bc aliases, item shortcuts, fallbacks ·
+4f3a4c1 windows (Rectangle-style) · a5a299b snippets · 66391ed files, Apple Shortcuts, emoji, quicklinks, own commands.
+Next, in order: menu search + window switcher → clipboard extras (plain-text paste, ignore apps, retention, type
+filter, paste sequentially) → crypto rates in the calculator → AI (spec C: Quick AI, quick actions on selection)
+→ localization (after olehmrvz/certificate is merged).
+Offline checks are scratch CLIs compiled with the same source file (calculator cases, snippet files and
+placeholders, emoji names, Apple Shortcuts list, commands); UI checks wait for the user (they were in a game). Not yet checked on screen by the user: dictation (key, paste), search on the second display,
 aliases/shortcuts UI, softer glow in the real panel.
 
 Decisions (user, 2026-11-06): dictation engine = Parakeet right away (not Apple's DictationTranscriber);
