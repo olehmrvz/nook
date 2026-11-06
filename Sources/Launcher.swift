@@ -153,6 +153,8 @@ struct LaunchItem: Identifiable, Equatable {
         case emoji(String)
         /// A shell command of the person's own.
         case command(String)
+        case menu(MenuSearch.Item)
+        case openWindow(WindowList.Window)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -212,6 +214,9 @@ final class Launcher: ObservableObject {
 
     private var shortcuts: [LaunchItem] = []
     private var emoji: [Emoji.Entry] = []
+    /// Read when the search opens: the front app's menu items and the open windows.
+    private var live: [LaunchItem] = []
+    private let liveQueue = DispatchQueue(label: "nook.launcher.live", qos: .userInitiated)
     private let files = FileSearch()
     private var fileResults: (query: String, urls: [URL]) = ("", [])
     /// Item ids whose own shortcut another app holds.
@@ -242,6 +247,7 @@ final class Launcher: ObservableObject {
         selection = 0
         Rates.shared.onChange = { [weak self] in self?.search() }
         Rates.shared.refresh()
+        refreshLive()
         search()
         guard !indexing, Date().timeIntervalSince(indexedAt) > 60 else { return }
         indexing = true
@@ -366,6 +372,44 @@ final class Launcher: ObservableObject {
         }
     }
 
+    private func refreshLive() {
+        live = []
+        guard AXIsProcessTrusted(), Settings.launcherMenus || Settings.launcherOpenWindows else { return }
+        let front = NSWorkspace.shared.frontmostApplication
+        let frontPID = front?.processIdentifier != ProcessInfo.processInfo.processIdentifier ? front?.processIdentifier : nil
+        let frontName = front?.localizedName ?? ""
+        let frontIcon = front?.bundleURL?.path
+        liveQueue.async { [weak self] in
+            var items: [LaunchItem] = []
+            var icons: [String: NSImage] = [:]
+            if Settings.launcherMenus, let frontPID {
+                for item in MenuSearch.items(of: frontPID) {
+                    let path = item.path.joined(separator: " → ")
+                    items.append(LaunchItem(id: "menu:\(path)/\(item.title)", title: item.title,
+                                            subtitle: [frontName, path, item.keys].filter { !$0.isEmpty }.joined(separator: " · "),
+                                            terms: [LaunchItem.Term(item.title), LaunchItem.Term(path + " " + item.title)],
+                                            kind: .menu(item)))
+                }
+                if let frontIcon { icons[frontIcon] = NSWorkspace.shared.icon(forFile: frontIcon) }
+            }
+            if Settings.launcherOpenWindows {
+                for window in WindowList.all() {
+                    items.append(LaunchItem(id: "openwindow:\(window.pid)/\(window.title)", title: window.title,
+                                            subtitle: "Окно · \(window.app)" + (window.minimized ? " · свёрнуто" : ""),
+                                            terms: [LaunchItem.Term(window.title), LaunchItem.Term(window.app)],
+                                            kind: .openWindow(window)))
+                    if let path = window.bundle?.path, icons[path] == nil { icons[path] = NSWorkspace.shared.icon(forFile: path) }
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.live = items
+                for (path, icon) in icons where self.icons[path] == nil { self.icons[path] = icon }
+                self.search()
+            }
+        }
+    }
+
     private var customCommands: [LaunchItem] {
         Settings.customCommands.compactMap { pair in
             guard pair.count == 2, !pair[0].isEmpty, !pair[1].isEmpty else { return nil }
@@ -413,7 +457,8 @@ final class Launcher: ObservableObject {
             let variants = [(typed, 0), (Self.layout(typed, Self.ruToEn), 60), (Self.layout(typed, Self.enToRu), 60)]
                 .filter { $0.0 != typed || $0.1 == 0 }
             let aliases = Settings.launcherAliases.mapValues(Self.fold)
-            found = pool.compactMap { item in
+            // Menu items only from two letters: one letter would list half the menu bar.
+            found = (pool + (typed.count >= 2 ? live : [])).compactMap { item in
                 var best: Int?
                 // The person's own word wins: exactly, then by its start.
                 if let alias = aliases[item.id] {
@@ -428,7 +473,7 @@ final class Launcher: ObservableObject {
                 let kind: Int = switch item.kind {
                 case .app: 20
                 case .nook, .window, .snippet, .shortcut, .command: 10
-                case .setting, .answer, .link, .file, .emoji: 0
+                case .setting, .answer, .link, .file, .emoji, .menu, .openWindow: 0
                 }
                 return (item, best + kind + boost(item.id))
             }
@@ -548,6 +593,10 @@ final class Launcher: ObservableObject {
             if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
         case .emoji(let character):
             TextInsertion.type(character)
+        case .menu(let item):
+            MenuSearch.press(item)
+        case .openWindow(let window):
+            WindowList.raise(window)
         case .command(let script):
             let started = Date()
             CustomCommands.run(name: item.title, script: script) { [weak self] ok, text in
@@ -721,6 +770,8 @@ struct LauncherTab: View {
         case .shortcut: launcher.icons[Launcher.shortcutsApp]
         // By type, not from the file: reading files in Documents could ask for a permission.
         case .file(let url): NSWorkspace.shared.icon(for: UTType(filenameExtension: url.pathExtension) ?? .data)
+        case .openWindow(let window): window.bundle.flatMap { launcher.icons[$0.path] }
+        case .menu: NSWorkspace.shared.frontmostApplication?.bundleURL.flatMap { launcher.icons[$0.path] }
         case .nook, .answer, .link, .window, .snippet, .emoji, .command: nil
         }
     }
@@ -730,6 +781,8 @@ struct LauncherTab: View {
         switch items[launcher.selection].kind {
         case .app: return "↩ открыть · ⌘↩ в Finder"
         case .snippet, .emoji: return "↩ вставить"
+        case .menu: return "↩ выполнить"
+        case .openWindow: return "↩ перейти"
         case .file: return "↩ открыть · ⌘↩ в Finder"
         case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
         default: return "↩ открыть"
@@ -755,6 +808,12 @@ struct LauncherTab: View {
                 model.collapse()
                 model.show(.copied, for: 1.4)
             }
+            return
+        }
+        if case .menu = item.kind {
+            // The app must be in front for its menu to act.
+            model.collapse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { launcher.open(item, reveal: false) }
             return
         }
         if case .emoji = item.kind {

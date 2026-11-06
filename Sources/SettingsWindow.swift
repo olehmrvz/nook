@@ -607,6 +607,8 @@ struct LauncherPane: View {
                 Toggle("Системные настройки", isOn: state.bind({ Settings.launcherSettings }, { Settings.launcherSettings = $0 }))
                 Toggle("Команды Nook", isOn: state.bind({ Settings.launcherCommands }, { Settings.launcherCommands = $0 }))
                 Toggle("Файлы (Spotlight)", isOn: state.bind({ Settings.launcherFiles }, { Settings.launcherFiles = $0 }))
+                Toggle("Пункты меню программы впереди", isOn: state.bind({ Settings.launcherMenus }, { Settings.launcherMenus = $0 }))
+                Toggle("Открытые окна", isOn: state.bind({ Settings.launcherOpenWindows }, { Settings.launcherOpenWindows = $0 }))
                 Toggle("Быстрые команды macOS", isOn: state.bind({ Settings.launcherShortcuts }, { Settings.launcherShortcuts = $0 }))
                 Toggle("Google и словарь внизу списка",
                        isOn: state.bind({ Settings.launcherFallbacks }, { Settings.launcherFallbacks = $0 }))

@@ -98,6 +98,10 @@ terminal, not from a process an agent started (an agent must not approve its own
   Documents could ask for a permission). Emoji: macOS's own names from CoreEmoji `AppleName.strings` (system
   language + English), `:` starts an emoji search. Quicklinks `[name, URL with {query}]` and custom commands
   `[name, zsh text]` are lists in the settings; commands run `zsh -lc` in the home folder with `NOOK=1`.
+- **Menu items and open windows** (`Sources/LauncherAX.swift`): read once per opening of the search on their own
+  queue — the front app's menu bar (≤ 4000 items, 1 s, enabled leaves only; never opens a menu) and every regular
+  app's standard windows (0.2 s per app). Menu items join the results from two typed letters; ↩ presses the item
+  after the app is back in front, a window is raised (and unminimized).
 - **Windows:** `Sources/Windows.swift`. Commands are search items (`window:<action>`), so aliases and item shortcuts
   apply. AX off the main thread on the front app's focused window: visible frame of its display (Dock, menu bar,
   notch excluded), edges rounded separately, size → position → size. Restore keeps the frame from before the first

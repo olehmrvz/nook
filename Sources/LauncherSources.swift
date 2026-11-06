@@ -24,6 +24,15 @@ extension Settings {
         get { defaults.object(forKey: "launcherFiles") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "launcherFiles") }
     }
+    /// Menu items of the app in front, and open windows, in the search.
+    static var launcherMenus: Bool {
+        get { defaults.object(forKey: "launcherMenus") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "launcherMenus") }
+    }
+    static var launcherOpenWindows: Bool {
+        get { defaults.object(forKey: "launcherOpenWindows") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "launcherOpenWindows") }
+    }
     static var launcherShortcuts: Bool {
         get { defaults.object(forKey: "launcherShortcuts") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "launcherShortcuts") }
