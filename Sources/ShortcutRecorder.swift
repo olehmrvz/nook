@@ -27,6 +27,12 @@ struct Shortcut: Equatable {
         self.modifiers = modifiers
     }
 
+    /// From `[key code, modifiers]` as kept in the settings.
+    init?(stored: [Int]) {
+        guard stored.count == 2 else { return nil }
+        self.init(keyCode: UInt32(stored[0]), modifiers: UInt32(stored[1]))
+    }
+
     /// F1…F20 work alone; any other key needs ⌘, ⌥ or ⌃ (a bare letter would stop typing everywhere).
     init?(event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -86,12 +92,14 @@ struct Shortcut: Equatable {
 /// A button that shows the shortcut; click it and press the new combination (Escape cancels).
 /// With `modifierAlone`, pressing and releasing one modifier key records that key by itself.
 struct ShortcutRecorder: View {
-    let shortcut: Shortcut
-    let fallback: Shortcut
+    /// nil: none yet ("Записать").
+    let shortcut: Shortcut?
+    /// What "Сбросить" goes back to; nil offers "Убрать" instead.
+    let fallback: Shortcut?
     var modifierAlone = false
     /// Recording starts or ends: the old shortcut is released meanwhile, so pressing it records instead of firing.
     let onRecording: (Bool) -> Void
-    let onChange: (Shortcut) -> Void
+    let onChange: (Shortcut?) -> Void
 
     @State private var recording = false
     @State private var monitor: Any?
@@ -101,14 +109,18 @@ struct ShortcutRecorder: View {
     var body: some View {
         HStack(spacing: 8) {
             Button { recording ? stop() : start() } label: {
-                Text(recording ? "Нажмите сочетание…" : shortcut.title)
+                Text(recording ? "Нажмите сочетание…" : shortcut?.title ?? "Записать")
                     .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(shortcut == nil && !recording ? .secondary : .primary)
                     .frame(minWidth: 130)
             }
             if recording {
                 Button("Отмена") { stop() }
-            } else if shortcut != fallback {
+            } else if let fallback, shortcut != fallback {
                 Button("Сбросить") { onChange(fallback) }
+            } else if fallback == nil, shortcut != nil {
+                Button { onChange(nil) } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Убрать сочетание")
             }
         }
         .onDisappear { stop() }

@@ -32,6 +32,21 @@ extension Settings {
         get { defaults.object(forKey: "launcherCommands") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "launcherCommands") }
     }
+    /// Google search and the dictionary under the results.
+    static var launcherFallbacks: Bool {
+        get { defaults.object(forKey: "launcherFallbacks") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "launcherFallbacks") }
+    }
+    /// Item id → the person's short word for it ("ff" → Firefox).
+    static var launcherAliases: [String: String] {
+        get { defaults.dictionary(forKey: "launcherAliases") as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: "launcherAliases") }
+    }
+    /// Item id → [key code, Carbon modifiers]: opens it from anywhere, without the search.
+    static var launcherHotkeys: [String: [Int]] {
+        get { defaults.dictionary(forKey: "launcherHotkeys") as? [String: [Int]] ?? [:] }
+        set { defaults.set(newValue, forKey: "launcherHotkeys") }
+    }
     /// Item id → [times opened, last opened (seconds since 1970)].
     static var launcherUsage: [String: [Double]] {
         get { defaults.dictionary(forKey: "launcherUsage") as? [String: [Double]] ?? [:] }
@@ -122,6 +137,8 @@ struct LaunchItem: Identifiable, Equatable {
         case nook(NookCommand)
         /// The calculator's answer, always the first row.
         case answer(Calculator.Answer)
+        /// A web page or a URL scheme: "github.com", Google, the dictionary.
+        case link(URL, symbol: String)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -167,6 +184,9 @@ final class Launcher: ObservableObject {
 
     /// Runs a Nook command (set by the model).
     var run: ((NookCommand) -> Void)?
+    /// Item ids whose own shortcut another app holds.
+    @Published private(set) var takenHotkeys: Set<String> = []
+    private var hotkeyIDs: [UInt32] = []
 
     private var apps: [LaunchItem] = []
     private var panes: [LaunchItem] = []
@@ -208,6 +228,80 @@ final class Launcher: ObservableObject {
         }
     }
 
+    /// Apps, panes and commands, for the alias and shortcut list in Settings.
+    var everything: [LaunchItem] {
+        (apps + panes).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending } + commands
+    }
+
+    func icon(for item: LaunchItem) -> NSImage? {
+        switch item.kind {
+        case .app(let url): icons[url.path]
+        case .setting: icons[Self.settingsApp]
+        default: nil
+        }
+    }
+
+    /// The index for Settings, without touching the query.
+    func indexIfNeeded() {
+        guard apps.isEmpty else { return }
+        let typed = query
+        prepare()
+        query = typed
+    }
+
+    func setAlias(_ alias: String, for id: String) {
+        var aliases = Settings.launcherAliases
+        let trimmed = alias.trimmingCharacters(in: .whitespaces)
+        aliases[id] = trimmed.isEmpty ? nil : trimmed
+        Settings.launcherAliases = aliases
+        search()
+    }
+
+    func setHotkey(_ shortcut: Shortcut?, for id: String) {
+        var keys = Settings.launcherHotkeys
+        keys[id] = shortcut.map { [Int($0.keyCode), Int($0.modifiers)] }
+        Settings.launcherHotkeys = keys
+        applyHotkeys()
+    }
+
+    /// While a shortcut is being recorded in Settings: pressing an existing one records instead of opening.
+    func pauseHotkeys(_ paused: Bool) {
+        if paused {
+            hotkeyIDs.forEach(HotKey.unregister)
+            hotkeyIDs = []
+        } else {
+            applyHotkeys()
+        }
+    }
+
+    /// Carbon hot keys from id 100, one per item that has a shortcut. A shortcut launch is not counted as a visit.
+    func applyHotkeys() {
+        hotkeyIDs.forEach(HotKey.unregister)
+        hotkeyIDs = []
+        var taken: Set<String> = []
+        var next: UInt32 = 100
+        for (id, combo) in Settings.launcherHotkeys.sorted(by: { $0.key < $1.key }) where combo.count == 2 {
+            let ok = HotKey.register(id: next, keyCode: UInt32(combo[0]), modifiers: UInt32(combo[1])) { [weak self] in
+                self?.launch(id)
+            }
+            if ok { hotkeyIDs.append(next) } else { taken.insert(id) }
+            next += 1
+        }
+        if takenHotkeys != taken { takenHotkeys = taken }
+    }
+
+    private func launch(_ id: String) {
+        if let item = (apps + panes + commands).first(where: { $0.id == id }) {
+            open(item, record: false)
+        } else if id.hasPrefix("app:"),
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: String(id.dropFirst(4))) {
+            // Pressed before the first index: the bundle id is enough.
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        } else if id.hasPrefix("setting:"), let url = URL(string: "x-apple.systempreferences:\(id.dropFirst(8))") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     private var pool: [LaunchItem] {
         (Settings.launcherApps ? apps : []) + (Settings.launcherSettings ? panes : [])
             + (Settings.launcherCommands ? commands : [])
@@ -230,8 +324,13 @@ final class Launcher: ObservableObject {
         } else {
             let variants = [(typed, 0), (Self.layout(typed, Self.ruToEn), 60), (Self.layout(typed, Self.enToRu), 60)]
                 .filter { $0.0 != typed || $0.1 == 0 }
+            let aliases = Settings.launcherAliases.mapValues(Self.fold)
             found = pool.compactMap { item in
                 var best: Int?
+                // The person's own word wins: exactly, then by its start.
+                if let alias = aliases[item.id] {
+                    if alias == typed { best = 2000 } else if alias.hasPrefix(typed) { best = 1500 }
+                }
                 for (variant, penalty) in variants {
                     for term in item.terms {
                         if let score = Self.score(variant, term) { best = max(best ?? .min, score - penalty) }
@@ -241,14 +340,32 @@ final class Launcher: ObservableObject {
                 let kind: Int = switch item.kind {
                 case .app: 20
                 case .nook: 10
-                case .setting, .answer: 0
+                case .setting, .answer, .link: 0
                 }
                 return (item, best + kind + boost(item.id))
             }
         }
         var rows = found.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.title < $1.0.title }.prefix(40).map(\.0)
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if let url = Self.webAddress(trimmed) {
+            rows.insert(LaunchItem(id: "url", title: "Открыть \(trimmed)", subtitle: "Браузер", terms: [],
+                                   kind: .link(url, symbol: "safari.fill")), at: 0)
+        }
         if let answer = Calculator.evaluate(query, rates: .shared) {
             rows.insert(LaunchItem(id: "answer", title: answer.result, subtitle: answer.detail, terms: [], kind: .answer(answer)), at: 0)
+        }
+        if !trimmed.isEmpty, Settings.launcherFallbacks {
+            // Always under the results: "Use «query» with…".
+            let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
+            if let google = URL(string: "https://www.google.com/search?q=\(encoded)") {
+                rows.append(LaunchItem(id: "fallback:google", title: "Искать «\(trimmed)» в Google", subtitle: "Интернет",
+                                       terms: [], kind: .link(google, symbol: "magnifyingglass")))
+            }
+            if !trimmed.contains(" "), let word = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+               let dictionary = URL(string: "dict://\(word)") {
+                rows.append(LaunchItem(id: "fallback:dictionary", title: "Определить «\(trimmed)»", subtitle: "Словарь",
+                                       terms: [], kind: .link(dictionary, symbol: "character.book.closed.fill")))
+            }
         }
         results = rows
         selection = 0
@@ -274,8 +391,21 @@ final class Launcher: ObservableObject {
 
     // MARK: Opening
 
-    func open(_ item: LaunchItem, reveal: Bool = false) {
+    /// "github.com", "https://…": a web address, not a search.
+    static func webAddress(_ text: String) -> URL? {
+        guard !text.contains(" "), text.contains(".") else { return nil }
+        if text.hasPrefix("http://") || text.hasPrefix("https://") { return URL(string: text) }
+        let host = text.split(separator: "/").first.map(String.init) ?? text
+        let parts = host.split(separator: ".")
+        guard parts.count >= 2, let tld = parts.last, (2...12).contains(tld.count), tld.allSatisfy(\.isLetter),
+              parts.allSatisfy({ !$0.isEmpty }), Double(text.replacingOccurrences(of: ",", with: ".")) == nil else { return nil }
+        return URL(string: "https://" + text)
+    }
+
+    func open(_ item: LaunchItem, reveal: Bool = false, record: Bool = true) {
         if case .answer = item.kind { return }
+        if case .link(let url, _) = item.kind { NSWorkspace.shared.open(url); return }
+        guard record else { return perform(item, reveal: reveal) }
         var usage = Settings.launcherUsage
         let count = usage[item.id]?.first ?? 0
         usage[item.id] = [count + 1, Date().timeIntervalSince1970]
@@ -286,6 +416,10 @@ final class Launcher: ObservableObject {
             }
         }
         Settings.launcherUsage = usage
+        perform(item, reveal: reveal)
+    }
+
+    private func perform(_ item: LaunchItem, reveal: Bool) {
         switch item.kind {
         case .app(let url):
             if reveal {
@@ -297,7 +431,7 @@ final class Launcher: ObservableObject {
             if let url = URL(string: "x-apple.systempreferences:\(id)") { NSWorkspace.shared.open(url) }
         case .nook(let command):
             run?(command)
-        case .answer:
+        case .answer, .link:
             break
         }
     }
@@ -397,6 +531,7 @@ struct LauncherTab: View {
 
     var body: some View {
         let items = launcher.results
+        let aliases = Settings.launcherAliases
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .medium)).foregroundStyle(muted)
@@ -412,7 +547,11 @@ struct LauncherTab: View {
                     }
                     .onKeyPress(.downArrow) { move(1, count: items.count); return .handled }
                     .onKeyPress(.upArrow) { move(-1, count: items.count); return .handled }
-                    .onKeyPress(.escape) { model.collapse(); return .handled }
+                    // Esc clears the field first, then closes.
+                    .onKeyPress(.escape) {
+                        if launcher.query.isEmpty { model.collapse() } else { launcher.query = "" }
+                        return .handled
+                    }
                 Text(selectedHint(items)).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -431,8 +570,8 @@ struct LauncherTab: View {
                     ListScroll {
                         LazyVStack(spacing: 2) {
                             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                LaunchRow(item: item, icon: icon(item), selected: index == launcher.selection,
-                                          selectionSpace: selectionSpace) {
+                                LaunchRow(item: item, icon: icon(item), alias: aliases[item.id],
+                                          selected: index == launcher.selection, selectionSpace: selectionSpace) {
                                     launcher.selection = index
                                     open(items, reveal: false)
                                 }
@@ -455,7 +594,7 @@ struct LauncherTab: View {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
         case .setting: launcher.icons[Launcher.settingsApp]
-        case .nook, .answer: nil
+        case .nook, .answer, .link: nil
         }
     }
 
@@ -502,6 +641,7 @@ struct LauncherTab: View {
 struct LaunchRow: View {
     let item: LaunchItem
     let icon: NSImage?
+    var alias: String?
     let selected: Bool
     let selectionSpace: Namespace.ID
     let action: () -> Void
@@ -531,22 +671,42 @@ struct LaunchRow: View {
 
     private var row: some View {
         HStack(spacing: 10) {
-            if case .nook(let command) = item.kind {
-                Image(systemName: command.symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 24, height: 24)
-                    .background(RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                        .fill(LinearGradient(colors: [command.color.lifted(), command.color], startPoint: .top, endPoint: .bottom)))
-            } else if let icon {
-                Image(nsImage: icon).resizable().frame(width: 26, height: 26)
-            } else {
-                Color.clear.frame(width: 26, height: 26)
-            }
+            LaunchIcon(item: item, icon: icon, size: 26)
             Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+            if let alias { Chip(text: alias, color: .white.opacity(0.75)) }
             Spacer(minLength: 8)
             Text(item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
         }
+    }
+}
+
+/// An app's icon, or a coloured tile with a symbol for Nook's commands and links.
+struct LaunchIcon: View {
+    let item: LaunchItem
+    let icon: NSImage?
+    var size: CGFloat = 26
+
+    var body: some View {
+        switch item.kind {
+        case .nook(let command): tile(command.symbol, command.color)
+        case .link(_, let symbol): tile(symbol, Palette.blue)
+        default:
+            if let icon {
+                Image(nsImage: icon).resizable().frame(width: size, height: size)
+            } else {
+                Color.clear.frame(width: size, height: size)
+            }
+        }
+    }
+
+    private func tile(_ symbol: String, _ color: Color) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.46, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size * 0.92, height: size * 0.92)
+            .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .fill(LinearGradient(colors: [color.lifted(), color], startPoint: .top, endPoint: .bottom)))
+            .frame(width: size, height: size)
     }
 }
 

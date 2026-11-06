@@ -351,6 +351,7 @@ final class NotchModel: ObservableObject {
         dictation.start()
         launcher.run = { [weak self] command in self?.run(command) }
         launcher.prepare()
+        launcher.applyHotkeys()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }

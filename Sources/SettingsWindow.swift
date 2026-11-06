@@ -589,7 +589,8 @@ struct LauncherPane: View {
                 Toggle("Поиск в вырезе", isOn: state.bind({ Settings.launcher }, state.setLauncher))
                 LabeledContent("Сочетание клавиш") {
                     ShortcutRecorder(shortcut: Settings.launcherShortcut, fallback: .launcher,
-                                     onRecording: state.recordingLauncherShortcut, onChange: state.setLauncherShortcut)
+                                     onRecording: state.recordingLauncherShortcut,
+                                     onChange: { state.setLauncherShortcut($0 ?? .launcher) })
                 }
                 .disabled(!Settings.launcher)
                 if state.launcherKeyTaken {
@@ -601,13 +602,71 @@ struct LauncherPane: View {
                 Toggle("Программы", isOn: state.bind({ Settings.launcherApps }, { Settings.launcherApps = $0 }))
                 Toggle("Системные настройки", isOn: state.bind({ Settings.launcherSettings }, { Settings.launcherSettings = $0 }))
                 Toggle("Команды Nook", isOn: state.bind({ Settings.launcherCommands }, { Settings.launcherCommands = $0 }))
+                Toggle("Google и словарь внизу списка",
+                       isOn: state.bind({ Settings.launcherFallbacks }, { Settings.launcherFallbacks = $0 }))
             }
             Section {
                 LabeledContent("История запусков") {
                     Button("Очистить") { state.model.launcher.clearHistory() }
                 }
             }
+            LauncherItemsSection(launcher: state.model.launcher)
         }
+    }
+}
+
+/// Every app, pane and command with its alias and own shortcut.
+struct LauncherItemsSection: View {
+    @ObservedObject var launcher: Launcher
+    @State private var filter = ""
+    @State private var revision = 0
+
+    var body: some View {
+        let _ = revision
+        let aliases = Settings.launcherAliases
+        let keys = Settings.launcherHotkeys
+        let typed = Launcher.fold(filter)
+        let items = launcher.everything.filter { typed.isEmpty || Launcher.fold($0.title).contains(typed) }
+        Section {
+            TextField("Найти программу или команду", text: $filter)
+            ForEach(items) { item in
+                HStack(spacing: 10) {
+                    LaunchIcon(item: item, icon: launcher.icon(for: item), size: 20)
+                    Text(item.title).lineLimit(1)
+                    Spacer(minLength: 8)
+                    AliasField(alias: aliases[item.id] ?? "") { launcher.setAlias($0, for: item.id); revision += 1 }
+                    ShortcutRecorder(shortcut: keys[item.id].flatMap(Shortcut.init(stored:)), fallback: nil,
+                                     onRecording: { launcher.pauseHotkeys($0) },
+                                     onChange: { launcher.setHotkey($0, for: item.id); revision += 1 })
+                    if launcher.takenHotkeys.contains(item.id) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            .help("Сочетание занято другой программой")
+                    }
+                }
+            }
+        } header: {
+            Text("Псевдонимы и сочетания")
+        }
+        .onAppear { launcher.indexIfNeeded() }
+    }
+}
+
+/// Saved when the field loses focus or on ↩; trimmed, blank means none.
+struct AliasField: View {
+    let alias: String
+    let save: (String) -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("псевдоним", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 96)
+            .focused($focused)
+            .onAppear { text = alias }
+            .onChange(of: alias) { _, new in if !focused { text = new } }
+            .onSubmit { save(text) }
+            .onChange(of: focused) { _, now in if !now { save(text) } }
     }
 }
 
@@ -725,7 +784,8 @@ struct DictationPane: View {
             Section {
                 LabeledContent("Сочетание клавиш") {
                     ShortcutRecorder(shortcut: Settings.dictationShortcut, fallback: .dictation, modifierAlone: true,
-                                     onRecording: { dictation.paused = $0 }, onChange: state.setDictationShortcut)
+                                     onRecording: { dictation.paused = $0 },
+                                     onChange: { state.setDictationShortcut($0 ?? .dictation) })
                 }
                 if dictation.shortcutTaken {
                     Label("Сочетание занято другой программой", systemImage: "exclamationmark.triangle.fill")
