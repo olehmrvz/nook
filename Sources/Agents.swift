@@ -687,11 +687,18 @@ final class AgentHub: ObservableObject {
             }
             let path = shellScriptURL.path
             let line = "\n# Nook: island when a long command finishes\n[ -f \"\(path)\" ] && source \"\(path)\"\n"
-            let handle = try FileHandle(forWritingTo: rc)
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            try handle.write(contentsOf: Data(line.utf8))
-            return (true, "Добавлено в ~/.zshrc (копия рядом). Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS.")
+            if FileManager.default.fileExists(atPath: rc.path) {
+                let handle = try FileHandle(forWritingTo: rc)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data(line.utf8))
+            } else {
+                // A fresh account has no ~/.zshrc, and FileHandle cannot open a missing file.
+                // `.withoutOverwriting` fails instead of replacing anything that appeared meanwhile.
+                try Data(line.utf8).write(to: rc, options: .withoutOverwriting)
+            }
+            let done = existing.isEmpty ? "Добавлено в ~/.zshrc." : "Добавлено в ~/.zshrc (копия рядом)."
+            return (true, "\(done) Откройте новую вкладку терминала. Порог: 20 с, меняется через NOOK_MIN_SECONDS.")
         } catch {
             return (false, error.localizedDescription)
         }
