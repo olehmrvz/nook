@@ -409,6 +409,11 @@ struct Glow: Hashable {
 
 /// The light behind the glass. Elliptical gradients instead of blurred layers keep it cheap to draw.
 struct AmbientGlow: View {
+    /// exp(-4.5 t²) sampled at 8 points: soft like a blur, still one gradient.
+    static let falloff: [(at: CGFloat, alpha: Double)] = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1].map {
+        (at: $0, alpha: $0 == 1 ? 0 : exp(-4.5 * Double($0 * $0)))
+    }
+
     var glows: [Glow]
     /// Height of the band under the camera that stays pure black, like the hardware notch.
     var blackTop: CGFloat = 0
@@ -419,11 +424,12 @@ struct AmbientGlow: View {
             let h = max(geo.size.height, 1)
             ZStack {
                 ForEach(glows, id: \.self) { glow in
+                    // A bell-shaped fall-off over a wider ellipse: no visible rim, the colour just fades.
                     Ellipse()
-                        .fill(EllipticalGradient(colors: [glow.color.opacity(glow.opacity),
-                                                          glow.color.opacity(glow.opacity * 0.55), .clear],
-                                                 center: .center))
-                        .frame(width: glow.size, height: glow.size * 0.72)
+                        .fill(EllipticalGradient(stops: Self.falloff.map {
+                            .init(color: glow.color.opacity(glow.opacity * 0.85 * $0.alpha), location: $0.at)
+                        }, center: .center))
+                        .frame(width: glow.size * 1.4, height: glow.size * 1.4 * 0.72)
                         .position(x: glow.x * geo.size.width, y: glow.y * geo.size.height)
                         .transition(.opacity)
                 }
@@ -460,10 +466,8 @@ struct IslandBackdrop: View {
             ZStack {
                 // Neutral glass depth, not a coloured wash: tinted black reads as brown or mud.
                 LinearGradient(colors: [.clear, Color.white.opacity(0.05)], startPoint: .top, endPoint: .bottom)
-                RadialGradient(stops: [.init(color: colors[0].opacity(0.32), location: 0),
-                                       .init(color: colors[0].opacity(0.1), location: 0.5),
-                                       .init(color: .clear, location: 1)],
-                               center: icon, startRadius: 0, endRadius: 110)
+                RadialGradient(stops: AmbientGlow.falloff.map { .init(color: colors[0].opacity(0.3 * $0.alpha), location: $0.at) },
+                               center: icon, startRadius: 0, endRadius: 140)
             }
             .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
                                          .init(color: .clear, location: min(1, blackTop / h)),

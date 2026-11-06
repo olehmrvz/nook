@@ -31,6 +31,8 @@ is ad-hoc signed and macOS may ask again.
 `Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
 app (`power` opens Home with the battery card); `Nook --show settings[:pane]` opens the Settings window
 (panes: general, notch, notifications, dictation, agents, privacy, updates, thanks).
+`Nook --show launcher` opens the search with the keyboard in it; `Nook --show launcher:<text>` shows the results for
+`<text>` without taking the keyboard (for checks: typing keeps going to the app in front).
 `Nook --dictate [start|stop|cancel|toggle]` drives dictation; it is refused from processes an agent started
 (they would hear the person and get the text typed into their own terminal), like `--answer`.
 `Nook --timer 25|stop|pomodoro` and `Nook --prompt` (start Cuely) for Raycast / Shortcuts.
@@ -81,6 +83,17 @@ terminal, not from a process an agent started (an agent must not approve its own
   automatic brightness. **Focus / Do Not Disturb:** `Sources/Focus.swift` watches `~/Library/DoNotDisturb/DB`
   (needs Full Disk Access) with file-system events, no polling; `focus-debug.log` records structure only.
 - **Pointer:** event-driven polling; the panel takes the keyboard only for text fields.
+- **Search (launcher):** `Sources/Launcher.swift`. ⌥Space or the recorded shortcut (`ShortcutRecorder.swift`,
+  Carbon hot key id 2) opens the `.launcher` tab on the display with the pointer; the panel moves back when it closes.
+  Index off the main thread, again when older than a minute: apps in /Applications (hidden links too: Safari lives
+  in /System/Cryptexes), /System/Applications, ~/Applications; System Settings panes from
+  /System/Library/ExtensionKit/Extensions (`com.apple.Settings.extension.ui`, names in the system language thanks to
+  `CFBundleAllowMixedLocalizations`); Nook's commands. Ranking: exact, prefix, word start, initials, substring,
+  letters in order; the query is also tried in the other keyboard layout (ЙЦУКЕН ↔ QWERTY); usage boost from
+  `launcherUsage` (count, last use). Opening an app does not hand focus back to the previous app first, so the new
+  window lands on the display the search was on.
+- **Header:** Settings → Панель hides tabs and buttons (`Settings.headerHidden`); the gear always stays. With three
+  tabs or fewer on the left, all of them show their names.
 - **Dictation:** `Sources/Dictation.swift` (key, audio, text) and `Sources/Parakeet.swift` (models, download,
   recognition). A listen-only event tap watches one modifier key while dictation is on (Accessibility); held 0.25 s
   without another key → recording (AVAudioEngine, resampled to 16 kHz mono); an active tap swallows Return (finish)

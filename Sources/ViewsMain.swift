@@ -62,6 +62,7 @@ extension NotchModel {
         case .cuely: return pair(Palette.violet, Palette.pink)
         case .notes: return pair(Palette.yellow, Palette.orange, 0.32)
         case .mirror: return pair(Palette.cyan, Palette.violet, 0.28)
+        case .launcher: return pair(Palette.blue, Palette.violet, 0.36)
         }
     }
 
@@ -306,8 +307,18 @@ struct CollapsedView: View {
         case nil:
             switch model.live {
             case .dictation:
-                Image(systemName: model.dictation.phase == .recording ? "mic.fill" : "waveform")
-                    .foregroundStyle(model.dictation.phase == .recording ? Palette.red : Palette.violet.lifted())
+                let recording = model.dictation.phase == .recording
+                HStack(spacing: 6) {
+                    Image(systemName: recording ? "mic.fill" : "waveform")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(recording ? Palette.red : Palette.violet.lifted())
+                        .symbolEffect(.pulse, isActive: recording && !Motion.reduce)
+                        .frame(width: 16)
+                    Text(recording ? "Запись" : "Распознаю").font(.system(size: 12.5, weight: .medium)).lineLimit(1)
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 10)
             case .keyLock: Image(systemName: "keyboard").foregroundStyle(Palette.orange)
             case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
             case .timer: Image(systemName: "timer").foregroundStyle(model.timer.phase.color)
@@ -351,11 +362,20 @@ struct CollapsedView: View {
         case nil:
             switch model.live {
             case .dictation:
-                if model.dictation.phase == .recording {
-                    LevelMeter(dictation: model.dictation, color: NSColor(Palette.red.lifted())).frame(width: 22, height: 14)
-                } else {
-                    Spinner(color: Palette.violet.lifted())
+                HStack(spacing: 8) {
+                    if model.dictation.phase == .recording, let started = model.dictation.startedAt {
+                        LevelMeter(dictation: model.dictation, color: NSColor(Palette.red.lifted())).frame(width: 34, height: 16)
+                        // Once a second, and only while recording.
+                        TimelineView(.periodic(from: started, by: 1)) { context in
+                            Text(FocusTimer.format(max(0, context.date.timeIntervalSince(started))))
+                                .font(.rounded(12)).monospacedDigit().foregroundStyle(.white.opacity(0.85))
+                        }
+                    } else {
+                        Spinner(color: Palette.violet.lifted())
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
             case .keyLock: LockCountdown(lock: model.keyboardLock).font(.rounded(12)).foregroundStyle(Palette.orange)
             case .permission: Circle().fill(Palette.orange.opacity(0.9)).frame(width: 6, height: 6)
             case .timer:
@@ -821,6 +841,7 @@ struct ExpandedView: View {
                     case .ai: AgentsTab(model: model, agents: model.agents, limits: model.limits, usage: model.usage)
                     case .calendar: CalendarTab(store: model.calendar)
                     case .timer: TimerTab(model: model, timer: model.timer)
+                    case .launcher: LauncherTab(model: model, launcher: model.launcher)
                     case .cuely: CuelyTab(model: model, cuely: model.cuely)
                     case .notes: NotesTab(model: model, notes: model.notes)
                     case .mirror: MirrorTab(camera: model.mirror)
@@ -874,24 +895,37 @@ struct ExpandedView: View {
 
     private var header: some View {
         // Two equal halves around the camera: nothing on the right can slide under the notch, whatever tab is open.
-        HStack(spacing: 0) {
+        // Settings → Панель switches tabs and buttons off; the groups close up around what is left.
+        let left = Tab.leftSide.filter(\.isShown)
+        let right = Tab.rightSide.filter(\.isShown)
+        let keyLock = HeaderItem.keyLock.isShown
+        return HStack(spacing: 0) {
             HStack(spacing: 6) {
-                tabGroup(Tab.leftSide)
+                // Room for every title once only a few tabs are left.
+                if !left.isEmpty { tabGroup(left, titles: left.count <= 3 ? .all : .active) }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
             Color.clear.frame(width: model.notch.width + 12)
             HStack(spacing: 6) {
             Spacer(minLength: 0)
-            tabGroup(Tab.rightSide, keyLock: true, titles: false)
+            if !right.isEmpty || keyLock { tabGroup(right, keyLock: keyLock, titles: .none) }
             // One capsule for status and quick actions, like the tab groups: even gaps on the right.
             HStack(spacing: 1) {
                 statusChip
-                HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
-                             active: caffeine.on, tint: Palette.orange,
-                             help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
-                                               : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
-                    withAnimation(Motion.quick) { caffeine.toggle() }
+                if HeaderItem.coffee.isShown {
+                    HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
+                                 active: caffeine.on, tint: Palette.orange,
+                                 help: caffeine.on ? "Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить"
+                                                   : "Кофеин: Mac не будет засыпать (например, пока работают агенты)") {
+                        withAnimation(Motion.quick) { caffeine.toggle() }
+                    }
+                }
+                if HeaderItem.search.isShown {
+                    HeaderButton(symbol: "magnifyingglass", active: model.tab == .launcher, tint: Palette.blue,
+                                 help: "Поиск программ и команд (\(Settings.launcherShortcut.title))") {
+                        model.toggleLauncherFromHotkey()
+                    }
                 }
                 HeaderButton(symbol: "gearshape", help: "Настройки Nook") { model.onOpenSettings?(nil) }
             }
@@ -903,12 +937,16 @@ struct ExpandedView: View {
         .frame(height: headerHeight)
     }
 
-    /// `titles: false` — icons only, also for the open tab (the right half has little room).
-    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false, titles: Bool = true) -> some View {
+    /// Which tabs show their name: none (the right half has little room), the open one, or all of them.
+    private enum Titles { case none, active, all }
+
+    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false, titles: Titles) -> some View {
         HStack(spacing: 1) {
             ForEach(tabs) { tab in
                 TabPill(tab: tab, active: model.tab == tab, badge: tab == .ai && !agents.permissions.isEmpty,
-                        space: tabSpace, showsTitle: titles) { model.select(tab) }
+                        space: tabSpace, showsTitle: titles == .all || (titles == .active && model.tab == tab)) {
+                    model.select(tab)
+                }
             }
             if keyLock { KeyLockPill(lock: model.keyboardLock) }
         }
@@ -917,8 +955,8 @@ struct ExpandedView: View {
     }
 
     @ViewBuilder private var statusChip: some View {
-        let hasWeather = weather.temperature != nil
-        if hasWeather || battery.hasBattery {
+        let hasWeather = weather.temperature != nil && HeaderItem.weather.isShown
+        if hasWeather || (battery.hasBattery && HeaderItem.battery.isShown) {
             Button { withAnimation(Motion.smooth) { model.showPower.toggle() } } label: { statusLabel(hasWeather) }
                 .buttonStyle(.plain)
                 // Never squeezed to "…": the gap around the camera gives way first.
@@ -930,15 +968,15 @@ struct ExpandedView: View {
 
     private func statusLabel(_ hasWeather: Bool) -> some View {
             HStack(spacing: 6) {
-                if let t = weather.temperature {
+                if hasWeather, let t = weather.temperature {
                     Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 11))
                     Text("\(Int(t.rounded()))°").font(.system(size: 12, weight: .medium))
                         .contentTransition(.numericText())
                 }
-                if hasWeather && battery.hasBattery {
+                if hasWeather && battery.hasBattery && HeaderItem.battery.isShown {
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 11)
                 }
-                if battery.hasBattery {
+                if battery.hasBattery && HeaderItem.battery.isShown {
                     Image(systemName: batteryIcon).font(.system(size: 12))
                         .foregroundStyle(battery.pluggedIn ? Palette.green : (battery.percent <= 20 ? Palette.red : .white.opacity(0.8)))
                     if battery.percent <= 20 && !battery.pluggedIn {
@@ -1009,13 +1047,13 @@ struct TabPill: View {
         Button(action: select) {
             HStack(spacing: 6) {
                 Image(systemName: tab.icon).font(.system(size: 11, weight: .medium))
-                if active && showsTitle {
+                if showsTitle {
                     Text(tab.title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize()
                         .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)))
                 }
                 if badge { Circle().fill(accent).frame(width: 6, height: 6) }
             }
-            .padding(.horizontal, active && showsTitle ? 10 : 7).padding(.vertical, 4)
+            .padding(.horizontal, showsTitle ? 10 : 7).padding(.vertical, 4)
             .background {
                 if active {
                     Capsule().fill(Color.white.opacity(0.18)).matchedGeometryEffect(id: "activeTab", in: space)

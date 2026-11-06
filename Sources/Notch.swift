@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 enum Tab: String, CaseIterable, Identifiable {
-    case home, clipboard, shelf, ai, notes, mirror, calendar, timer, cuely
+    case home, clipboard, shelf, ai, notes, mirror, calendar, timer, cuely, launcher
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -16,6 +16,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .calendar: return "Календарь"
         case .timer: return "Таймер"
         case .cuely: return "Cuely"
+        case .launcher: return "Поиск"
         }
     }
     var icon: String {
@@ -29,6 +30,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .timer: return "timer"
         case .cuely: return "text.alignleft"
+        case .launcher: return "magnifyingglass"
         }
     }
     /// ⌘1 … ⌘9 in header order (a tenth tab would get ⌘0).
@@ -39,7 +41,50 @@ enum Tab: String, CaseIterable, Identifiable {
     /// Tabs drawn left of the camera; the rest go to the right.
     static let leftSide: [Tab] = [.home, .clipboard, .shelf, .ai, .notes, .mirror]
     /// Cuely has no button (it opens with `Nook --prompt`); the keyboard lock sits in its place.
+    /// The search has none either: ⌥Space or the magnifier next to the gear.
     static let rightSide: [Tab] = [.calendar, .timer]
+}
+
+extension Settings {
+    /// Tabs (raw values) and `HeaderItem`s switched off in Settings → Панель.
+    static var headerHidden: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "headerHidden") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "headerHidden") }
+    }
+}
+
+extension Tab {
+    var isShown: Bool { !Settings.headerHidden.contains(rawValue) }
+    /// The tabs that have a button, in header order.
+    static var buttons: [Tab] { leftSide + rightSide }
+}
+
+/// Buttons in the panel header besides the tabs; the gear always stays (the way into Settings).
+enum HeaderItem: String, CaseIterable, Identifiable {
+    case weather, battery, keyLock, coffee, search
+
+    var id: String { rawValue }
+    var isShown: Bool { !Settings.headerHidden.contains(rawValue) }
+
+    var title: String {
+        switch self {
+        case .weather: "Погода"
+        case .battery: "Батарея"
+        case .keyLock: "Блокировка клавиатуры"
+        case .coffee: "Кофеин"
+        case .search: "Поиск"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .weather: "cloud.sun.fill"
+        case .battery: "battery.75percent"
+        case .keyLock: "keyboard"
+        case .coffee: "cup.and.saucer.fill"
+        case .search: "magnifyingglass"
+        }
+    }
 }
 
 /// Tiny flashes in the side slots of the collapsed notch.
@@ -177,6 +222,7 @@ final class NotchModel: ObservableObject {
     let keyboardLock = KeyboardLock()
     let updater = Updater()
     let dictation = Dictation()
+    let launcher = Launcher()
     /// Opens the Settings window (the gear in the panel; a pane, or the last one), set by the app delegate.
     var onOpenSettings: ((SettingsPane?) -> Void)?
 
@@ -186,6 +232,8 @@ final class NotchModel: ObservableObject {
     /// Opened for a permission request: stays open until the pointer has visited it.
     private var holdOpen = false
     private var previousApp: NSRunningApplication?
+    /// The panel is on another display for the search; it goes back when it closes.
+    private var awayScreen = false
     private var hoverStart: Date?
     private var leaveStart: Date?
     private var dragBaseline = NSPasteboard(name: .drag).changeCount
@@ -220,6 +268,8 @@ final class NotchModel: ObservableObject {
         case .focus: return 132
         default: break
         }
+        // Dictation says what it does in words: "Запись 0:07", "Распознаю".
+        if flash == nil, live == .dictation { return 112 }
         return hasLiveActivity ? Self.slot : 0
     }
 
@@ -299,6 +349,8 @@ final class NotchModel: ObservableObject {
             self?.present(Island(kind: .dictation(title: title, detail: detail, settings: settings), seconds: 4))
         }
         dictation.start()
+        launcher.run = { [weak self] command in self?.run(command) }
+        launcher.prepare()
         cuely.onPresentChange = { [weak self] presenting in
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }
@@ -488,7 +540,12 @@ final class NotchModel: ObservableObject {
     }
 
     func expand(tab: Tab? = nil) {
-        if let tab { self.tab = tab }
+        if let tab {
+            self.tab = tab
+        } else if !self.tab.isShown, Tab.buttons.contains(self.tab) {
+            // Its button was switched off in Settings: open the first tab that still has one.
+            self.tab = Tab.buttons.first(where: \.isShown) ?? .home
+        }
         guard !expanded else { return }
         if island != nil { dismissIsland(showNext: false) }
         expanded = true
@@ -496,7 +553,9 @@ final class NotchModel: ObservableObject {
         startTicks()
     }
 
-    func collapse() {
+    /// `returnFocus: false` when the search opens an app: the app in front before must not take the screen back,
+    /// so the new app opens on the display the search was on.
+    func collapse(returnFocus: Bool = true) {
         guard expanded else { return }
         showPower = false
         let wasSticky = sticky
@@ -507,13 +566,18 @@ final class NotchModel: ObservableObject {
             // Hand keyboard focus back to the app the user was in, without hiding the window
             // (ordering it out and in again made the notch blink).
             let target = wasSticky ? previousApp : NSWorkspace.shared.frontmostApplication
-            if let target, target.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            if returnFocus, let target, target.processIdentifier != ProcessInfo.processInfo.processIdentifier {
                 target.activate()
             }
             panel.resignKey()
         }
         if !islandQueue.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.showNextIsland() }
+        }
+        if awayScreen {
+            // Back to the notch's own display once the panel has closed there.
+            awayScreen = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { if !self.expanded { self.panel?.reposition() } }
         }
     }
 
@@ -540,6 +604,59 @@ final class NotchModel: ObservableObject {
     /// Gives the panel keyboard focus, e.g. for prompter shortcuts.
     func focusPanel() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.panel?.makeKeyAndOrderFront(nil) }
+    }
+
+    /// ⌥Space (or the magnifier): the search with the keyboard in its field; again closes it.
+    /// `focus: false` (`Nook --show launcher:<text>`): shows the results without taking the keyboard.
+    func toggleLauncherFromHotkey(query: String = "", focus: Bool = true) {
+        if expanded && sticky && tab == .launcher && query.isEmpty { collapse(); return }
+        if !expanded {
+            previousApp = NSWorkspace.shared.frontmostApplication
+            // The display you work on, like Spotlight: the one with the pointer.
+            let pointer = NSEvent.mouseLocation
+            if let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }),
+               screen != NotchGeometry.screen {
+                panel?.reposition(on: screen)
+                awayScreen = true
+            }
+        }
+        sticky = true
+        launcher.prepare()
+        launcher.query = query
+        expand(tab: .launcher)
+        tab = .launcher
+        if focus { panel?.makeKeyAndOrderFront(nil) }
+    }
+
+    /// A Nook command picked in the search.
+    func run(_ command: NookCommand) {
+        switch command {
+        case .clipboard: select(.clipboard)
+        case .shelf: select(.shelf)
+        case .notes: select(.notes)
+        case .calendar: select(.calendar)
+        case .agents: select(.ai)
+        case .timer:
+            collapse()
+            timer.pomodoro = false
+            timer.start(minutes: 25)
+        case .pomodoro:
+            collapse()
+            endFocusMode()
+            timer.startPomodoro()
+        case .focus:
+            collapse()
+            startFocusMode()
+        case .coffee:
+            collapse()
+            caffeine.toggle()
+        case .keyLock:
+            collapse()
+            keyboardLock.lock()
+        case .settings: onOpenSettings?(nil)
+        case .updates: onOpenSettings?(.updates)
+        case .thanks: onOpenSettings?(.thanks)
+        }
     }
 
     func toggleClipboardFromHotkey() {
@@ -702,8 +819,9 @@ final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    func reposition() {
-        guard let screen = NotchGeometry.screen else { return }
+    /// On the notch's own display, or on `screen` for a while (the search opens where the pointer is).
+    func reposition(on screen: NSScreen? = nil) {
+        guard let screen = screen ?? NotchGeometry.screen else { return }
         model.notch = NotchGeometry.notchSize(on: screen)
         model.screenFrame = screen.frame
         let size = NotchModel.windowSize

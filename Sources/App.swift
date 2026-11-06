@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         HotKey.register(id: 1, keyCode: 9 /* V */, modifiers: HotKey.control | HotKey.command) { [weak self] in
             self?.model.toggleClipboardFromHotkey()
         }
+        applyLauncherHotKey()
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -106,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "cancel": model.dictation.cancel()
             default: model.dictation.toggle()
             }
+            return
+        }
+        if name == "launcher" || name.hasPrefix("launcher:") {
+            let query = String(name.dropFirst("launcher:".count))
+            model.toggleLauncherFromHotkey(query: query, focus: query.isEmpty)
             return
         }
         if name == "settings" || name.hasPrefix("settings:") {
@@ -168,6 +174,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func checkUpdates() {
         settings.show(.updates)
         settings.state.checkUpdates()
+    }
+
+    /// The search shortcut from Settings; false when another app holds that combination.
+    /// `paused`: while a new one is being recorded, so pressing the old one records instead of opening the search.
+    @discardableResult
+    func applyLauncherHotKey(paused: Bool = false) -> Bool {
+        HotKey.unregister(id: 2)
+        guard Settings.launcher, !paused else { return true }
+        let shortcut = Settings.launcherShortcut
+        return HotKey.register(id: 2, keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
+            self?.model.toggleLauncherFromHotkey()
+        }
     }
 
     /// From the Settings window.

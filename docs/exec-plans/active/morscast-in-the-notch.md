@@ -17,9 +17,11 @@ UI languages = EN RU UK DE ES FR PT-BR IT PL ZH-Hans + "as in system"; scope = d
 ## Phases
 
 1. **Dictation** (in progress, `docs/exec-plans/active/dictation.md` section below).
-2. **Launcher core**: hotkey (default ⌥Space, configurable), search field in the notch, fuzzy ranking with usage
-   history, providers: applications (/Applications, ~/Applications, /System/Applications, Spotlight metadata),
-   System Settings panes, Nook's own commands (tabs, timer, coffee, focus…). Enter opens, ⌘Enter reveals.
+2. **Launcher core** — done (2026-11-06, not committed yet at the time of writing): recorded shortcut (default
+   ⌥Space), opens on the pointer's display, apps + System Settings panes + Nook commands, ranking with layout
+   fallback and usage boost, ↩ opens, ⌘↩ reveals. Specs of all MorsCast features (behaviour only, from its docs):
+   scratchpad specs A-palette (calculator, currency, aliases, palette), B-tools (windows, snippets, clipboard
+   extras), C-ai — summarised below as they are implemented.
 3. **Launcher providers**: calculator + unit/currency conversion, quicklinks (URL templates), custom shell commands,
    Apple Shortcuts, system actions (lock, sleep, empty trash, dark mode, mute), file search, emoji picker,
    dictionary, fallback actions (search the web).
@@ -29,6 +31,11 @@ UI languages = EN RU UK DE ES FR PT-BR IT PL ZH-Hans + "as in system"; scope = d
 6. **AI**: quick AI / chat and actions on selected text (needs an API key; Nook already knows Claude/Codex).
 7. **Localization**: 10 languages + "as in system" (after `olehmrvz/certificate` is merged: strings in Updater).
 8. Later / maybe: Raycast extensions (JavaScriptCore), backup/import, app uninstaller, Hyper key.
+
+Also requested on 2026-11-06: user-recorded shortcuts for search and dictation (done: modifier alone, combination
+or F-key; Carbon released events for hold-to-talk), Settings → Панель to hide header tabs/buttons (done), the notch
+showing "Запись 0:07" / "Распознаю" while dictating (done, needs the user's check), softer glow (done: 8-stop
+bell fall-off over a 1.4× ellipse), fewer descriptions in Settings (done: footnotes and pane headers removed).
 
 ## Phase 1: dictation
 

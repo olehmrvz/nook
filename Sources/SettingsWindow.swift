@@ -7,16 +7,18 @@ import SwiftUI
 
 /// Sections of the Settings window, in sidebar order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, notch, notifications, dictation, agents, privacy, updates, thanks
+    case general, panel, launcher, notch, notifications, dictation, agents, privacy, updates, thanks
 
     var id: String { rawValue }
     /// The first group in the sidebar: what Nook does. The second one is about Nook itself.
-    static let settings: [SettingsPane] = [.general, .notch, .notifications, .dictation, .agents, .privacy]
+    static let settings: [SettingsPane] = [.general, .panel, .launcher, .notch, .notifications, .dictation, .agents, .privacy]
     static let about: [SettingsPane] = [.updates, .thanks]
 
     var title: String {
         switch self {
         case .general: "Основные"
+        case .panel: "Панель"
+        case .launcher: "Поиск"
         case .notch: "Вырез"
         case .notifications: "Уведомления"
         case .dictation: "Диктовка"
@@ -27,22 +29,11 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         }
     }
 
-    var summary: String {
-        switch self {
-        case .general: "Запуск, значок в строке меню и экран для выреза."
-        case .notch: "Что вырез показывает сам, без открытой панели."
-        case .notifications: "Уведомления приложений и звонки островом в вырезе."
-        case .dictation: "Речь в текст на этом Mac, без интернета."
-        case .agents: "Claude Code и Codex: статус, вопросы и ответы в вырезе."
-        case .privacy: "Разрешения macOS, скриншоты и где лежат данные."
-        case .updates: "Версия, подпись и обновления с GitHub."
-        case .thanks: "Поддержать автора Nook."
-        }
-    }
-
     var symbol: String {
         switch self {
         case .general: "gearshape.fill"
+        case .panel: "rectangle.3.group.fill"
+        case .launcher: "magnifyingglass"
         case .notch: "rectangle.topthird.inset.filled"
         case .notifications: "bell.badge.fill"
         case .dictation: "waveform"
@@ -56,6 +47,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var color: Color {
         switch self {
         case .general: Color(hex: 0x8E8E93)
+        case .panel: Palette.yellow
+        case .launcher: Palette.cyan
         case .notch: Palette.orange
         case .notifications: Palette.red
         case .dictation: Palette.violet
@@ -169,6 +162,7 @@ final class SettingsState: ObservableObject {
     @Published private(set) var mutedApps: [NamedApp] = []
     @Published private(set) var signature: Signature?
     @Published private(set) var checking = false
+    @Published private(set) var launcherKeyTaken = false
     @Published private(set) var updateText = ""
     @Published private(set) var checkedAt: Date?
     @Published var agentsNote: Note?
@@ -297,6 +291,41 @@ final class SettingsState: ObservableObject {
         }
     }
 
+    // Panel
+
+    /// A tab or header button on or off; the notch redraws at once.
+    func setShown(_ id: String, _ shown: Bool) {
+        objectWillChange.send()
+        var hidden = Settings.headerHidden
+        if shown { hidden.remove(id) } else { hidden.insert(id) }
+        Settings.headerHidden = hidden
+        model.objectWillChange.send()
+    }
+
+    // Search
+
+    func setLauncher(_ on: Bool) {
+        objectWillChange.send()
+        Settings.launcher = on
+        launcherKeyTaken = !(app?.applyLauncherHotKey() ?? true)
+    }
+
+    func setLauncherShortcut(_ shortcut: Shortcut) {
+        objectWillChange.send()
+        Settings.launcherShortcut = shortcut
+        launcherKeyTaken = !(app?.applyLauncherHotKey() ?? true)
+    }
+
+    func recordingLauncherShortcut(_ recording: Bool) {
+        launcherKeyTaken = !(app?.applyLauncherHotKey(paused: recording) ?? true)
+    }
+
+    func setDictationShortcut(_ shortcut: Shortcut) {
+        objectWillChange.send()
+        Settings.dictationShortcut = shortcut
+        model.dictation.apply()
+    }
+
     // Dictation
 
     func setDictation(_ on: Bool) {
@@ -416,6 +445,8 @@ struct SettingsView: View {
             Group {
                 switch state.pane {
                 case .general: GeneralPane(state: state)
+                case .panel: PanelPane(state: state)
+                case .launcher: LauncherPane(state: state)
                 case .notch: NotchPane(state: state)
                 case .notifications: NotificationsPane(state: state)
                 case .dictation: DictationPane(state: state, dictation: state.model.dictation)
@@ -455,24 +486,6 @@ struct PaneIcon: View {
     }
 }
 
-/// The first row of a pane: its icon, name and what it is about.
-struct PaneHeader: View {
-    let pane: SettingsPane
-
-    var body: some View {
-        Section {
-            HStack(spacing: 12) {
-                PaneIcon(pane: pane, size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(pane.title).font(.system(size: 15, weight: .semibold))
-                    Text(pane.summary).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-}
-
 /// "● Разрешено" in green or "● Нет доступа" in orange.
 struct StatusText: View {
     let ok: Bool
@@ -500,15 +513,6 @@ struct NoteText: View {
     }
 }
 
-struct Footnote: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-    }
-}
-
 // MARK: Panes
 
 struct GeneralPane: View {
@@ -516,14 +520,11 @@ struct GeneralPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .general)
             Section {
                 Toggle("Запускать при входе в систему", isOn: state.bind({ state.loginItem }, state.setLoginItem))
                 Toggle("Значок в строке меню", isOn: state.bind({ Settings.showMenuIcon }, state.setMenuIcon))
             } header: {
                 Text("Запуск")
-            } footer: {
-                Footnote("Без значка настройки открываются шестерёнкой ⚙︎ в панели Nook. Значок вернётся, если снова открыть Nook из «Программ» или Spotlight.")
             }
             Section {
                 Picker("Вырез на экране", selection: state.bind({ Settings.screenID }, state.chooseScreen)) {
@@ -538,18 +539,72 @@ struct GeneralPane: View {
                 }
             } header: {
                 Text("Экран")
-            } footer: {
-                Footnote("На экране без выреза Nook рисует сверху небольшую капсулу.")
             }
             Section("Быстрый доступ") {
-                LabeledContent("Открыть панель", value: "Навести указатель на вырез")
+                LabeledContent("Поиск") { Text(Settings.launcherShortcut.title).font(.system(size: 12, weight: .medium, design: .rounded)) }
                 LabeledContent("Буфер обмена") { Text("⌃⌘V").font(.system(size: 12, weight: .medium, design: .rounded)) }
             }
             Section {
                 HStack {
-                    Footnote("Nook останется выключен до следующего запуска.")
                     Spacer()
                     Button("Выйти из Nook") { NSApp.terminate(nil) }
+                }
+            }
+        }
+    }
+}
+
+struct PanelPane: View {
+    @ObservedObject var state: SettingsState
+
+    var body: some View {
+        let shownTabs = Tab.buttons.filter(\.isShown).count
+        Form {
+            Section("Вкладки") {
+                ForEach(Tab.buttons) { tab in
+                    Toggle(isOn: state.bind({ tab.isShown }, { state.setShown(tab.rawValue, $0) })) {
+                        Label(tab.title, systemImage: tab.icon)
+                    }
+                    // One tab stays: the panel needs something to open.
+                    .disabled(tab.isShown && shownTabs == 1)
+                }
+            }
+            Section("Кнопки") {
+                ForEach(HeaderItem.allCases) { item in
+                    Toggle(isOn: state.bind({ item.isShown }, { state.setShown(item.rawValue, $0) })) {
+                        Label(item.title, systemImage: item.symbol)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct LauncherPane: View {
+    @ObservedObject var state: SettingsState
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Поиск в вырезе", isOn: state.bind({ Settings.launcher }, state.setLauncher))
+                LabeledContent("Сочетание клавиш") {
+                    ShortcutRecorder(shortcut: Settings.launcherShortcut, fallback: .launcher,
+                                     onRecording: state.recordingLauncherShortcut, onChange: state.setLauncherShortcut)
+                }
+                .disabled(!Settings.launcher)
+                if state.launcherKeyTaken {
+                    Label("Сочетание занято другой программой", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+            }
+            Section("Искать") {
+                Toggle("Программы", isOn: state.bind({ Settings.launcherApps }, { Settings.launcherApps = $0 }))
+                Toggle("Системные настройки", isOn: state.bind({ Settings.launcherSettings }, { Settings.launcherSettings = $0 }))
+                Toggle("Команды Nook", isOn: state.bind({ Settings.launcherCommands }, { Settings.launcherCommands = $0 }))
+            }
+            Section {
+                LabeledContent("История запусков") {
+                    Button("Очистить") { state.model.launcher.clearHistory() }
                 }
             }
         }
@@ -561,7 +616,6 @@ struct NotchPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .notch)
             Section {
                 Toggle("Громкость и яркость", isOn: state.bind({ Settings.volumeHUD }, { Settings.volumeHUD = $0 }))
                 if Settings.volumeHUD {
@@ -575,8 +629,6 @@ struct NotchPane: View {
                 }
             } header: {
                 Text("Клавиши")
-            } footer: {
-                Footnote("Чтобы системное окно не появлялось поверх выреза, Nook нужен Универсальный доступ: тогда клавиши громкости и яркости обрабатывает он.")
             }
             Section {
                 Toggle("«Не беспокоить» и другие режимы", isOn: state.bind({ Settings.focusHUD }, { Settings.focusHUD = $0 }))
@@ -587,8 +639,6 @@ struct NotchPane: View {
                 }
             } header: {
                 Text("Фокусирование")
-            } footer: {
-                Footnote("Вырез коротко показывает, что режим включился или выключился.")
             }
             Section {
                 Toggle("Процессы, которые грузят Mac", isOn: state.bind({ Settings.processWatch }, { Settings.processWatch = $0 }))
@@ -599,8 +649,6 @@ struct NotchPane: View {
                 }
             } header: {
                 Text("Нагрузка")
-            } footer: {
-                Footnote("Остров появится, если ваш процесс 2 минуты держит больше 90 % процессора или занимает больше 4 ГБ памяти. Скрытые из острова процессы перечислены здесь.")
             }
         }
     }
@@ -611,15 +659,12 @@ struct NotificationsPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .notifications)
             Section {
                 Toggle("Показывать уведомления в вырезе",
                        isOn: state.bind({ Settings.notificationIslands }, { Settings.notificationIslands = $0 }))
                 Toggle("Показывать текст уведомлений",
                        isOn: state.bind({ Settings.notificationText }, { Settings.notificationText = $0 }))
                     .disabled(!Settings.notificationIslands)
-            } footer: {
-                Footnote("Текст выключен по умолчанию: вырез не учитывает настройку «Показывать миниатюры», и коды и сообщения увидит любой рядом.")
             }
             Section {
                 LabeledContent("Полный доступ к диску") {
@@ -630,8 +675,6 @@ struct NotificationsPane: View {
                 }
             } header: {
                 Text("Доступ")
-            } footer: {
-                Footnote("Nook только читает базу Центра уведомлений. Без этого доступа острова уведомлений не появляются.")
             }
             Section {
                 if state.mutedApps.isEmpty {
@@ -644,8 +687,6 @@ struct NotificationsPane: View {
                 }
             } header: {
                 Text("Скрытые приложения")
-            } footer: {
-                Footnote("Приложение скрывается из меню острова: «Не показывать от…».")
             }
         }
     }
@@ -662,11 +703,7 @@ struct DictationPane: View {
                 Toggle(isOn: state.bind({ Settings.dictation }, state.setDictation)) {
                     HStack(spacing: 12) {
                         PaneIcon(pane: .dictation, size: 34)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Включить диктовку").font(.system(size: 15, weight: .semibold))
-                            Text("Речь в текст на этом Mac, без интернета. Звук не сохраняется.")
-                                .font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
+                        Text("Включить диктовку").font(.system(size: 15, weight: .semibold))
                     }
                     .padding(.vertical, 2)
                 }
@@ -684,23 +721,22 @@ struct DictationPane: View {
                 if let error = dictation.downloadError { NoteText(note: .init(ok: false, text: error)) }
             } header: {
                 Text("Модель")
-            } footer: {
-                Footnote("\(selected.detail). Parakeet понимает 25 языков, среди них русский, украинский, английский, немецкий и польский; язык определяет сам. Модель скачивается один раз с Hugging Face, каждый файл проверяется по контрольной сумме.")
             }
             Section {
-                Picker("Клавиша", selection: state.bind({ Settings.dictationKey }, { Settings.dictationKey = $0 })) {
-                    ForEach(Dictation.Key.allCases) { Text($0.title).tag($0) }
+                LabeledContent("Сочетание клавиш") {
+                    ShortcutRecorder(shortcut: Settings.dictationShortcut, fallback: .dictation, modifierAlone: true,
+                                     onRecording: { dictation.paused = $0 }, onChange: state.setDictationShortcut)
+                }
+                if dictation.shortcutTaken {
+                    Label("Сочетание занято другой программой", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
                 }
                 Picker("Как включать", selection: state.bind({ Settings.dictationMode }, { Settings.dictationMode = $0 })) {
-                    ForEach(Dictation.Mode.allCases) { Text($0.title).tag($0) }
+                    ForEach(Dictation.Mode.allCases) { Text($0.title(for: Settings.dictationShortcut)).tag($0) }
                 }
                 Toggle("Звуки в начале и в конце", isOn: state.bind({ Settings.dictationSounds }, { Settings.dictationSounds = $0 }))
             } header: {
                 Text("Управление")
-            } footer: {
-                Footnote(Settings.dictationMode == .hold
-                         ? "Удерживайте клавишу и говорите. Отпустите: текст появится там, где курсор. Return тоже заканчивает, Escape отменяет."
-                         : "Нажмите клавишу дважды и говорите. Нажмите ещё раз, чтобы закончить. Return тоже заканчивает, Escape отменяет.")
             }
             Section {
                 Picker("Микрофон", selection: state.bind({ Settings.dictationMicrophone }, { Settings.dictationMicrophone = $0 })) {
@@ -712,10 +748,6 @@ struct DictationPane: View {
                        isOn: state.bind({ Settings.dictationSmartCase }, { Settings.dictationSmartCase = $0 }))
             } header: {
                 Text("Ввод")
-            } footer: {
-                Footnote(Settings.dictationPaste
-                         ? "Текст вставляется через буфер обмена, потом в буфере снова то, что было. В начале предложения первая буква становится заглавной, а сразу после слова добавляется пробел."
-                         : "Текст только копируется в буфер обмена: вставьте его сами, ⌘V.")
             }
             Section {
                 Picker("Выгружать модель из памяти", selection: state.bind({ Settings.dictationUnloadMinutes }, {
@@ -726,8 +758,6 @@ struct DictationPane: View {
                     Text("Через 1 час").tag(60)
                     Text("Никогда").tag(0)
                 }
-            } footer: {
-                Footnote("Загруженная модель занимает память. После выгрузки следующая диктовка начнётся чуть позже.")
             }
             Section {
                 LabeledContent("Микрофон") {
@@ -747,8 +777,6 @@ struct DictationPane: View {
                 }
             } header: {
                 Text("Разрешения")
-            } footer: {
-                Footnote("Универсальный доступ нужен, чтобы Nook замечал клавишу диктовки и вставлял текст. Модель: NVIDIA Parakeet TDT 0.6B v3, сборки moondream (Ultra, Redux) и FluidInference для Core ML, лицензия CC-BY-4.0.")
             }
         }
     }
@@ -792,7 +820,6 @@ struct AgentsPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .agents)
             Section {
                 LabeledContent("Claude Code и Codex") {
                     HStack(spacing: 10) {
@@ -803,8 +830,6 @@ struct AgentsPane: View {
                 if let note = state.agentsNote { NoteText(note: note) }
             } header: {
                 Text("Подключение")
-            } footer: {
-                Footnote("Nook добавляет свои хуки в ~/.claude/settings.json и ~/.codex/hooks.json, другие хуки не трогает. Уже запущенных агентов перезапустите.")
             }
             Section("Сессии") {
                 Toggle("Звук, когда агент закончил", isOn: state.bind({ Settings.agentDoneSound }, { Settings.agentDoneSound = $0 }))
@@ -824,8 +849,6 @@ struct AgentsPane: View {
                 if let note = state.shellNote { NoteText(note: note) }
             } header: {
                 Text("Терминал")
-            } footer: {
-                Footnote("Добавляет одну строку в ~/.zshrc (сначала делает копию). Остров появится, когда команда работала дольше 20 с.")
             }
         }
     }
@@ -836,42 +859,30 @@ struct PrivacyPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .privacy)
             Section {
-                permission("Универсальный доступ", use: "Автовставка из буфера, клавиши громкости и яркости",
-                           granted: state.accessibility, open: state.askAccessibility)
-                permission("Полный доступ к диску", use: "Уведомления и «Не беспокоить» в вырезе",
-                           granted: state.fullDiskAccess, open: state.openFullDiskAccess)
+                permission("Универсальный доступ", granted: state.accessibility, open: state.askAccessibility)
+                permission("Полный доступ к диску", granted: state.fullDiskAccess, open: state.openFullDiskAccess)
             } header: {
                 Text("Разрешения macOS")
-            } footer: {
-                Footnote("В Системных настройках Nook включён, а здесь «Нет доступа»? Выключите Nook в списке и включите снова. Так бывает после того, как у Nook сменилась подпись.")
             }
             Section {
                 Toggle("Скрывать Nook на скриншотах и при показе экрана",
                        isOn: state.bind({ Settings.hideFromCapture }, state.setHideFromCapture))
-            } footer: {
-                Footnote("Записи экрана и созвоны не увидят панель и острова.")
             }
             Section {
                 LabeledContent("Данные Nook") {
                     Button("Показать в Finder") { state.showData() }
                 }
-            } footer: {
-                Footnote("Всё хранится только на этом Mac, в ~/Library/Application Support/Nook, и доступно только вашей учётной записи. В сеть Nook выходит только за погодой (Open-Meteo), обновлениями (GitHub) и моделью для диктовки, один раз, когда вы её скачиваете (Hugging Face). Звук диктовки остаётся на Mac.")
             }
         }
     }
 
-    private func permission(_ title: String, use: String, granted: Bool, open: @escaping () -> Void) -> some View {
-        LabeledContent {
+    private func permission(_ title: String, granted: Bool, open: @escaping () -> Void) -> some View {
+        LabeledContent(title) {
             HStack(spacing: 10) {
                 StatusText(ok: granted, yes: "Разрешён", no: "Нет доступа")
                 if !granted { Button("Открыть…", action: open) }
             }
-        } label: {
-            Text(title)
-            Text(use)
         }
     }
 }
@@ -905,8 +916,6 @@ struct UpdatesPane: View {
             }
             Section {
                 Toggle("Обновлять автоматически", isOn: state.bind({ Settings.autoUpdate }, { Settings.autoUpdate = $0 }))
-            } footer: {
-                Footnote("Раз в 6 часов Nook смотрит новый релиз на GitHub. Новая версия ставится, только если её подписал автор Nook, и только пока панель закрыта. Потом Nook перезапускается сам.")
             }
             if let signature = state.signature {
                 Section {
@@ -918,8 +927,6 @@ struct UpdatesPane: View {
                     }
                 } header: {
                     Text("Эта копия")
-                } footer: {
-                    Footnote(signature.explanation)
                 }
             }
             Section {
@@ -994,7 +1001,7 @@ struct ThanksPane: View {
                 VStack(spacing: 10) {
                     Badge(symbol: "heart.fill", colors: [Palette.pink, Palette.violet], size: 50)
                     Text("Сказать спасибо").font(.system(size: 17, weight: .semibold))
-                    Text("Nook бесплатный и с открытым кодом. Если он экономит вам время, можно поблагодарить автора переводом в USDT. Любая сумма помогает делать Nook лучше.")
+                    Text("Nook бесплатный. Если он вам помогает, можно поблагодарить автора в USDT.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1021,7 +1028,7 @@ struct ThanksPane: View {
                         Button(action: copy) {
                             Label(copied ? "Скопировано" : "Скопировать адрес", systemImage: copied ? "checkmark" : "doc.on.doc")
                         }
-                        Label("Отправляйте только USDT и только через сеть \(wallet.network). Монеты из другой сети пропадут. Меньше 0.01 USDT не зачисляется.",
+                        Label("Только USDT и только через сеть \(wallet.network), иначе перевод пропадёт.",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(.system(size: 11.5))
                             .foregroundStyle(.orange)
@@ -1029,8 +1036,6 @@ struct ThanksPane: View {
                     }
                 }
                 .padding(.vertical, 6)
-            } footer: {
-                Footnote("После вставки сверьте начало и конец адреса.")
             }
             Section("Ещё можно помочь") {
                 LabeledContent("Звезда на GitHub") {

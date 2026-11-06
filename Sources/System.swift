@@ -13,25 +13,42 @@ enum HotKey {
     static let shift = UInt32(shiftKey)
 
     private static var handlers: [UInt32: () -> Void] = [:]
-    private static var refs: [EventHotKeyRef] = []
+    private static var releases: [UInt32: () -> Void] = [:]
+    private static var refs: [UInt32: EventHotKeyRef] = [:]
     private static var installed = false
 
-    static func register(id: UInt32, keyCode: UInt32, modifiers: UInt32, _ handler: @escaping () -> Void) {
+    /// False when the combination is taken (another app registered it first).
+    /// `onRelease` runs when the key comes up again (dictation: hold to talk).
+    @discardableResult
+    static func register(id: UInt32, keyCode: UInt32, modifiers: UInt32, onRelease: (() -> Void)? = nil,
+                         _ handler: @escaping () -> Void) -> Bool {
         if !installed {
             installed = true
-            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            var specs = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                         EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
             InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
                 var hotKey = EventHotKeyID()
                 GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                                   nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKey)
-                DispatchQueue.main.async { HotKey.handlers[hotKey.id]?() }
+                let released = GetEventKind(event) == UInt32(kEventHotKeyReleased)
+                DispatchQueue.main.async { (released ? HotKey.releases : HotKey.handlers)[hotKey.id]?() }
                 return noErr
-            }, 1, &spec, nil, nil)
+            }, specs.count, &specs, nil, nil)
         }
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(keyCode, modifiers, EventHotKeyID(signature: OSType(0x4E4F_4F4B), id: id),
                                          GetApplicationEventTarget(), 0, &ref)
-        if status == noErr, let ref { refs.append(ref); handlers[id] = handler }
+        guard status == noErr, let ref else { return false }
+        refs[id] = ref
+        handlers[id] = handler
+        releases[id] = onRelease
+        return true
+    }
+
+    static func unregister(id: UInt32) {
+        if let ref = refs.removeValue(forKey: id) { UnregisterEventHotKey(ref) }
+        handlers[id] = nil
+        releases[id] = nil
     }
 }
 

@@ -10,9 +10,28 @@ extension Settings {
         get { defaults.bool(forKey: "dictation") }
         set { defaults.set(newValue, forKey: "dictation") }
     }
-    static var dictationKey: Dictation.Key {
-        get { Dictation.Key(rawValue: defaults.string(forKey: "dictationKey") ?? "") ?? .rightOption }
-        set { defaults.set(newValue.rawValue, forKey: "dictationKey") }
+    /// One modifier key alone (watched by an event tap) or a combination / F-key (a Carbon hot key).
+    static var dictationShortcut: Shortcut {
+        get {
+            if let code = defaults.object(forKey: "dictationKeyCode") as? Int,
+               let modifiers = defaults.object(forKey: "dictationModifiers") as? Int {
+                return Shortcut(keyCode: UInt32(code), modifiers: UInt32(modifiers))
+            }
+            // The first version stored one of five presets by name.
+            let code: UInt32? = switch defaults.string(forKey: "dictationKey") {
+            case "rightCommand": 54
+            case "rightControl": 62
+            case "rightShift": 60
+            case "fn": 63
+            default: nil
+            }
+            return code.map { Shortcut(keyCode: $0, modifiers: 0) } ?? .dictation
+        }
+        set {
+            defaults.set(Int(newValue.keyCode), forKey: "dictationKeyCode")
+            defaults.set(Int(newValue.modifiers), forKey: "dictationModifiers")
+            defaults.removeObject(forKey: "dictationKey")
+        }
     }
     static var dictationMode: Dictation.Mode {
         get { Dictation.Mode(rawValue: defaults.string(forKey: "dictationMode") ?? "") ?? .hold }
@@ -53,51 +72,14 @@ extension Settings {
 final class Dictation: ObservableObject {
     enum Phase: Equatable { case idle, recording, transcribing }
 
-    /// Keys that are rarely pressed alone: a held right-hand modifier.
-    enum Key: String, CaseIterable, Identifiable {
-        case rightOption, rightCommand, rightControl, rightShift, fn
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .rightOption: "Правый ⌥ Option"
-            case .rightCommand: "Правый ⌘ Command"
-            case .rightControl: "Правый ⌃ Control"
-            case .rightShift: "Правый ⇧ Shift"
-            case .fn: "fn (🌐)"
-            }
-        }
-
-        var keyCode: Int64 {
-            switch self {
-            case .rightOption: 61
-            case .rightCommand: 54
-            case .rightControl: 62
-            case .rightShift: 60
-            case .fn: 63
-            }
-        }
-
-        /// The device-dependent flag bit of this very key (NX_DEVICER…KEYMASK), set while it is down.
-        var mask: UInt64 {
-            switch self {
-            case .rightOption: 0x40
-            case .rightCommand: 0x10
-            case .rightControl: 0x2000
-            case .rightShift: 0x04
-            case .fn: CGEventFlags.maskSecondaryFn.rawValue
-            }
-        }
-    }
-
     enum Mode: String, CaseIterable, Identifiable {
         case hold, toggle
         var id: String { rawValue }
-        var title: String {
+        /// A modifier alone starts on a double tap (a single tap happens by accident); a combination on one press.
+        func title(for shortcut: Shortcut) -> String {
             switch self {
             case .hold: "Удерживать, чтобы говорить"
-            case .toggle: "Двойное нажатие — начать"
+            case .toggle: shortcut.isModifierOnly ? "Двойное нажатие — начать" : "Нажатие — начать и закончить"
             }
         }
     }
@@ -114,6 +96,10 @@ final class Dictation: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published private(set) var download: Download?
     @Published private(set) var downloadError: String?
+    /// The recorded combination is held by another app.
+    @Published private(set) var shortcutTaken = false
+    /// While Settings records a new shortcut: the old one does nothing.
+    var paused = false { didSet { apply() } }
     /// Bumped when a model is installed or deleted, so views read `isInstalled` again.
     @Published private(set) var installs = 0
     /// The pasted text sits in the clipboard until the previous content is put back.
@@ -154,7 +140,17 @@ final class Dictation: ObservableObject {
 
     /// After a settings change: watch the key or stop watching, drop the model when dictation is off.
     func apply() {
-        if Settings.dictation && AXIsProcessTrusted() { installWatch() } else { removeWatch() }
+        let on = Settings.dictation && !paused
+        let shortcut = Settings.dictationShortcut
+        if on && shortcut.isModifierOnly && AXIsProcessTrusted() { installWatch() } else { removeWatch() }
+        HotKey.unregister(id: 3)
+        comboDown = false
+        var taken = false
+        if on && !shortcut.isModifierOnly {
+            taken = !HotKey.register(id: 3, keyCode: shortcut.keyCode, modifiers: shortcut.modifiers,
+                                     onRelease: { [weak self] in self?.comboReleased() }) { [weak self] in self?.comboPressed() }
+        }
+        if shortcutTaken != taken { shortcutTaken = taken }
         if !Settings.dictation {
             cancel()
             unload()
@@ -201,9 +197,10 @@ final class Dictation: ObservableObject {
     }
 
     private func handle(_ type: CGEventType, _ event: CGEvent) {
-        let key = Settings.dictationKey
-        if type == .flagsChanged, event.getIntegerValueField(.keyboardEventKeycode) == key.keyCode {
-            if event.flags.rawValue & key.mask != 0 { pressed() } else { released() }
+        let shortcut = Settings.dictationShortcut
+        guard let mask = shortcut.modifierMask else { return }
+        if type == .flagsChanged, event.getIntegerValueField(.keyboardEventKeycode) == Int64(shortcut.keyCode) {
+            if event.flags.rawValue & mask != 0 { pressed() } else { released() }
         } else if keyDownAt != nil {
             // ⌥ + a letter, or another modifier with it: a shortcut, not dictation (⌥L is "@" on a German
             // keyboard). Also after a slow start: the recording that began is dropped.
@@ -242,6 +239,23 @@ final class Dictation: ObservableObject {
                 lastTap = Date()
             }
         }
+    }
+
+    /// A combination or F-key: deliberate, so it starts at once (no 0.25 s wait as for a modifier alone).
+    private var comboDown = false
+
+    private func comboPressed() {
+        guard !comboDown else { return }
+        comboDown = true
+        switch Settings.dictationMode {
+        case .hold: if phase == .idle { begin() }
+        case .toggle: phase == .recording ? finish() : begin()
+        }
+    }
+
+    private func comboReleased() {
+        comboDown = false
+        if Settings.dictationMode == .hold && phase == .recording { finish() }
     }
 
     /// Return finishes and Escape cancels while recording; both are kept from the app in front.
@@ -613,9 +627,10 @@ final class Dictation: ObservableObject {
 struct LevelMeter: NSViewRepresentable {
     let dictation: Dictation
     var color: NSColor
+    var bars = 7
 
     func makeNSView(context: Context) -> Host {
-        let host = Host(color: color)
+        let host = Host(color: color, bars: bars)
         dictation.onLevel = { [weak host] level in host?.push(level) }
         return host
     }
@@ -624,10 +639,11 @@ struct LevelMeter: NSViewRepresentable {
 
     final class Host: NSView {
         private var bars: [CALayer] = []
-        private var history = [Float](repeating: 0, count: 5)
+        private var history: [Float]
 
-        init(color: NSColor) {
-            super.init(frame: NSRect(x: 0, y: 0, width: 22, height: 14))
+        init(color: NSColor, bars count: Int) {
+            history = [Float](repeating: 0, count: count)
+            super.init(frame: NSRect(x: 0, y: 0, width: 34, height: 16))
             wantsLayer = true
             for _ in history {
                 let bar = CALayer()

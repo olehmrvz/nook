@@ -52,6 +52,9 @@ for the terminal tab. Everything else usually scattered around the screen lives 
 - ⌨︎ Keyboard lock for 30 seconds to wipe it clean. The trackpad keeps working.
 - Islands: notifications, calls, AirPods, downloads, long terminal commands.
 - Volume, brightness and Do Not Disturb shown in the notch instead of the system HUD.
+- Search from the notch (⌥Space or your own shortcut): apps, System Settings panes and Nook's commands, also typed in
+  the wrong keyboard layout; it opens on the display you work on.
+- Choose which tabs and buttons the panel header shows.
 - Dictation: hold right ⌥ (or another key), speak, let go — the text appears where the cursor is. Recognition runs
   on this Mac (Parakeet, 25 languages); the model (222 or 632 MB) downloads once. Credits: [NOTICE.md](NOTICE.md).
 - Weather, battery, choice of display for the notch.
