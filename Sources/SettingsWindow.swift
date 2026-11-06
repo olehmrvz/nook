@@ -1084,7 +1084,8 @@ struct DictationPane: View {
                 Picker("Как включать", selection: state.bind({ Settings.dictationMode }, { Settings.dictationMode = $0 })) {
                     ForEach(Dictation.Mode.allCases) { Text($0.title(for: Settings.dictationShortcut)).tag($0) }
                 }
-                Toggle("Звуки в начале и в конце", isOn: state.bind({ Settings.dictationSounds }, { Settings.dictationSounds = $0 }))
+                SoundPicker(title: "Звук в начале", sound: state.bind({ Settings.dictationStartSound }, { Settings.dictationStartSound = $0 }))
+                SoundPicker(title: "Звук в конце", sound: state.bind({ Settings.dictationEndSound }, { Settings.dictationEndSound = $0 }))
             } header: {
                 Text("Управление")
             }
@@ -1161,6 +1162,20 @@ struct DictationPane: View {
 
     private static func size(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// A system sound or none; picking one plays it.
+struct SoundPicker: View {
+    let title: LocalizedStringKey
+    @Binding var sound: String
+
+    var body: some View {
+        Picker(title, selection: Binding(get: { sound }, set: { sound = $0; Dictation.play($0) })) {
+            Text("Без звука").tag("")
+            Divider()
+            ForEach(Dictation.sounds, id: \.self) { Text($0).tag($0) }
+        }
     }
 }
 

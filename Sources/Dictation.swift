@@ -41,10 +41,16 @@ extension Settings {
         get { ParakeetModel(rawValue: defaults.string(forKey: "dictationModel") ?? "") ?? .ultra }
         set { defaults.set(newValue.rawValue, forKey: "dictationModel") }
     }
-    static var dictationSounds: Bool {
-        get { defaults.object(forKey: "dictationSounds") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "dictationSounds") }
+    /// A system sound by name (`/System/Library/Sounds`), "" for none. The first version had one switch for both.
+    static var dictationStartSound: String {
+        get { defaults.string(forKey: "dictationStartSound") ?? (oldSoundsSwitch ? "Tink" : "") }
+        set { defaults.set(newValue, forKey: "dictationStartSound") }
     }
+    static var dictationEndSound: String {
+        get { defaults.string(forKey: "dictationEndSound") ?? (oldSoundsSwitch ? "Pop" : "") }
+        set { defaults.set(newValue, forKey: "dictationEndSound") }
+    }
+    private static var oldSoundsSwitch: Bool { defaults.object(forKey: "dictationSounds") as? Bool ?? true }
     /// Insert into the app in front; off: only copy the text.
     static var dictationPaste: Bool {
         get { defaults.object(forKey: "dictationPaste") as? Bool ?? true }
@@ -325,7 +331,7 @@ final class Dictation: ObservableObject {
         }
         phase = .recording
         startedAt = Date()
-        if Settings.dictationSounds { NSSound(named: "Tink")?.play() }
+        Self.play(Settings.dictationStartSound)
         installKeys()
         limit = Timer.scheduledTimer(withTimeInterval: Self.maxSeconds, repeats: false) { [weak self] _ in self?.finish() }
         // Loads while the person speaks: the first words are not waiting for the model.
@@ -339,7 +345,7 @@ final class Dictation: ObservableObject {
         lock.withLock { samples = [] }
         guard audio.count > ParakeetEngine.sampleRate / 3 else { phase = .idle; return }
         phase = .transcribing
-        if Settings.dictationSounds { NSSound(named: "Pop")?.play() }
+        Self.play(Settings.dictationEndSound)
         let model = Settings.dictationModel
         let target = self.target
         queue.async { [weak self] in
@@ -564,6 +570,21 @@ final class Dictation: ObservableObject {
             try? FileManager.default.removeItem(at: model.directory)
             DispatchQueue.main.async { self?.installs += 1 }
         }
+    }
+
+    // MARK: Sounds
+
+    /// The system's alert sounds, by name.
+    static let sounds: [String] = ((try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? [])
+        .filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
+
+    private static var playing: NSSound?
+
+    /// One sound at a time: picking sounds one after another in Settings does not pile them up.
+    static func play(_ name: String) {
+        playing?.stop()
+        playing = name.isEmpty ? nil : NSSound(named: NSSound.Name(name))
+        playing?.play()
     }
 
     // MARK: Microphones
