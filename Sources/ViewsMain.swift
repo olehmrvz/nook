@@ -387,7 +387,7 @@ struct CollapsedView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 10)
             case .keyLock: Image(systemName: "keyboard").foregroundStyle(Palette.orange)
-            case .permission: Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
+            case .permission: AgentCursor(projects: model.agents.permissions.prefix(1).map(\.project), blinking: false)
             case .timer: Image(systemName: "timer").foregroundStyle(model.timer.phase.color)
             case .download: Image(systemName: "arrow.down.circle.fill").foregroundStyle(Palette.blue)
             case .agents:
@@ -395,7 +395,8 @@ struct CollapsedView: View {
                 if model.nowPlaying.isPlaying {
                     Artwork(image: model.nowPlaying.artwork, size: 22, radius: 6)
                 } else {
-                    Image(systemName: "sparkles").foregroundStyle(Palette.claude.opacity(0.85))
+                    let working = model.agents.workingProjects
+                    AgentCursor(projects: working.projects, beat: AnyHashable(working.last))
                 }
             case .music: Artwork(image: model.nowPlaying.artwork, size: 22, radius: 6)
             case .prompter, nil: EmptyView()

@@ -160,6 +160,84 @@ struct Spinner: View {
     }
 }
 
+/// The project's first letter in a terminal cell (Figma «3+5 · А · Курсор на букве»). While the agent works, the
+/// cursor, a block in the project's colour, blinks on the letter as in a terminal; each new action restarts the
+/// blink with a flash. Not blinking (a request waits for you): the block stays lit. Two projects at work: two
+/// letters, the cursor on the last one (it acted last).
+struct AgentCursor: View {
+    var projects: [String]
+    var blinking = true
+    /// Changes with each action of the agent the cursor is on.
+    var beat: AnyHashable = 0
+
+    private static let cell = CGSize(width: 11, height: 15)
+    private static let gap: CGFloat = 1.5
+    /// No orange, green or red: those are "waiting", "done" and errors in the notch.
+    private static let colors = [Palette.violet, Palette.mint, Palette.pink, Palette.blue, Palette.cyan, Palette.yellow,
+                                 Palette.salmon]
+
+    static func letter(_ project: String) -> String {
+        project.first { $0.isLetter || $0.isNumber }.map { String(String($0).uppercased().prefix(1)) } ?? "•"
+    }
+
+    /// The same colour for a project every launch (`String.hashValue` is not stable).
+    static func color(_ project: String) -> Color {
+        let hash = project.unicodeScalars.reduce(UInt32(5381)) { ($0 &* 33) &+ $1.value }
+        return colors[Int(hash % UInt32(colors.count))]
+    }
+
+    var body: some View {
+        let cells = projects.suffix(2).map { (Self.letter($0), NSColor(Self.color($0))) }
+        LayerLoop(key: [AnyHashable(projects), AnyHashable(blinking), beat]) { root, size, animated in
+            let scale = max(root.contentsScale, 2)
+            for (i, (letter, color)) in cells.enumerated() {
+                let frame = CGRect(x: CGFloat(i) * (Self.cell.width + Self.gap), y: (size.height - Self.cell.height) / 2,
+                                   width: Self.cell.width, height: Self.cell.height)
+                let active = i == cells.count - 1
+                // What shows while the block is off: the letter in its colour.
+                root.addSublayer(Self.text(letter, color: active ? color : color.withAlphaComponent(0.55), in: frame, scale: scale))
+                guard active else { continue }
+                let cursor = CALayer()
+                cursor.frame = frame
+                cursor.backgroundColor = color.cgColor
+                cursor.cornerRadius = 2
+                cursor.addSublayer(Self.text(letter, color: .black, in: cursor.bounds, scale: scale))
+                if animated {
+                    // On 0.5 s, off 0.5 s, with soft edges.
+                    if blinking { cursor.add(LayerLoop.loop("opacity", period: 1) { 0.5 + 0.5 * tanh(8 * cos(2 * .pi * $0)) }, forKey: "blink") }
+                    cursor.shadowColor = color.cgColor
+                    cursor.shadowRadius = 4
+                    cursor.shadowOffset = .zero
+                    let flash = CABasicAnimation(keyPath: "shadowOpacity")
+                    flash.fromValue = 0.9
+                    flash.toValue = 0
+                    flash.duration = 0.6
+                    cursor.add(flash, forKey: "flash")
+                }
+                root.addSublayer(cursor)
+            }
+        }
+        .frame(width: CGFloat(cells.count) * Self.cell.width + CGFloat(max(0, cells.count - 1)) * Self.gap,
+               height: Self.cell.height)
+    }
+
+    /// CATextLayer draws from its top: the line is placed so that the capital sits in the middle of the cell.
+    private static func text(_ letter: String, color: NSColor, in frame: CGRect, scale: CGFloat) -> CATextLayer {
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+        let layer = CATextLayer()
+        layer.string = letter
+        layer.font = font
+        layer.fontSize = font.pointSize
+        layer.foregroundColor = color.cgColor
+        layer.alignmentMode = .center
+        layer.contentsScale = scale
+        let baseline = frame.minY + (frame.height - font.capHeight) / 2
+        layer.frame = CGRect(x: frame.minX, y: baseline + font.descender, width: frame.width,
+                             height: ceil(font.ascender - font.descender))
+        return layer
+    }
+}
+
 struct Artwork: View {
     var image: NSImage?
     var size: CGFloat

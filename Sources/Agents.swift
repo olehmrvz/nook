@@ -82,6 +82,14 @@ final class AgentHub: ObservableObject {
         return nil
     }
 
+    /// The collapsed notch's letters: projects at work, at most two, the one that acted last at the end.
+    var workingProjects: (projects: [String], last: Date?) {
+        var seen = Set<String>()
+        let latest = sessions.filter { $0.status == .working }.sorted { $0.updated > $1.updated }
+            .filter { seen.insert($0.project).inserted }.prefix(2)
+        return (latest.reversed().map(\.project), latest.first?.updated)
+    }
+
     func start(onPermission: @escaping () -> Void, onDone: @escaping (Island) -> Void) {
         self.onPermission = onPermission
         self.onDone = onDone

@@ -38,6 +38,8 @@ and speech recognition runs on your Mac.
 ### Agents
 
 - Claude Code and Codex sessions: current action, your request, branch, duration, edited files.
+- The closed notch shows the project's first letter under a blinking terminal cursor. The cursor stays lit while
+  a request waits for you.
 - Permission requests in the notch: Allow, Always, Deny or "in terminal". You see everything you approve,
   not only the description.
 - Agent questions with options and plan review: approve, approve with auto-accepted edits, or send back a note.
