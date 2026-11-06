@@ -656,8 +656,9 @@ struct PairsSection: View {
         Section {
             ForEach(rows.indices, id: \.self) { index in
                 HStack(spacing: 8) {
-                    TextField(first, text: binding(index, 0)).frame(width: 110)
-                    TextField(second, text: binding(index, 1)).font(.system(size: 12, design: .monospaced))
+                    TextField(first, text: binding(index, 0), prompt: Text(first)).labelsHidden().frame(width: 110)
+                    TextField(second, text: binding(index, 1), prompt: Text(second)).labelsHidden()
+                        .font(.system(size: 12, design: .monospaced))
                     Button { rows.remove(at: index); save(rows) } label: { Image(systemName: "minus.circle") }
                         .buttonStyle(.borderless)
                 }
@@ -691,7 +692,7 @@ struct LauncherItemsSection: View {
         let typed = Launcher.fold(filter)
         let items = launcher.everything.filter { typed.isEmpty || Launcher.fold($0.title).contains(typed) }
         Section {
-            TextField("Найти программу или команду", text: $filter)
+            TextField("Найти программу или команду", text: $filter, prompt: Text("Найти программу или команду")).labelsHidden()
             ForEach(items) { item in
                 HStack(spacing: 10) {
                     LaunchIcon(item: item, icon: launcher.icon(for: item), size: 20)
@@ -722,7 +723,8 @@ struct AliasField: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        TextField("псевдоним", text: $text)
+        TextField("псевдоним", text: $text, prompt: Text("псевдоним"))
+            .labelsHidden()
             .textFieldStyle(.roundedBorder)
             .frame(width: 96)
             .focused($focused)
