@@ -223,6 +223,7 @@ final class NotchModel: ObservableObject {
     let updater = Updater()
     let dictation = Dictation()
     let launcher = Launcher()
+    let snippets = Snippets()
     /// Opens the Settings window (the gear in the panel; a pane, or the last one), set by the app delegate.
     var onOpenSettings: ((SettingsPane?) -> Void)?
 
@@ -327,7 +328,7 @@ final class NotchModel: ObservableObject {
             // and dictation: what was said, or the clipboard waiting to come back after the paste.
             return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
                 && !self.caffeine.on && !self.timer.isRunning && !self.timer.isPaused && !self.keyboardLock.isLocked
-                && !self.dictation.isBusy
+                && !self.dictation.isBusy && !TextInsertion.restoring
         }
         updater.start()
         volume.onChange = { [weak self] level, muted in
@@ -349,6 +350,10 @@ final class NotchModel: ObservableObject {
             self?.present(Island(kind: .dictation(title: title, detail: detail, settings: settings), seconds: 4))
         }
         dictation.start()
+        snippets.clipboardHistory = { [weak self] in self?.clipboard.items.compactMap(\.text) ?? [] }
+        snippets.start()
+        launcher.snippets = { [weak self] in self?.snippets.all ?? [] }
+        launcher.insertSnippet = { [weak self] snippet in self?.snippets.insert(snippet) }
         launcher.run = { [weak self] command in self?.run(command) }
         launcher.prepare()
         launcher.applyHotkeys()

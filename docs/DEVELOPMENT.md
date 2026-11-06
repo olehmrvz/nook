@@ -96,6 +96,12 @@ terminal, not from a process an agent started (an agent must not approve its own
   apply. AX off the main thread on the front app's focused window: visible frame of its display (Dock, menu bar,
   notch excluded), edges rounded separately, size → position → size. Restore keeps the frame from before the first
   command of a chain; a window moved by hand (> 2 pt) starts a new chain. Minimized and full-screen windows are skipped.
+- **Snippets:** `Sources/Snippets.swift`. One `.md` per snippet in `Snippets/` (front matter: name, keyword,
+  enabled). A listen-only key tap (only with Settings → Сниппеты on and Accessibility) keeps ≤ 256 typed characters
+  in memory; shortcuts, navigation keys, an app switch, Secure Event Input or 15 s of quiet clear it. The longest
+  keyword at the end fires on the next main-loop turn: backspaces, then the text (`TextInsertion`: typed as key
+  events up to 100 characters on one line, else pasted with the clipboard restored). Nook's own events carry
+  `eventSourceUserData = TextInsertion.tag` and are ignored by the tap.
 - **Header:** Settings → Панель hides tabs and buttons (`Settings.headerHidden`); the gear always stays. With three
   tabs or fewer on the left, all of them show their names.
 - **Dictation:** `Sources/Dictation.swift` (key, audio, text) and `Sources/Parakeet.swift` (models, download,

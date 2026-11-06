@@ -7,11 +7,11 @@ import SwiftUI
 
 /// Sections of the Settings window, in sidebar order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, panel, launcher, notch, notifications, dictation, agents, privacy, updates, thanks
+    case general, panel, launcher, snippets, notch, notifications, dictation, agents, privacy, updates, thanks
 
     var id: String { rawValue }
     /// The first group in the sidebar: what Nook does. The second one is about Nook itself.
-    static let settings: [SettingsPane] = [.general, .panel, .launcher, .notch, .notifications, .dictation, .agents, .privacy]
+    static let settings: [SettingsPane] = [.general, .panel, .launcher, .snippets, .notch, .notifications, .dictation, .agents, .privacy]
     static let about: [SettingsPane] = [.updates, .thanks]
 
     var title: String {
@@ -19,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "Основные"
         case .panel: "Панель"
         case .launcher: "Поиск"
+        case .snippets: "Сниппеты"
         case .notch: "Вырез"
         case .notifications: "Уведомления"
         case .dictation: "Диктовка"
@@ -34,6 +35,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .panel: "rectangle.3.group.fill"
         case .launcher: "magnifyingglass"
+        case .snippets: "text.quote"
         case .notch: "rectangle.topthird.inset.filled"
         case .notifications: "bell.badge.fill"
         case .dictation: "waveform"
@@ -49,6 +51,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: Color(hex: 0x8E8E93)
         case .panel: Palette.yellow
         case .launcher: Palette.cyan
+        case .snippets: Palette.green
         case .notch: Palette.orange
         case .notifications: Palette.red
         case .dictation: Palette.violet
@@ -447,6 +450,7 @@ struct SettingsView: View {
                 case .general: GeneralPane(state: state)
                 case .panel: PanelPane(state: state)
                 case .launcher: LauncherPane(state: state)
+                case .snippets: SnippetsPane(state: state, snippets: state.model.snippets)
                 case .notch: NotchPane(state: state)
                 case .notifications: NotificationsPane(state: state)
                 case .dictation: DictationPane(state: state, dictation: state.model.dictation)
@@ -675,6 +679,107 @@ struct AliasField: View {
             .onChange(of: alias) { _, new in if !focused { text = new } }
             .onSubmit { save(text) }
             .onChange(of: focused) { _, now in if !now { save(text) } }
+    }
+}
+
+struct SnippetsPane: View {
+    @ObservedObject var state: SettingsState
+    @ObservedObject var snippets: Snippets
+    @State private var editing: Snippet?
+    @State private var original: Snippet?
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Раскрывать ключевые слова в любой программе", isOn: state.bind({ Settings.snippets }, {
+                    Settings.snippets = $0
+                    if $0 && !AXIsProcessTrusted() { state.askAccessibility() }
+                    snippets.apply()
+                }))
+                if Settings.snippets && !state.accessibility {
+                    LabeledContent("Нужен Универсальный доступ") { Button("Открыть…") { state.askAccessibility() } }
+                }
+            }
+            if let draft = editing {
+                SnippetEditor(snippet: draft, isNew: original == nil) { saved in
+                    if let saved { snippets.save(saved, replacing: original) }
+                    editing = nil
+                    original = nil
+                }
+            } else {
+                Section {
+                    if snippets.all.isEmpty { Text("Пока нет сниппетов").foregroundStyle(.secondary) }
+                    ForEach(snippets.all) { snippet in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(snippet.name).lineLimit(1)
+                                Text(snippet.text.replacingOccurrences(of: "\n", with: " ⏎ "))
+                                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            if !snippet.keyword.isEmpty {
+                                Text(snippet.keyword).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+                            }
+                            Button("Изменить") { original = snippet; editing = snippet }
+                            Button { snippets.delete(snippet) } label: { Image(systemName: "trash") }
+                                .buttonStyle(.borderless).help("В корзину")
+                        }
+                        .opacity(snippet.enabled ? 1 : 0.5)
+                    }
+                    HStack {
+                        Button("Новый сниппет") {
+                            original = nil
+                            editing = Snippet(file: Snippet.folder.appendingPathComponent("new.md"), name: "", keyword: "", text: "")
+                        }
+                        Spacer()
+                        Button("Показать папку") {
+                            try? FileManager.default.createDirectory(at: Snippet.folder, withIntermediateDirectories: true)
+                            NSWorkspace.shared.activateFileViewerSelecting([Snippet.folder])
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear { snippets.load() }
+    }
+}
+
+struct SnippetEditor: View {
+    @State var snippet: Snippet
+    let isNew: Bool
+    /// nil: cancelled.
+    let done: (Snippet?) -> Void
+
+    private static let placeholders: [(String, String)] = [
+        ("Буфер обмена", "{clipboard}"), ("Дата", "{date}"), ("Время", "{time}"), ("Дата и время", "{datetime}"),
+        ("День недели", "{day}"), ("Дата в своём формате", "{date format=\"dd.MM.yyyy\"}"),
+        ("Время через 1 час", "{time offset=\"+1h\"}"), ("UUID", "{uuid}"), ("Место курсора", "{cursor}"),
+    ]
+
+    var body: some View {
+        Section {
+            TextField("Название", text: $snippet.name)
+            TextField("Ключевое слово, например ;sig", text: $snippet.keyword)
+            Toggle("Включён", isOn: $snippet.enabled)
+            TextEditor(text: $snippet.text)
+                .font(.system(size: 12.5, design: .monospaced))
+                .frame(minHeight: 120)
+            HStack {
+                Menu("Вставить…") {
+                    ForEach(Self.placeholders, id: \.1) { item in
+                        Button(item.0) { snippet.text += item.1 }
+                    }
+                }
+                .fixedSize()
+                Spacer()
+                Button("Отмена") { done(nil) }
+                Button(isNew ? "Создать" : "Сохранить") { done(snippet) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(snippet.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        } header: {
+            Text(isNew ? "Новый сниппет" : snippet.name)
+        }
     }
 }
 

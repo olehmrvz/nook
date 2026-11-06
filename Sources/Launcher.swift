@@ -145,6 +145,7 @@ struct LaunchItem: Identifiable, Equatable {
         /// A web page or a URL scheme: "github.com", Google, the dictionary.
         case link(URL, symbol: String)
         case window(WindowAction)
+        case snippet(Snippet)
     }
 
     /// Words to match: folded, with word starts and initials ("Visual Studio Code" → "vsc").
@@ -190,6 +191,9 @@ final class Launcher: ObservableObject {
 
     /// Runs a Nook command (set by the model).
     var run: ((NookCommand) -> Void)?
+    /// The person's snippets and how to type one into the app in front (set by the model).
+    var snippets: () -> [Snippet] = { [] }
+    var insertSnippet: ((Snippet) -> Void)?
     /// Item ids whose own shortcut another app holds.
     @Published private(set) var takenHotkeys: Set<String> = []
     private var hotkeyIDs: [UInt32] = []
@@ -330,6 +334,12 @@ final class Launcher: ObservableObject {
     private var pool: [LaunchItem] {
         (Settings.launcherApps ? apps : []) + (Settings.launcherSettings ? panes : [])
             + (Settings.launcherCommands ? commands : []) + (Settings.launcherWindows ? windows : [])
+            + snippets().filter(\.enabled).map { snippet in
+                LaunchItem(id: "snippet:\(snippet.file.lastPathComponent)", title: snippet.name,
+                           subtitle: snippet.keyword.isEmpty ? "Сниппет" : "Сниппет · \(snippet.keyword)",
+                           terms: [snippet.name, snippet.keyword].filter { !$0.isEmpty }.map(LaunchItem.Term.init),
+                           kind: .snippet(snippet))
+            }
     }
 
     func search() {
@@ -364,7 +374,7 @@ final class Launcher: ObservableObject {
                 guard let best else { return nil }
                 let kind: Int = switch item.kind {
                 case .app: 20
-                case .nook, .window: 10
+                case .nook, .window, .snippet: 10
                 case .setting, .answer, .link: 0
                 }
                 return (item, best + kind + boost(item.id))
@@ -458,6 +468,8 @@ final class Launcher: ObservableObject {
             run?(command)
         case .window(let action):
             WindowManager.shared.perform(action)
+        case .snippet(let snippet):
+            insertSnippet?(snippet)
         case .answer, .link:
             break
         }
@@ -621,7 +633,7 @@ struct LauncherTab: View {
         switch item.kind {
         case .app(let url): launcher.icons[url.path]
         case .setting: launcher.icons[Launcher.settingsApp]
-        case .nook, .answer, .link, .window: nil
+        case .nook, .answer, .link, .window, .snippet: nil
         }
     }
 
@@ -629,6 +641,7 @@ struct LauncherTab: View {
         guard items.indices.contains(launcher.selection) else { return "" }
         switch items[launcher.selection].kind {
         case .app: return "↩ открыть · ⌘↩ в Finder"
+        case .snippet: return "↩ вставить"
         case .answer(let answer): return answer.isError ? "" : "↩ скопировать · ⌘↩ считать дальше"
         default: return "↩ открыть"
         }
@@ -653,6 +666,12 @@ struct LauncherTab: View {
                 model.collapse()
                 model.show(.copied, for: 1.4)
             }
+            return
+        }
+        if case .snippet = item.kind {
+            // Into the app the search was opened from.
+            model.collapse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { launcher.open(item, reveal: false) }
             return
         }
         if case .window = item.kind {
@@ -724,6 +743,7 @@ struct LaunchIcon: View {
         case .nook(let command): tile(command.symbol, command.color)
         case .link(_, let symbol): tile(symbol, Palette.blue)
         case .window(let action): tile(action.symbol, Palette.cyan)
+        case .snippet: tile("text.quote", Palette.green)
         default:
             if let icon {
                 Image(nsImage: icon).resizable().frame(width: size, height: size)

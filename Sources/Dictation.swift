@@ -102,10 +102,8 @@ final class Dictation: ObservableObject {
     var paused = false { didSet { apply() } }
     /// Bumped when a model is installed or deleted, so views read `isInstalled` again.
     @Published private(set) var installs = 0
-    /// The pasted text sits in the clipboard until the previous content is put back.
-    private var restoring = false
     /// Recording, recognising or putting the clipboard back: no restart for an update now.
-    var isBusy: Bool { phase != .idle || restoring }
+    var isBusy: Bool { phase != .idle || TextInsertion.restoring }
 
     /// On the main thread: something to tell the person; `settings` adds a button to the Dictation settings.
     var onNotice: ((_ title: String, _ detail: String, _ settings: Bool) -> Void)?
@@ -434,7 +432,7 @@ final class Dictation: ObservableObject {
     // MARK: Text
 
     /// Through the clipboard and ⌘V (works in every app); the clipboard gets its content back afterwards.
-    /// Marked transient, so clipboard managers (Nook's history too) skip it.
+    /// Marked transient, so clipboard managers (Nook's history too) skip it (`TextInsertion`).
     private func insert(_ text: String, into target: NSRunningApplication?) {
         let board = NSPasteboard.general
         guard Settings.dictationPaste else {
@@ -443,35 +441,7 @@ final class Dictation: ObservableObject {
             onNotice?("Текст скопирован", "Вставьте его: ⌘V", false)
             return
         }
-        let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
-            let copy = NSPasteboardItem()
-            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
-            return copy
-        }
-        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
-        let item = NSPasteboardItem()
-        item.setString(text, forType: .string)
-        item.setData(Data(), forType: transient)
-        board.clearContents()
-        board.writeObjects([item])
-        let ours = board.changeCount
-        restoring = true
-        var delay = 0.0
-        if let target, !target.isTerminated, NSWorkspace.shared.frontmostApplication != target {
-            target.activate()
-            delay = 0.15
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            NotchModel.sendPaste()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self.restoring = false
-                // Copied something else meanwhile: keep that.
-                guard board.changeCount == ours else { return }
-                saved.forEach { $0.setData(Data(), forType: transient) }
-                board.clearContents()
-                if !saved.isEmpty { board.writeObjects(saved) }
-            }
-        }
+        TextInsertion.paste(text, into: target)
     }
 
     /// Up to three characters before the cursor in the focused text field (Accessibility); nil if unknown.
