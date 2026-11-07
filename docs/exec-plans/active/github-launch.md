@@ -33,7 +33,7 @@ then do everything at once.
 - [x] Promo icon → `promo/assets/icon.png` (1024 px from make-icon.sh), both promos rebuilt and checked (16:57).
 - [x] Idle CPU, panel open (item 7 in `redesign-implementation.md`): v60 shipped the glow static — commit "Glow: no
       breathing loop"; panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 % (installed 1.58). After v60 the breathing is
-      back in Core Animation (317cca6, on main; 0.4–1.1 % open, 0.5 % collapsed), not released yet. Item 7 stays open for
+      back in Core Animation (317cca6; 0.4–1.1 % open, 0.5 % collapsed), released in v66. Item 7 stays open for
       one case: a spike with the notch collapsed, not reproduced.
 - [x] Feature tree committed as cbfd1d3 (with the fix-bugs agent's clipboard tile and scroll-origin fixes).
 - [x] The user authorized the release ("подписывай и собирай"); installed 1.58 checked for idle CPU.
@@ -66,5 +66,6 @@ then do everything at once.
 
 ## Next concrete action
 
-Done. After v60: the Core Animation breathing glow (fix-bugs session) is committed on main; release it after the user
-checks the build.
+Done. v66 (Nook 1.66, 2026-11-07, USER: «выпускай релиз»): the Core Animation breathing glow and the review fixes;
+Developer ID, notarized and stapled (app and dmg), Gatekeeper accepts the app, `releases/latest/download/Nook.dmg`
+answers 200 with the published size.
