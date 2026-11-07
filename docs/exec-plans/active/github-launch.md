@@ -38,9 +38,8 @@ then do everything at once.
 - [x] Feature tree committed as cbfd1d3 (with the fix-bugs agent's clipboard tile and scroll-origin fixes).
 - [x] The user authorized the release ("подписывай и собирай"); installed 1.58 checked for idle CPU.
 - [x] Merged: main = develop = 5cae956 (feature cbfd1d3 + glow fix + README); main, develop and fix-bugs worktrees fast-forwarded.
-      The feature worktree stays at cbfd1d3 with uncommitted edits by the fix-bugs session: `Sources/Theme.swift` and
-      `CLAUDE.md` are identical to 317cca6, `redesign-implementation.md` is an older draft. Do not commit them: all of it
-      is on main. Discard them (with the user's OK) and fast-forward feature to main.
+      The feature worktree's uncommitted fix-bugs edits (identical to 317cca6, or an older plan draft) were discarded
+      with the user's OK and the worktree fast-forwarded to main (d9e1b42, 2026-11-07).
 - [x] Draft checked against the final code (changes feed, launcher card, AirPods drop added); icon → `docs/images/icon.png`.
 - [x] Screenshots of the real app (English UI via the app's own AppleLanguages, removed afterwards): demo
       PermissionRequest (hero), demo Stop (done drop), `--show launcher:disk util` and `450 + 20%`; window-only capture
