@@ -46,6 +46,10 @@ then do everything at once.
       PermissionRequest (hero), demo Stop (done drop), `--show launcher:disk util` and `450 + 20%`; window-only capture
       (`screencapture -l`) on a neutral wallpaper. The Agents tab and Home were left out: they show the user's real
       sessions, music and weather.
+- [x] USER (after launch): a full-width black band over the screenshots hid where the drop comes from. The captures
+      now sit on the top of a Mac screen: wallpaper up to the top edge, a menu bar with menus and status icons left and
+      right, a camera dot in the middle; the drop's ears meet the screen edge. Search and calculator canvases are
+      2040 px wide so the menu bar shows beside the wide panel. No full-width black band in README images.
 - [x] README and LICENSE (Graphyte Labs); SECURITY and the issue templates needed no change.
 - [x] `./release.sh` from the main checkout: v60 "Nook 1.60 — a new design", Nook.dmg + Nook.zip, notes rewritten for
       users (SHA-256 kept).
