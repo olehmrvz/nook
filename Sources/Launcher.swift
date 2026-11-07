@@ -1159,7 +1159,9 @@ struct LaunchHero: View {
             let times = Int(usage[0])
             HStack(spacing: 8) {
                 Caps(text: L("Открывали"), color: faint)
-                Text(Format.count(times, "раз", "раза", "раз") + " · " + Format.when(Date(timeIntervalSince1970: usage[1])))
+                // "раз" is both the one and the many form, so English could not tell "1 time" from "5 times".
+                Text((times == 1 ? L("1 раз") : Format.count(times, "раз", "раза", "раз")) + " · "
+                     + Format.when(Date(timeIntervalSince1970: usage[1])))
                     .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
             }
         }

@@ -29,6 +29,24 @@ def literals(src):
             j = src.find('\n', i); i = n if j < 0 else j; continue
         if src.startswith('/*', i):
             j = src.find('*/', i); line += src[i:j].count('\n'); i = j + 2; continue
+        if c == '#':
+            # A raw string, #"…"# or ##"…"## (also multi-line): quotes and backslashes inside are plain text.
+            j = i
+            while j < n and src[j] == '#':
+                j += 1
+            if j < n and src[j] == '"':
+                multi = src.startswith('"""', j)
+                close = ('"""' if multi else '"') + src[i:j]
+                begin = j + (3 if multi else 1)
+                end = src.find(close, begin)
+                end = n if end < 0 else end
+                body, start, first = src[begin:end], i, line
+                line += body.count('\n')
+                i = end + len(close)
+                # key() resolves escapes: double the backslashes so it reads the raw text back as it is.
+                yield start, i, first, body.replace('\\', '\\\\')
+                continue
+            i = j; continue
         if c != '"':
             i += 1; continue
         start, first = i, line

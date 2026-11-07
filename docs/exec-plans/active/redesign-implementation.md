@@ -41,7 +41,9 @@ Implement in SwiftUI only what the user chose (USER, 2026-11-07: "должно �
        band beside the camera carries who / when and state; halo around the icon; merged drop for two agents;
        hover grows a step; click opens the panel tab; queue «+N»; unanswered big drop collapses to the yellow letter.
 - [x] 7. Settings window in the common language (USER, 2026-11-07: «дизайн настроек подтяни, чтоб было лучше»).
-- [ ] 8. Verification: build, every tab via `--show`, islands via agent-hook events, idle CPU, localization check.
+- [x] 8. Verification: build (Developer ID, install.sh and release.sh), tabs via `--show`, request and done drops via
+       agent-hook events (README screenshots), idle CPU (item 7 below), localization check. Not verified live: a real
+       AirPods switch and «Вернуть на Mac», the launcher's empty field and AI answer, hover growth of drops.
 
 ## Verification log
 
@@ -178,5 +180,6 @@ Launcher B:
 
 ## Next concrete action
 
-The user checks the build: limits details in the Agents tab, a request drop, Settings; re-enables Accessibility for
-dictation. Nothing is committed.
+Done and released: the redesign is commit cbfd1d3, merged to main with the glow fix (07dfdea) and shipped as v60
+(Nook 1.60, notarized, 2026-11-07; see github-launch.md). Next: the fix-bugs agent's Core Animation breathing glow
+(uncommitted in the feature worktree) for the next release after the user checks it; the not-verified items in step 8.

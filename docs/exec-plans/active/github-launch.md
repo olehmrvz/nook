@@ -1,6 +1,7 @@
 # GitHub launch: the new design, one notarized release, Graphyte Labs
 
-Started 2026-11-07 (branch `olehmrvz/video`, behind `main`; fast-forward possible). Nothing done on GitHub yet.
+Started and finished 2026-11-07 (branch `olehmrvz/video`). Released as v60; the GitHub page, LICENSE and release
+files are updated — every step below is done.
 
 ## Objective
 

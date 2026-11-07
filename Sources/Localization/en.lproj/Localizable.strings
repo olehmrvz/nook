@@ -1478,6 +1478,7 @@
 "Искать в Google" = "Search Google";
 "раз" = "times";
 "раза" = "times";
+"1 раз" = "once";
 "встроенная в macOS" = "built into macOS";
 /* Drops.swift, Devices.swift: headphones that moved to another device */
 "Вернуть на Mac" = "Back to Mac";
