@@ -155,15 +155,30 @@ Launcher B:
    width), nothing found («qzxwvj»: violet «Спросить AI» card + Google / Словарь + what was searched). Not seen:
    the empty field (needs the keyboard) and the assistant's answer (needs Tab). New tile kind `.accent(Color)`.
    Not done from A «Группы»: group captions in the list (the user liked them too) — offer as a next step.
-7. [x] FIXED 2026-11-07 (video session): `AmbientGlow`'s repeatForever "breathe" removed — the only endless SwiftUI
-   animation (high.sample: RepeatAnimation + CPU radial gradients + several tab bodies per frame; bare repro 5–10 % while
-   open vs 0.1–2 %). Installed 1.58: panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 %. Was: idle CPU spikes: twice measured 23–25 % for minutes (rule: ≤ 0.5 %). Samples: the main thread busy
-   in NSHostingView.layout with a live SwiftUI ScrollView (`HostingScrollView.updateValue`) and running
-   animations while the notch was collapsed; once with the panel open on the Shelf. Not reproduced after a
-   restart: fresh 0.3–0.6 % after Агенты, Поиск, калькулятор, Settings; opening the Shelf gives ~30 s of 2–4 %
-   (once 40 %) that decays. Suspect: a tab's view left alive after its removal transition, animating. A watcher
-   samples automatically after a minute above 5 % (scratchpad sustained.sample). Do not merge before this is
-   understood.
+7. [ ] OPEN (one case left, watch for it) — idle CPU spikes: twice 23–25 % for minutes (rule ≤ 0.5 %).
+   - Fixed, panel open: `AmbientGlow` breathed with a SwiftUI `withAnimation(.repeatForever)`, so SwiftUI
+     re-rendered and laid out the whole panel on every display frame while it was open (`NSHostingView.layout` +
+     `HostingScrollView.updateValue`: each frame re-lays out the open tab's ScrollView). Build 57, panel open and
+     untouched: 13–19 % on Главная / Полка / Поиск / Агенты, 0.9–3.3 % without the breathing. v60 (video session)
+     shipped the glow static: 1.1–1.8 % open, 0.2–0.4 % collapsed. After v60 (fix-bugs session) the breathing is
+     back in Core Animation: `AmbientGlow` is an `NSViewRepresentable` — radial `CAGradientLayer` spots, the
+     breathing (0.97 ↔ 1.05, 5 s) as a `transform.scale` animation, the black band as a gradient mask, 0.8 s
+     cross-fade when the glows change, paused by `\.motionPaused` / Reduce Motion; 1.3–1.7 % open, 0.5 % collapsed.
+     Colours match the SwiftUI glow (30,37,62 / 18,23,41); it breathes (edge x 574 → 527 between 0.8 s and 4.8 s);
+     the attention glow comes and goes with a demo PermissionRequest.
+   - Ruled out, «tabs left alive after removal»: the 16:24 sample's ClipboardTab / LauncherTab bodies came with
+     `NotchModel.select` in the same sample, i.e. tabs were being switched while it ran. An instrumented scratch
+     build listed every NSScrollView in every Nook window each second (hidden or not): over 2 × 8 tab switches the
+     panel held only the open tab's scroll views (two for a moment while switching); after each collapse 0 scroll
+     views, 1–3 subviews; collapsed 0.4 %.
+   - Ruled out, Settings window: open, then 8 panes switched, then closed — 0.6 / 0.4 / 0.5 % with the notch
+     collapsed.
+   - Not reproduced, collapsed spike (16:14 sample: main thread 63 % busy, `HostingScrollView` updates; the notch
+     was collapsed in notch-now.png a moment later). Tried: every tab then collapse, 24 fast open/close cycles
+     (3–5 % for ~10 s, then 0.2 %), Settings as above — all ≤ 0.6 %. In the panel a `HostingScrollView` exists only
+     while expanded, so that sample most likely caught the panel open or closing — not proven. The 17:03 watcher
+     sample was taken during the fix-bugs open-panel measurements (the process was idle in the sample itself).
+     If it comes back: run a watcher (sample after a minute above 5 %) and capture the notch with the sample.
 8. [x] Fourth review: the request line also takes Claude Code's `description:` line (tooltip); file rows keyed by
    full path (two `page.tsx` stay two rows); interrupted / declined runs give no outcome (`is_interrupt` read);
    cargo test counts summed over all "test result:" lines; Codex «Delete File» shows «удалён».
@@ -181,5 +196,6 @@ Launcher B:
 ## Next concrete action
 
 Done and released: the redesign is commit cbfd1d3, merged to main with the glow fix (07dfdea) and shipped as v60
-(Nook 1.60, notarized, 2026-11-07; see github-launch.md). Next: the fix-bugs agent's Core Animation breathing glow
-(uncommitted in the feature worktree) for the next release after the user checks it; the not-verified items in step 8.
+(Nook 1.60, notarized, 2026-11-07; see github-launch.md). After v60: the Core Animation breathing glow is committed
+on main (fix-bugs session; item 7); release it after the user checks the build. Still open: the collapsed case in
+item 7 and the not-verified items in step 8.

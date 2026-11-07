@@ -85,7 +85,9 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   `startTicks()` and be listed in `needsTicks`, or it will not react to the pointer.
 - Keep idle cost near zero: no always-on timers faster than ~1 s, assign `@Published` values only when they
   change, pause loops with `\.motionPaused`. Endless indicators (dots, music bars) use `LayerLoop`
-  (Core Animation): a `TimelineView` re-lays out the whole notch window every frame (~4 % CPU at 12 fps). Measure with
+  (Core Animation): a `TimelineView` re-lays out the whole notch window every frame (~4 % CPU at 12 fps), and a
+  SwiftUI `repeatForever` does the same at the display rate (the breathing glow cost 13–19 % while the panel stood
+  open; now `AmbientGlow` animates its layer). Measure with
   `top -l 6 -s 5 -pid $(pgrep -x Nook) -stats pid,cpu,idlew,power` (idle target ≤ 0.5 % CPU).
 - Only one Nook may run (two copies overwrite each other's files): unknown `--flags` exit with status 2.
 - Notification islands read the Notification Center DB (needs Full Disk Access). Its format is unverified on

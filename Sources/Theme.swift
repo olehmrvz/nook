@@ -605,7 +605,9 @@ struct Glow: Hashable {
 }
 
 /// The light behind the glass. Elliptical gradients instead of blurred layers keep it cheap to draw.
-struct AmbientGlow: View {
+/// Drawn and breathing in Core Animation: a SwiftUI `repeatForever` here re-rendered the whole panel on every
+/// frame, 13–19 % CPU while the panel stood open (1–3 % without it).
+struct AmbientGlow: NSViewRepresentable {
     /// exp(-4.5 t²) sampled at 8 points: soft like a blur, still one gradient.
     static let falloff: [(at: CGFloat, alpha: Double)] = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1].map {
         (at: $0, alpha: $0 == 1 ? 0 : exp(-4.5 * Double($0 * $0)))
@@ -614,33 +616,120 @@ struct AmbientGlow: View {
     var glows: [Glow]
     /// Height of the band under the camera that stays pure black, like the hardware notch.
     var blackTop: CGFloat = 0
+    @Environment(\.motionPaused) private var paused
 
-    // Static on purpose: a "breathing" repeatForever scale re-rendered the gradients every frame (5–10 % CPU in a
-    // bare repro while open) and kept running in samples taken with the notch collapsed (23–25 % idle).
-    var body: some View {
-        GeometryReader { geo in
-            let h = max(geo.size.height, 1)
-            ZStack {
-                ForEach(glows, id: \.self) { glow in
-                    // A bell-shaped fall-off over a wider ellipse: no visible rim, the colour just fades.
-                    Ellipse()
-                        .fill(EllipticalGradient(stops: Self.falloff.map {
-                            .init(color: glow.color.opacity(glow.opacity * 0.85 * $0.alpha), location: $0.at)
-                        }, center: .center))
-                        .frame(width: glow.size * 1.4, height: glow.size * 1.4 * 0.72)
-                        .position(x: glow.x * geo.size.width, y: glow.y * geo.size.height)
-                        .transition(.opacity)
+    func makeNSView(context: Context) -> Host { Host() }
+
+    func updateNSView(_ view: Host, context: Context) {
+        view.update(glows: glows, blackTop: blackTop, breathing: !paused && !Motion.reduce)
+    }
+
+    final class Host: NSView {
+        /// The spots; this layer breathes (0.97 ↔ 1.05 around the centre, 5 s each way).
+        private let spots = CALayer()
+        /// Colour rises from below and never reaches the notch line.
+        private let fade = CAGradientLayer()
+        private var layers: [Glow: CAGradientLayer] = [:]
+        private var blackTop: CGFloat = 0
+        private var breathing: Bool?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.speed = Float(Motion.speed)
+            layer?.addSublayer(spots)
+            fade.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+            fade.startPoint = CGPoint(x: 0.5, y: 1)
+            fade.endPoint = CGPoint(x: 0.5, y: 0)
+            layer?.mask = fade
+        }
+        required init?(coder: NSCoder) { nil }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func update(glows: [Glow], blackTop: CGFloat, breathing: Bool) {
+            self.blackTop = blackTop
+            // Spots that stay keep their layer; the others fade out or in over 0.8 s.
+            let fadeIn = !layers.isEmpty
+            for (glow, spot) in layers where !glows.contains(glow) {
+                layers[glow] = nil
+                CATransaction.begin()
+                CATransaction.setCompletionBlock { spot.removeFromSuperlayer() }
+                Self.crossfade(spot, to: 0)
+                CATransaction.commit()
+            }
+            for glow in glows where layers[glow] == nil {
+                let spot = Self.spot(glow)
+                spot.contentsScale = window?.backingScaleFactor ?? 2
+                spots.addSublayer(spot)
+                layers[glow] = spot
+                if fadeIn { spot.opacity = 0; Self.crossfade(spot, to: 1) }
+            }
+            if breathing != self.breathing {
+                self.breathing = breathing
+                if breathing {
+                    let breathe = CABasicAnimation(keyPath: "transform.scale")
+                    breathe.fromValue = 0.97
+                    breathe.toValue = 1.05
+                    breathe.duration = 5
+                    breathe.autoreverses = true
+                    breathe.repeatCount = .infinity
+                    breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    breathe.isRemovedOnCompletion = false
+                    spots.add(breathe, forKey: "breathe")
+                } else {
+                    spots.removeAnimation(forKey: "breathe")
                 }
             }
-            // Colour rises from below and never reaches the notch line.
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
-                                         .init(color: .clear, location: min(1, blackTop / h)),
-                                         .init(color: .black, location: min(1, (blackTop + 34) / h)),
-                                         .init(color: .black, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
+            needsLayout = true
         }
-        .animation(.easeInOut(duration: 0.8).speed(Motion.speed), value: glows)
-        .allowsHitTesting(false)
+
+        override func layout() {
+            super.layout()
+            let size = bounds.size
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            // Bounds and position, not frame: the layer carries a scale.
+            spots.bounds = CGRect(origin: .zero, size: size)
+            spots.position = CGPoint(x: size.width / 2, y: size.height / 2)
+            spots.transform = CATransform3DMakeScale(0.97, 0.97, 1)
+            fade.frame = bounds
+            let h = max(size.height, 1)
+            fade.locations = [0, min(1, blackTop / h), min(1, (blackTop + 34) / h), 1].map { NSNumber(value: Double($0)) }
+            for (glow, spot) in layers {
+                // Positions count from the top, the layer's from the bottom.
+                spot.bounds = CGRect(x: 0, y: 0, width: glow.size * 1.4, height: glow.size * 1.4 * 0.72)
+                spot.position = CGPoint(x: glow.x * size.width, y: size.height - glow.y * size.height)
+            }
+            CATransaction.commit()
+        }
+
+        override func viewDidChangeBackingProperties() {
+            super.viewDidChangeBackingProperties()
+            let scale = window?.backingScaleFactor ?? 2
+            ([spots, fade] + Array(layers.values)).forEach { $0.contentsScale = scale }
+        }
+
+        /// A bell-shaped fall-off over a wider ellipse: no visible rim, the colour just fades.
+        private static func spot(_ glow: Glow) -> CAGradientLayer {
+            let spot = CAGradientLayer()
+            spot.type = .radial
+            spot.startPoint = CGPoint(x: 0.5, y: 0.5)
+            spot.endPoint = CGPoint(x: 1, y: 1)
+            spot.colors = AmbientGlow.falloff.map { NSColor(glow.color.opacity(glow.opacity * 0.85 * $0.alpha)).cgColor }
+            spot.locations = AmbientGlow.falloff.map { NSNumber(value: Double($0.at)) }
+            return spot
+        }
+
+        private static func crossfade(_ spot: CALayer, to opacity: Float) {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = spot.presentation()?.opacity ?? spot.opacity
+            animation.toValue = opacity
+            animation.duration = 0.8
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            spot.opacity = opacity
+            spot.add(animation, forKey: "fade")
+        }
     }
 }
 

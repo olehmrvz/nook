@@ -59,4 +59,5 @@ then do everything at once.
 
 ## Next concrete action
 
-Done. Open: the Core Animation breathing glow left uncommitted in the feature worktree by an unknown session (next release, after the user checks it).
+Done. After v60: the Core Animation breathing glow (fix-bugs session) is committed on main; release it after the user
+checks the build.
