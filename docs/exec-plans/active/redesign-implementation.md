@@ -163,7 +163,9 @@ Launcher B:
      shipped the glow static: 1.1–1.8 % open, 0.2–0.4 % collapsed. After v60 (fix-bugs session) the breathing is
      back in Core Animation: `AmbientGlow` is an `NSViewRepresentable` — radial `CAGradientLayer` spots, the
      breathing (0.97 ↔ 1.05, 5 s) as a `transform.scale` animation, the black band as a gradient mask, 0.8 s
-     cross-fade when the glows change, paused by `\.motionPaused` / Reduce Motion; 1.3–1.7 % open, 0.5 % collapsed.
+     cross-fade when the glows change, paused by `\.motionPaused` / Reduce Motion. Two runs: the first CA build on
+     top of build 57 gave 1.3–1.7 % open; build 62 = main + this glow (committed as 317cca6, shipped in v66) gave
+     0.4–1.1 % open (Главная 0.4, Полка 1.1, AI 1.0) and 0.5 % collapsed — compare against the build 62 run.
      Colours match the SwiftUI glow (30,37,62 / 18,23,41); it breathes (edge x 574 → 527 between 0.8 s and 4.8 s);
      the attention glow comes and goes with a demo PermissionRequest.
    - Ruled out, «tabs left alive after removal»: the 16:24 sample's ClipboardTab / LauncherTab bodies came with
