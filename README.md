@@ -9,7 +9,7 @@
 Answer Claude Code and Codex right from the notch, see what each agent did,
 and keep a launcher, clipboard, dictation and music one hover away.
 
-[![Latest release](https://img.shields.io/github/v/release/olehmrvz/nook?label=release)](https://github.com/olehmrvz/nook/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/olehmrvz/nook?label=release&cacheSeconds=3600)](https://github.com/olehmrvz/nook/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%E2%80%93M4-black)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)

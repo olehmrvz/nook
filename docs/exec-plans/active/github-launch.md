@@ -33,21 +33,22 @@ then do everything at once.
 - [x] Idle CPU (item 7 in `redesign-implementation.md`): AmbientGlow's repeatForever "breathe" removed — commit
       "Glow: no breathing loop"; panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 % (installed 1.58).
 - [x] Feature tree committed as cbfd1d3 (with the fix-bugs agent's clipboard tile and scroll-origin fixes).
-- [ ] The user checks the final build.
-- [ ] Commit and merge `olehmrvz/feature` → `develop` → `main` (with the feature agent / user; nothing is committed there yet).
+- [x] The user authorized the release ("подписывай и собирай"); installed 1.58 checked for idle CPU.
+- [x] Merged: main = develop = 5cae956 (feature cbfd1d3 + glow fix + README); main, develop and fix-bugs worktrees fast-forwarded.
+      The feature worktree stays at cbfd1d3: an unknown session left an uncommitted AmbientGlow → Core Animation rewrite there.
 - [x] Draft checked against the final code (changes feed, launcher card, AirPods drop added); icon → `docs/images/icon.png`.
 - [x] Screenshots of the real app (English UI via the app's own AppleLanguages, removed afterwards): demo
       PermissionRequest (hero), demo Stop (done drop), `--show launcher:disk util` and `450 + 20%`; window-only capture
       (`screencapture -l`) on a neutral wallpaper. The Agents tab and Home were left out: they show the user's real
       sessions, music and weather.
-- [ ] README, LICENSE, SECURITY/issue templates if needed → commit on a branch from `main`, merge to `main`.
-- [ ] `./release.sh` from a clean `main` (notary may need the user at the keychain prompt). Then edit the release notes
-      into a short user-facing English text.
-- [ ] Fresh-download check: Nook.dmg opens without a warning, `spctl` says Notarized Developer ID, the README links
-      (`releases/latest/download/Nook.dmg`) work.
-- [ ] Delete releases v6 and v10 and their tags (authorized by the user), right after the notarized release is live.
-- [ ] Repo description, topics, homepage; a social preview image 1280×640 (upload needs the GitHub web settings).
-- [ ] Only now: tell the user the promo videos can go out (`promo/POSTING.md` says to post after the notarized release).
+- [x] README and LICENSE (Graphyte Labs); SECURITY and the issue templates needed no change.
+- [x] `./release.sh` from the main checkout: v60 "Nook 1.60 — a new design", Nook.dmg + Nook.zip, notes rewritten for
+      users (SHA-256 kept).
+- [x] Fresh download from `releases/latest/download/`: SHA-256 match; with a quarantine flag `spctl` accepts the DMG and the
+      app as "Notarized Developer ID", stapler validates, version 1.60, Applications link in the DMG.
+- [x] Releases v6 and v10 and their tags deleted; only v60 is left.
+- [x] Description and topics updated; social preview uploaded (`promo/social/social-preview.png`, usesCustomOpenGraphImage = true).
+- [x] The promo videos can go out now (`promo/POSTING.md`).
 
 ## Drafts for the repository settings
 
@@ -57,4 +58,4 @@ then do everything at once.
 
 ## Next concrete action
 
-Wait for the feature agent (held message, the user approves it) and the idle-CPU fix; then commit and merge.
+Done. Open: the Core Animation breathing glow left uncommitted in the feature worktree by an unknown session (next release, after the user checks it).
