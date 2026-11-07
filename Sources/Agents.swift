@@ -57,6 +57,11 @@ final class AgentHub: ObservableObject {
 
     @Published private(set) var sessions: [Session] = [] { didSet { scheduleSave() } }
     @Published private(set) var permissions: [Permission] = []
+
+    /// What the agents changed, for the Agents feed (AgentChanges.swift). Newest first, at most 40. Memory only.
+    @Published private(set) var changes: [Change] = []
+    /// Tool inputs by `tool_use_id` until the call finishes, for agents whose PostToolUse has no `tool_input`.
+    private var pendingInputs: [String: (tool: String, input: [String: Any])] = [:]
     /// False when neither Claude Code nor Codex calls Nook's hook yet.
     @Published private(set) var hooksInstalled = true
 
@@ -353,9 +358,22 @@ final class AgentHub: ObservableObject {
                 if !checks.isEmpty {
                     sessions[i].pendingChecks[raw["tool_use_id"] as? String ?? "last"] = checks.joined(separator: ",")
                 }
+                if let id = raw["tool_use_id"] as? String, Self.fileTools.contains(tool) || Self.shellTools.contains(tool) {
+                    if pendingInputs.count > 64 { pendingInputs.removeAll() }
+                    pendingInputs[id] = (tool, input)
+                }
             }
         case "PostToolUse", "PostToolUseFailure":
             resolve(sessionKey: key)
+            let pending = (raw["tool_use_id"] as? String).flatMap { pendingInputs.removeValue(forKey: $0) }
+            if let i = index {
+                let tool = raw["tool_name"] as? String ?? pending?.tool ?? ""
+                let input = raw["tool_input"] as? [String: Any] ?? pending?.input ?? [:]
+                for outcome in Self.outcomes(tool: tool, input: input, response: raw["tool_response"] ?? raw["error"],
+                                             ok: event == "PostToolUse", interrupted: raw["is_interrupt"] as? Bool ?? false) {
+                    record(outcome, session: key, project: sessions[i].project)
+                }
+            }
             if let i = index {
                 sessions[i].status = .working
                 let ok = event == "PostToolUse"
@@ -372,7 +390,7 @@ final class AgentHub: ObservableObject {
         case "PermissionRequest":
             let tool = raw["tool_name"] as? String ?? L("Инструмент")
             let request = Permission(sessionKey: key, provider: provider, tool: tool,
-                                     summary: Self.summary(tool: tool, input: raw["tool_input"]),
+                                     summary: Self.revealed(Self.summary(tool: tool, input: raw["tool_input"])),
                                      project: index.map { sessions[$0].project } ?? provider.title,
                                      suggestions: raw["permission_suggestions"],
                                      input: raw["tool_input"] as? [String: Any] ?? [:], fd: fd)
@@ -417,9 +435,37 @@ final class AgentHub: ObservableObject {
         case "SessionEnd":
             resolve(sessionKey: key)
             sessions.removeAll { $0.id == key }
+            changes.removeAll { $0.session == key }
         default:
             break
         }
+    }
+
+    /// Edits of one file add up in its row, which moves to the top; the newest test run replaces the one before; a
+    /// push marks the session's last commit.
+    private func record(_ outcome: Outcome, session: String, project: String) {
+        switch outcome {
+        case .file(let path, let added, let removed, let created, let deleted):
+            if let i = changes.firstIndex(where: { if case .file(path, _, _, _, _) = $0.outcome { return $0.session == session } else { return false } }),
+               case .file(_, let a, let r, let c, _) = changes[i].outcome {
+                var row = changes.remove(at: i)
+                row.outcome = .file(path: path, added: a + added, removed: r + removed, created: c || created, deleted: deleted)
+                changes.insert(row, at: 0)
+                return
+            }
+        case .tests:
+            changes.removeAll { if case .tests = $0.outcome { return $0.session == session } else { return false } }
+        case .push(let branch):
+            if let i = changes.firstIndex(where: { $0.session == session && { if case .commit = $0 { true } else { false } }($0.outcome) }),
+               changes[i].pushed == nil {
+                changes[i].pushed = branch ?? sessions.first { $0.id == session }?.branch ?? ""
+                return
+            }
+        default:
+            break
+        }
+        changes.insert(Change(session: session, project: project, outcome: outcome), at: 0)
+        if changes.count > 40 { changes.removeLast(changes.count - 40) }
     }
 
     /// Answers a pending request. `nil` closes it without a decision, so the terminal asks as usual.
@@ -480,9 +526,13 @@ final class AgentHub: ObservableObject {
         return name.contains("claude") || name.contains("codex") || name == "node"
     }
 
-    /// The process or one of its ancestors is an agent (claude, codex, node).
+    /// A process an agent started, directly or not: `--answer` and `--dictate` from it are refused. An agent process
+    /// (claude, codex, node) above the caller means yes. So does a chain that reaches launchd without passing an app
+    /// (Terminal, Raycast) or a part of macOS (Shortcuts runs scripts from a system service): an agent's `( … & )` or
+    /// nohup leaves a process that launchd adopts, with no agent above it any more.
     private static func runsUnderAgent(_ start: pid_t) -> Bool {
         var pid = start
+        var vouched = false
         for _ in 0..<64 where pid > 1 {
             var info = kinfo_proc()
             var size = MemoryLayout<kinfo_proc>.size
@@ -491,9 +541,18 @@ final class AgentHub: ObservableObject {
             let name = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
                 .lowercased()
             if name.contains("claude") || name.contains("codex") || name == "node" { return true }
+            // Not the caller itself: `Nook --answer` is a binary inside an app bundle.
+            if pid != start && !vouched { vouched = isAppOrSystem(pid) }
             pid = info.kp_eproc.e_ppid
         }
-        return false
+        return !vouched
+    }
+
+    private static func isAppOrSystem(_ pid: pid_t) -> Bool {
+        if let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy != .prohibited { return true }
+        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))   // PROC_PIDPATHINFO_MAXSIZE
+        guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return false }
+        return String(cString: path).hasPrefix("/System/")
     }
 
     /// Walks up from the hook's parent to the claude / codex process, so liveness checks survive
@@ -940,6 +999,35 @@ final class AgentHub: ObservableObject {
             return "\(key): \(value)"
         }.joined(separator: "\n")
         return head.isEmpty ? details : "\(head)\n\n\(details)"
+    }
+
+    /// What an agent sent, with nothing hidden: invisible and direction-changing characters as codes (⟨U+202E⟩), a
+    /// long run of spaces as ⟨␠×N⟩. A harmless start could otherwise push the real command out of the card or
+    /// show its parts in another order (Trojan Source).
+    static func revealed(_ text: String) -> String {
+        let scalars = Array(text.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var i = 0
+        while i < scalars.count {
+            let scalar = scalars[i]
+            var run = 1
+            while i + run < scalars.count && scalars[i + run] == scalar { run += 1 }
+            let category = scalar.properties.generalCategory
+            let lineEnd = scalar == "\r" && run == 1 && i + 1 < scalars.count && scalars[i + 1] == "\n"   // Windows text
+            let hidden = category == .format || category == .lineSeparator || category == .paragraphSeparator
+                || (category == .spaceSeparator && scalar != " ")
+                || (category == .control && scalar != "\n" && scalar != "\t" && !lineEnd)
+            if hidden {
+                let code = String(format: "U+%04X", scalar.value)
+                out.append(contentsOf: (run > 1 ? "⟨\(code) ×\(run)⟩" : "⟨\(code)⟩").unicodeScalars)
+            } else if scalar == " " && run >= 40 {
+                out.append(contentsOf: "⟨␠×\(run)⟩".unicodeScalars)
+            } else {
+                for _ in 0..<run { out.append(scalar) }
+            }
+            i += run
+        }
+        return String(out)
     }
 
     /// Client side of the command line (`--answer`, `--show`, `--timer`, `--prompt`):

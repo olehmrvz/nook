@@ -38,6 +38,7 @@ final class VolumeControl {
         deviceListener = listener
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutput, .main, listener)
         attach()
+        restoreAfterCrash()
         // Quitting while dictation listens (the menu, a restart for a new language, an update): the level comes back.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
                                                queue: .main) { [weak self] _ in self?.restore() }
@@ -113,7 +114,11 @@ final class VolumeControl {
         silentUntil = Date().addingTimeInterval(0.5)
         guard AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &target) == noErr
         else { return }
-        ducked = (now.level, current?.level ?? level, device)
+        let lowered = (from: now.level, to: current?.level ?? level, device: device)
+        ducked = lowered
+        if let uid = Self.uid(of: lowered.device) {
+            Settings.duckedVolume = ["from": Double(lowered.from), "to": Double(lowered.to), "uid": uid]
+        }
     }
 
     /// Back to the level before on the device that was lowered, also when the output changed in between (AirPods
@@ -121,10 +126,47 @@ final class VolumeControl {
     func restore() {
         guard let ducked else { return }
         self.ducked = nil
-        guard let now = state(of: ducked.device), abs(now.level - ducked.to) < 0.01 else { return }
-        var level = ducked.from
-        if ducked.device == device { silentUntil = Date().addingTimeInterval(0.5) }
-        AudioObjectSetPropertyData(ducked.device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
+        Settings.duckedVolume = nil
+        set(ducked.from, on: ducked.device, ifStill: ducked.to)
+    }
+
+    /// Nook ended while dictation had the output lowered (a crash, a kill, `install.sh`): the level comes back
+    /// at the next start, unless the person changed it since.
+    private func restoreAfterCrash() {
+        guard let saved = Settings.duckedVolume else { return }
+        Settings.duckedVolume = nil
+        guard let from = saved["from"] as? Double, let to = saved["to"] as? Double,
+              let uid = saved["uid"] as? String, let device = Self.device(uid: uid) else { return }
+        set(Float(from), on: device, ifStill: Float(to))
+    }
+
+    private func set(_ level: Float, on device: AudioObjectID, ifStill expected: Float) {
+        guard let now = state(of: device), abs(now.level - expected) < 0.01 else { return }
+        var level = level
+        if device == self.device { silentUntil = Date().addingTimeInterval(0.5) }
+        AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)
+    }
+
+    private static func uid(of device: AudioObjectID) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var uid: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &uid) == noErr, let uid else { return nil }
+        return uid.takeRetainedValue() as String
+    }
+
+    private static func device(uid: String) -> AudioObjectID? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var name = uid as CFString
+        var id = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = withUnsafePointer(to: &name) {
+            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
+                                       UInt32(MemoryLayout<CFString>.size), $0, &size, &id)
+        }
+        return status == noErr && id != kAudioObjectUnknown ? id : nil
     }
 
     // MARK: Volume keys
@@ -149,8 +191,18 @@ final class VolumeControl {
         if let after = current { last = after; onChange?(after.level, after.muted) }
     }
 
+    /// HDMI or DisplayPort audio, an aggregate device: no level Nook can set, so the keys stay with macOS and
+    /// other apps (MonitorControl).
+    private var canSetVolume: Bool {
+        var settable: DarwinBoolean = false
+        return AudioObjectIsPropertySettable(device, &Self.volume, &settable) == noErr && settable.boolValue
+    }
+
     /// Nook handles the volume and brightness keys (the macOS HUD stays hidden).
     var hasKeys: Bool { tap != nil }
+
+    /// "Volume and brightness" turned on in Settings: take the keys now, not after a restart.
+    func apply() { installKeyTap() }
 
     func askAccess() {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
@@ -177,6 +229,7 @@ final class VolumeControl {
             if control.isPaused() && media.contains(key) { return nil }
             let fine = ns.modifierFlags.contains([.option, .shift])
             if [NX_KEYTYPE_SOUND_UP, NX_KEYTYPE_SOUND_DOWN, NX_KEYTYPE_MUTE].contains(key) {
+                guard control.canSetVolume else { return Unmanaged.passUnretained(event) }
                 if down { control.press(key, fine: fine) }
                 return nil
             }

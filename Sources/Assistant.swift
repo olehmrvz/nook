@@ -109,7 +109,7 @@ final class Assistant: ObservableObject {
     var isReady: Bool {
         switch Settings.aiProvider {
         case .claudeCode: Self.claudeBinary != nil
-        case .anthropic: Keychain.read("anthropic") != nil
+        case .anthropic: Keychain.exists("anthropic")
         case .apple: Self.appleStatus == nil
         }
     }
@@ -355,14 +355,21 @@ enum Selection {
             event?.setIntegerValueField(.eventSourceUserData, value: TextInsertion.tag)
             event?.post(tap: .cghidEventTap)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            guard board.changeCount != before, let text = board.string(forType: .string), !text.isEmpty else { return done(nil) }
+        // A busy app (Electron, a loaded browser) can take more than a moment to copy: wait up to a second, or the
+        // copy lands later and replaces the clipboard for good.
+        func check(after waited: Double) {
+            guard board.changeCount != before else {
+                if waited >= 1 { return done(nil) }
+                return DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { check(after: waited + 0.05) }
+            }
+            let text = board.string(forType: .string)
             let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
             saved.forEach { $0.setData(Data(), forType: transient) }
             board.clearContents()
             if !saved.isEmpty { board.writeObjects(saved) }
-            done(text)
+            done(text?.isEmpty == false ? text : nil)
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { check(after: 0.05) }
     }
 }
 
@@ -376,6 +383,14 @@ enum Keychain {
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    /// Whether a key is saved, without decrypting it: safe on the main thread. Reading the secret can show the
+    /// keychain's "Nook wants to use your confidential information" dialog (after a signature change) and block.
+    static func exists(_ account: String) -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecAttrAccount as String: account, kSecReturnAttributes as String: true]
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
 
     static func save(_ value: String?, for account: String) {

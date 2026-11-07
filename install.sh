@@ -40,7 +40,8 @@ codesign --force --options runtime "$STAMP" --sign "$IDENTITY" "$BUILD/libNookMe
   codesign --force --sign - "$BUILD/libNookMediaRemote.dylib"
 }
 
-if [ ! -f "$BUILD/AppIcon.icns" ]; then
+# Drawn again when its script changed: a cached icon would hide a new design.
+if [ ! -f "$BUILD/AppIcon.icns" ] || [ "$PROJECT_DIR/make-icon.sh" -nt "$BUILD/AppIcon.icns" ]; then
   "$PROJECT_DIR/make-icon.sh" "$BUILD" >/dev/null
 fi
 

@@ -1,26 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// Header shared by request cards: who asks, in which project, how long ago.
-struct RequestHeader: View {
+/// Header shared by request cards: the project's letter and name, what it waits for, and who asks with which tool.
+struct RequestHeader<Trailing: View>: View {
     let request: AgentHub.Permission
     let title: String
     var more = 0
+    @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        let claude = request.provider == .claude
-        HStack(spacing: 10) {
-            Text(claude ? "✳︎" : "◎").font(.system(size: 15, weight: .bold))
-                .frame(width: 30, height: 30)
-                .background(Circle().fill((claude ? Palette.claude : Palette.blue).opacity(0.3)))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text("\(request.project) · \(request.created.formatted(.relative(presentation: .named)))")
-                    .font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
-            }
-            Spacer(minLength: 0)
+        HStack(spacing: 9) {
+            Monogram(project: request.project, size: 20)
+            Text(request.project).font(.system(size: 13, weight: .bold)).lineLimit(1).fixedSize()
+            Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Tone.attention).lineLimit(1)
+            Spacer(minLength: 4)
+            trailing
             if more > 0 { Chip(text: L("ещё \(more)"), color: .white) }
+            HStack(spacing: 5) {
+                Text(request.provider.glyph).foregroundStyle(Tone.ink)
+                Text("\(request.provider.title) · \(request.tool == "AskUserQuestion" ? L("вопрос") : (request.tool == "ExitPlanMode" ? L("план") : request.tool))")
+            }
+            .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1).fixedSize()
+            .help(request.created.formatted(.relative(presentation: .named)))
         }
+    }
+}
+
+extension RequestHeader where Trailing == EmptyView {
+    init(request: AgentHub.Permission, title: String, more: Int = 0) {
+        self.init(request: request, title: title, more: more) { EmptyView() }
     }
 }
 
@@ -103,8 +111,7 @@ struct QuestionCard: View {
                 TerminalButton { agents.answer(request.id, with: nil) }
             }
         }
-        .padding(12)
-        .glass(tint: [Palette.claude.opacity(0.32), Palette.violet.opacity(0.08)], stroke: Palette.claude.opacity(0.4), radius: 22)
+        .requestCard()
         .animation(Motion.smooth, value: step)
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { armed = true } }
     }
@@ -128,7 +135,7 @@ struct QuestionCard: View {
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: q.multi ? (on ? "checkmark.square.fill" : "square") : (on ? "largecircle.fill.circle" : "circle"))
-                    .font(.system(size: 13)).foregroundStyle(on ? Palette.claude.lifted() : faint)
+                    .font(.system(size: 13)).foregroundStyle(on ? Tone.attention : faint)
                 Text(option.label).font(.system(size: 12.5, weight: .medium)).lineLimit(1).fixedSize()
                 Text(option.detail).font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(1)
                 Spacer(minLength: 0)
@@ -172,8 +179,8 @@ struct PlanCard: View {
 
     var body: some View {
         let plan = request.input["plan"] as? String ?? ""
-        VStack(alignment: .leading, spacing: 10) {
-            RequestHeader(request: request, title: L("План готов — посмотрите"), more: more)
+        VStack(alignment: .leading, spacing: 8) {
+            RequestHeader(request: request, title: L("предлагает план"), more: more)
             ScrollView(showsIndicators: true) {
                 Text(Self.render(plan))
                     .font(.system(size: 12))
@@ -194,8 +201,8 @@ struct PlanCard: View {
                         return alert.runModal() == .alertFirstButtonReturn ? .systemAction : .discarded
                     })
             }
-            .frame(height: revising ? 76 : 112)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.35)))
+            .frame(height: revising ? 70 : 100)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.06)))
             if revising {
                 HStack(spacing: 8) {
                     TextField("Что поправить в плане?", text: $note)
@@ -205,16 +212,16 @@ struct PlanCard: View {
                         .onSubmit(sendBack)
                     Button("Отправить", action: sendBack).buttonStyle(.pill(.primary, small: true))
                         .disabled(note.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button("Отмена") { revising = false }.buttonStyle(.pill(small: true))
+                    Button("Отмена") { revising = false }.buttonStyle(.pill(.ghost, small: true))
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {
                 HStack(spacing: 8) {
-                    Button("Одобрить") { agents.answer(request.id, with: .allow) }.buttonStyle(.pill(.primary))
+                    Button("Одобрить") { agents.answer(request.id, with: .allow) }.buttonStyle(.pill(.primary, small: true))
                     Button("Авто-правки") { agents.answer(request.id, with: .allow, mode: "acceptEdits") }
-                        .buttonStyle(.pill())
+                        .buttonStyle(.pill(.ghost, small: true))
                         .help("Одобрить и разрешить агенту править файлы без подтверждений до конца сессии")
-                    Button("Доработать…") { revising = true }.buttonStyle(.pill(foreground: Palette.salmon))
+                    Button("Доработать…") { revising = true }.buttonStyle(.pill(.ghost, small: true))
                     Spacer(minLength: 0)
                     TerminalButton { agents.answer(request.id, with: nil) }
                 }
@@ -222,8 +229,7 @@ struct PlanCard: View {
                 .opacity(armed ? 1 : 0.55)
             }
         }
-        .padding(14)
-        .glass(tint: [Palette.violet.opacity(0.3), Palette.claude.opacity(0.1)], stroke: Palette.violet.opacity(0.45), radius: 22)
+        .requestCard()
         .animation(Motion.smooth, value: revising)
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { withAnimation(Motion.quick) { armed = true } } }
     }

@@ -55,14 +55,15 @@ private struct MicRipple: View {
     }
 }
 
-/// Content of the panel comes into focus: from a light blur and slightly smaller to sharp.
+/// Content of the panel comes into focus: from a light blur to sharp.
+/// No scale: a scaled ScrollView keeps the offset AppKit gives it while it is smaller (half the shrink, 3 pt
+/// at 3 %), so a list longer than its room opened with its first row cut.
 private struct Materialize: ViewModifier {
     var amount: Double
     func body(content: Content) -> some View {
         content
             .opacity(1 - amount)
             .blur(radius: 6 * amount)
-            .scaleEffect(1 - 0.03 * amount, anchor: .top)
     }
 }
 
@@ -71,61 +72,16 @@ extension NotchModel {
         withAnimation(Motion.tab) { self.tab = tab }
     }
 
-    /// Light behind the expanded panel: the cover of the playing track, Claude waiting, or the tab's own pair.
+    /// Light behind the expanded panel: one calm, cool glow under the tiles (Figma «H»); warm only while
+    /// something waits for you.
     var ambient: [Glow] {
-        let waiting = !agents.permissions.isEmpty
-        switch tab {
-        case .home:
-            let right = waiting
-                ? Glow(color: Palette.claude, x: 0.8, y: 0.85, size: 460, opacity: 0.55)
-                : Glow(color: Palette.blue, x: 0.84, y: 0.92, size: 420, opacity: 0.3)
-            if nowPlaying.hasTrack {
-                let c = nowPlaying.glowColors
-                return [Glow(color: c[0], x: 0.12, y: 0.62, size: 520, opacity: 0.65),
-                        Glow(color: c[1], x: 0.36, y: 0.82, size: 440, opacity: 0.55), right]
-            }
-            return [Glow(color: Palette.violet, x: 0.14, y: 0.75, size: 500, opacity: 0.45),
-                    Glow(color: Palette.pink, x: 0.34, y: 0.92, size: 380, opacity: 0.25), right]
-        case .ai:
-            return [Glow(color: Palette.claude, x: 0.22, y: 0.55, size: 600, opacity: waiting ? 0.7 : 0.45),
-                    Glow(color: Palette.violet, x: 0.86, y: 0.75, size: 420, opacity: 0.35)]
-        case .clipboard: return pair(Palette.blue, Palette.violet)
-        case .shelf: return pair(Palette.cyan, Palette.blue)
-        case .calendar: return pair(Palette.orange, Palette.red)
-        case .timer: return pair(timer.phase.color, Palette.violet, 0.5)
-        case .cuely: return pair(Palette.violet, Palette.pink)
-        case .notes: return pair(Palette.yellow, Palette.orange, 0.32)
-        case .mirror: return pair(Palette.cyan, Palette.violet, 0.28)
-        case .launcher: return pair(Palette.blue, Palette.violet, 0.36)
+        var glows = [Glow(color: Color(hex: 0x4658A0), x: 0.5, y: 0.78, size: 760, opacity: 0.42)]
+        if !agents.permissions.isEmpty && (tab == .home || tab == .ai) {
+            glows.append(Glow(color: Tone.attention, x: tab == .ai ? 0.62 : 0.86, y: 0.8, size: 460, opacity: 0.16))
         }
+        return glows
     }
 
-    private func pair(_ a: Color, _ b: Color, _ opacity: Double = 0.42) -> [Glow] {
-        [Glow(color: a, x: 0.18, y: 0.82, size: 520, opacity: opacity),
-         Glow(color: b, x: 0.78, y: 0.88, size: 460, opacity: opacity * 0.75)]
-    }
-
-}
-
-extension Island {
-    /// Background pair for this island; app notifications take the colours of the app's icon.
-    var colors: [Color] {
-        switch kind {
-        case .agentDone(let turn):
-            return turn.provider == "codex" ? [Palette.blue, Palette.cyan] : [Palette.claude, Palette.orange]
-        case .notification(let bundleID, _, _, _): return IconColors.of(bundleID) ?? [Palette.violet, Palette.pink]
-        case .call: return [Palette.green, Palette.mint]
-        case .airpods: return [Palette.cyan, Palette.blue]
-        case .download: return [Palette.blue, Palette.cyan]
-        case .timerDone: return [Palette.orange, Palette.pink]
-        case .event: return [Palette.red, Palette.orange]
-        case .command(_, _, let exit, _, _): return exit == 0 ? [Palette.green, Palette.mint] : [Palette.red, Palette.coral]
-        case .limit(_, let left, _): return left <= 5 ? [Palette.red, Palette.coral] : [Palette.orange, Palette.yellow]
-        case .hog: return [Palette.red, Palette.orange]
-        case .dictation: return [Palette.violet, Palette.pink]
-        case .notice(_, _, _, let ok): return ok ? [Palette.green, Palette.mint] : [Palette.red, Palette.coral]
-        }
-    }
 }
 
 /// Glow colours of app icons, computed once per app.
@@ -172,12 +128,21 @@ struct RootView: View {
         case .expanded:
             return CGSize(width: NotchModel.expandedSize.width + 2 * NotchModel.ear, height: NotchModel.expandedSize.height)
         case .prompter: return NotchModel.prompterSize
-        case .island: return CGSize(width: NotchModel.islandWidth, height: model.notch.height + NotchModel.islandExtra)
+        case .island: return model.islandFrame
         case .collapsed: return CGSize(width: model.collapsedWidth, height: model.notch.height)
         }
     }
 
-    private var radius: CGFloat { mode == .collapsed ? 11 : (mode == .expanded ? 26 : 22) }
+    private var radius: CGFloat {
+        if mode == .island, let island = model.island { return model.dropMetrics(island).radius }
+        return mode == .collapsed ? 11 : (mode == .expanded ? 26 : 22)
+    }
+
+    /// Drops leave the menu bar with softer 12 pt corners; the collapsed notch and the panel keep 8 pt.
+    private var ear: CGFloat {
+        if mode == .island, let island = model.island { return model.dropMetrics(island).ear }
+        return NotchModel.ear
+    }
 
     /// Opening bounces a little; closing settles without overshoot so the notch never dips under the camera.
     private var spring: Animation {
@@ -197,9 +162,9 @@ struct RootView: View {
             // black shape; newly inserted content can never draw outside it, also mid-animation.
             ZStack(alignment: .top) { content }
                 .frame(width: size.width, height: size.height, alignment: .top)
-                .clipShape(NotchShape(bottomRadius: radius))
+                .clipShape(NotchShape(bottomRadius: radius, ear: ear))
                 .background(alignment: .top) {
-                    NotchShape(bottomRadius: radius)
+                    NotchShape(bottomRadius: radius, ear: ear)
                         .fill(Color.black)
                         .shadow(color: .black.opacity(mode == .collapsed ? 0 : 0.45), radius: 18, y: 8)
                 }
@@ -215,6 +180,8 @@ struct RootView: View {
         .environment(\.colorScheme, .dark)
         .environment(\.motionPaused, model.resting)
         .animation(spring, value: mode)
+        .animation(Motion.smooth, value: model.islandHovered)
+        .animation(Motion.morph, value: model.island?.id)
         .animation(.spring(response: 0.38, dampingFraction: 0.9), value: model.hasLiveActivity)
         // One live thing turning into another: the shape springs to its new width (no overshoot when it closes).
         .animation(model.hasLiveActivity ? Motion.morph : spring, value: model.slotWidth)
@@ -261,15 +228,9 @@ struct RootView: View {
                 .transition(Self.contentTransition)
         case .island:
             if let island = model.island {
-                ZStack(alignment: .top) {
-                    IslandBackdrop(colors: island.colors, blackTop: model.notch.height)
-                    IslandView(model: model, island: island)
-                        .padding(.horizontal, NotchModel.ear + 14)
-                        .padding(.top, model.notch.height + 4)
-                        .padding(.bottom, 12)
-                }
-                .frame(width: NotchModel.islandWidth, height: model.notch.height + NotchModel.islandExtra)
-                .transition(Self.contentTransition)
+                DropView(model: model, island: island)
+                    .id(island.id)
+                    .transition(Self.contentTransition)
             }
         case .collapsed:
             CollapsedView(model: model)
@@ -447,13 +408,20 @@ struct CollapsedView: View {
             case .keyLock: LockCountdown(lock: model.keyboardLock).font(.rounded(12)).foregroundStyle(Palette.orange)
             case .permission: Circle().fill(Palette.orange.opacity(0.9)).frame(width: 6, height: 6)
             case .timer:
-                TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                    let remaining = model.timer.remaining(at: context.date)
-                    Text(FocusTimer.format(remaining))
+                // Paused, or the screens asleep: nothing changes, so no redraw twice a second.
+                if model.timer.isPaused || model.resting {
+                    Text(FocusTimer.format(model.timer.remaining()))
                         .font(.rounded(12)).monospacedDigit()
                         .foregroundStyle(model.timer.isPaused ? muted : model.timer.phase.color)
-                        .contentTransition(.numericText(countsDown: true))
-                        .animation(Motion.quick, value: Int(remaining))
+                } else {
+                    TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                        let remaining = model.timer.remaining(at: context.date)
+                        Text(FocusTimer.format(remaining))
+                            .font(.rounded(12)).monospacedDigit()
+                            .foregroundStyle(model.timer.phase.color)
+                            .contentTransition(.numericText(countsDown: true))
+                            .animation(Motion.quick, value: Int(remaining))
+                    }
                 }
             case .download: DownloadRing(fraction: model.downloads.active?.fraction)
             case .agents: Spinner()
@@ -474,13 +442,13 @@ struct KeyLockPill: View {
         Button {
             denied = !lock.lock()
         } label: {
-            Image(systemName: "keyboard").font(.system(size: 11, weight: .medium))
-                .padding(.horizontal, 7).padding(.vertical, 4)
-                .background { if hover { Capsule().fill(Color.white.opacity(0.07)) } }
-                .contentShape(Capsule())
+            Image(systemName: "keyboard").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(lock.isLocked ? Tone.attention : (hover ? Color.white : Color.white.opacity(0.7)))
+                .frame(width: 22, height: 22)
+                .background { if hover { Circle().fill(Color.white.opacity(0.1)) } }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(lock.isLocked ? Palette.orange : (hover ? Color.white : Color.white.opacity(0.6)))
         .animation(Motion.quick, value: hover)
         .onHover { hover = $0 }
         .help(denied ? L("Нужен Универсальный доступ: разрешите Nook в Настройках и нажмите ещё раз")
@@ -560,252 +528,22 @@ struct DownloadRing: View {
 
 // MARK: Islands
 
-struct IslandView: View {
-    @ObservedObject var model: NotchModel
-    let island: Island
-    @State private var callImage: NSImage?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            leading.frame(width: 40, height: 40)
-            VStack(alignment: .leading, spacing: 2) { text }
-            Spacer(minLength: 4)
-            trailing
-            Button { model.dismissIsland() } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(muted)
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.icon)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture { primaryAction() }
-        .contextMenu { menu }
-        .onAppear {
-            if case .call(let name, _) = island.kind {
-                NotificationWatcher.contactImage(named: name) { callImage = $0 }
-            }
-        }
-    }
-
-    @ViewBuilder private var leading: some View {
-        switch island.kind {
-        case .agentDone:
-            Badge(symbol: "checkmark", colors: island.colors, soft: true)
-        case .notification(let bundleID, _, _, _):
-            if let icon = NotificationWatcher.icon(for: bundleID) {
-                Image(nsImage: icon).resizable().shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-            } else {
-                Badge(symbol: "bell.fill", colors: [Palette.violet, Palette.pink], soft: true)
-            }
-        case .call:
-            if let callImage {
-                Image(nsImage: callImage).resizable().scaledToFill().clipShape(Circle())
-                    .overlay(Circle().strokeBorder(Palette.green, lineWidth: 2))
-            } else {
-                Badge(symbol: "phone.fill", colors: [Palette.green, Palette.mint], soft: true)
-            }
-        case .airpods(let name, _):
-            Image(systemName: name.lowercased().contains("max") ? "airpodsmax" : (name.lowercased().contains("airpods") ? "airpodspro" : "headphones"))
-                .font(.system(size: 26))
-        case .download:
-            Badge(symbol: "arrow.down", colors: [Palette.blue, Palette.cyan], soft: true)
-        case .timerDone:
-            Badge(symbol: "timer", colors: [Palette.orange, Palette.pink], soft: true)
-        case .event:
-            Badge(symbol: "calendar", colors: [Palette.red, Palette.orange], soft: true)
-        case .command(_, _, let exit, _, _):
-            Badge(symbol: exit == 0 ? "terminal.fill" : "exclamationmark.triangle.fill", colors: island.colors, soft: true)
-        case .limit:
-            Badge(symbol: "gauge.with.dots.needle.67percent", colors: island.colors, soft: true)
-        case .hog(let hog, _):
-            Badge(symbol: hog.memory >= ProcessWatch.memoryLimit ? "memorychip.fill" : "flame.fill", colors: island.colors, soft: true)
-        case .dictation:
-            Badge(symbol: "waveform", colors: island.colors, soft: true)
-        case .notice(let symbol, _, _, _):
-            Badge(symbol: symbol, colors: island.colors, soft: true)
-        }
-    }
-
-    @ViewBuilder private var text: some View {
-        switch island.kind {
-        case .agentDone(let turn):
-            HStack(spacing: 6) {
-                Text("\(turn.project) — готово").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text([turn.provider == "codex" ? "Codex" : "Claude", turn.duration.map { L("за ") + Format.span($0) }]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
-            }
-            if !turn.message.isEmpty {
-                Text(turn.message).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(turn.summary.isEmpty ? 2 : 1)
-            }
-            if !turn.summary.isEmpty { TurnFacts(facts: turn.summary) }
-        case .notification(_, let app, let title, let body):
-            Text(app).font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
-            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            if !body.isEmpty { Text(body).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(2) }
-        case .call(let name, let bundleID):
-            Text(name.isEmpty ? L("Входящий звонок") : name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-            Text("Звонок · \(NotificationWatcher.appName(for: bundleID))").font(.system(size: 11)).foregroundStyle(muted)
-        case .airpods(let name, let levels):
-            Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            if levels.isEmpty {
-                Text("Подключены").font(.system(size: 11)).foregroundStyle(muted)
-            } else {
-                HStack(spacing: 10) {
-                    ForEach(levels.sorted(by: { $0.key < $1.key }), id: \.key) { label, value in
-                        HStack(spacing: 4) {
-                            Text(label).foregroundStyle(muted)
-                            Text("\(value)%").foregroundStyle(value <= 20 ? Palette.red : Palette.green)
-                        }
-                        .font(.rounded(11.5, .medium)).monospacedDigit()
-                    }
-                }
-            }
-        case .download(let name, _):
-            Text("Загружено").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
-            Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-        case .timerDone(let title, let subtitle):
-            Text(title).font(.system(size: 14, weight: .semibold))
-            Text(subtitle).font(.system(size: 11)).foregroundStyle(muted)
-        case .command(let text, let seconds, let exit, _, _):
-            Text(exit == 0 ? L("Команда завершилась") : L("Команда с ошибкой · код \(exit)"))
-                .font(.system(size: 10.5, weight: .medium)).foregroundStyle(exit == 0 ? faint : Palette.salmon)
-            Text(text).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-            Text(L("шла ") + Format.until(seconds)).font(.system(size: 11)).foregroundStyle(muted)
-        case .hog(let hog, let agent):
-            Text(agent.map { L("Грузит Mac · запущен агентом в \($0)") } ?? L("Грузит Mac"))
-                .font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint).lineLimit(1)
-            Text(hog.command).font(.system(size: 13, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-            Text(hog.memory >= ProcessWatch.memoryLimit
-                 ? L("память \(ByteCountFormatter.string(fromByteCount: Int64(hog.memory), countStyle: .memory))")
-                 // Share of the whole Mac, not of one core: "138 %" (1.4 cores) confused the user.
-                 : L("\(max(1, Int((Double(hog.cpu) / Double(ProcessInfo.processInfo.activeProcessorCount)).rounded())))% всего процессора · больше 2 мин"))
-                .font(.system(size: 11)).foregroundStyle(muted)
-        case .limit(let title, let left, let resets):
-            Text("Лимит почти исчерпан").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
-            Text("\(title): осталось \(left)%").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            Text(resets.map { L("Сброс ") + Format.when($0) + L(" · через ") + Format.until(max(0, $0.timeIntervalSinceNow)) }
-                 ?? L("Время сброса неизвестно"))
-                .font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
-        case .notice(_, let title, let detail, _):
-            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            if !detail.isEmpty { Text(detail).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2) }
-        case .dictation(let title, let detail, _):
-            Text("Диктовка").font(.system(size: 10.5, weight: .medium)).foregroundStyle(faint)
-            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            Text(detail).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2)
-        case .event(let title, let start, _):
-            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-            Text("Начало в \(start.formatted(date: .omitted, time: .shortened)) · \(start.formatted(.relative(presentation: .named)))")
-                .font(.system(size: 11)).foregroundStyle(muted)
-        }
-    }
-
-    @ViewBuilder private var trailing: some View {
-        switch island.kind {
-        case .agentDone(let turn):
-            // One button keeps room for the text; a click on the island itself opens the terminal.
-            if let session = model.agents.sessions.first(where: { $0.id == turn.session }), model.agents.canReply(session) {
-                Button("Ответить") { model.dismissIsland(showNext: false); model.startReply(to: turn.session) }
-                    .buttonStyle(.pill(.primary, small: true))
-                    .help("Написать агенту прямо из Nook. Клик по островку открывает терминал")
-            } else {
-                Button("Открыть") { AgentHub.focus(pid: turn.pid, terminal: turn.terminal); model.dismissIsland() }
-                    .buttonStyle(.pill(small: true))
-            }
-        case .download(_, let path):
-            HStack(spacing: 6) {
-                if Downloads.isRunnable(path) {
-                    Button("В Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]); model.dismissIsland() }
-                        .buttonStyle(.pill(small: true))
-                        .help("Программы и скрипты из интернета Nook не открывает сам — проверьте файл в Finder")
-                } else {
-                    Button("Открыть") { NSWorkspace.shared.open(URL(fileURLWithPath: path)); model.dismissIsland() }
-                        .buttonStyle(.pill(small: true))
-                }
-                Button("На полку") { model.shelf.add([URL(fileURLWithPath: path)]); model.dismissIsland() }
-                    .buttonStyle(.pill(small: true))
-            }
-        case .timerDone:
-            HStack(spacing: 6) {
-                Button("+5 мин") { model.timer.start(minutes: 5); model.dismissIsland() }.buttonStyle(.pill(.primary, small: true))
-                if model.timer.pomodoro {
-                    Button("Стоп") { model.timer.reset(); model.dismissIsland() }.buttonStyle(.pill(small: true))
-                }
-            }
-        case .event(_, _, let url):
-            if let url {
-                Button("Подключиться") { NSWorkspace.shared.open(url); model.dismissIsland() }
-                    .buttonStyle(.pill(.tint(Palette.green), small: true))
-            }
-        case .command(_, _, _, let pid, let terminal):
-            Button("Открыть") { AgentHub.focus(pid: pid, terminal: terminal); model.dismissIsland() }
-                .buttonStyle(.pill(small: true))
-        case .call(_, let bundleID):
-            Button("Открыть") { NotificationWatcher.open(bundleID: bundleID); model.dismissIsland() }
-                .buttonStyle(.pill(.tint(Palette.green), small: true))
-        case .hog(let hog, _):
-            KillButton(hog: hog) { model.dismissIsland() }
-        case .dictation(_, _, let settings) where settings:
-            Button("Настройки") { model.dismissIsland(); model.onOpenSettings?(.dictation) }
-                .buttonStyle(.pill(small: true))
-        default:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder private var menu: some View {
-        if case .notification(let bundleID, let app, _, _) = island.kind {
-            Button("Не показывать от «\(app)»") {
-                var muted = Settings.mutedApps
-                muted.insert(bundleID)
-                Settings.mutedApps = muted
-                model.dismissIsland()
-            }
-        }
-        if case .hog(let hog, _) = island.kind {
-            Button("Не следить за «\(hog.name)»") {
-                var ignored = Settings.ignoredProcesses
-                ignored.insert(hog.name)
-                Settings.ignoredProcesses = ignored
-                model.dismissIsland()
-            }
-        }
-        Button("Скрыть") { model.dismissIsland() }
-    }
-
-    private func primaryAction() {
-        switch island.kind {
-        case .agentDone(let turn): AgentHub.focus(pid: turn.pid, terminal: turn.terminal)
-        case .notification(let bundleID, _, _, _), .call(_, let bundleID): NotificationWatcher.open(bundleID: bundleID)
-        case .download(_, let path): NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-        case .event: model.calendar.openCalendar()
-        case .command(_, _, _, let pid, let terminal): AgentHub.focus(pid: pid, terminal: terminal)
-        case .limit: model.open(tab: .ai); return
-        case .dictation(_, _, let settings):
-            model.dismissIsland()
-            if settings { model.onOpenSettings?(.dictation) }
-            return
-        case .airpods, .timerDone, .hog, .notice: break
-        }
-        model.dismissIsland()
-    }
-}
-
 /// Ends a process from its island. The first click arms the button, the second one ends the process.
 struct KillButton: View {
     let hog: ProcessWatch.Hog
     let done: () -> Void
     @State private var armed = false
+    @State private var armedAt = Date.distantPast
 
     var body: some View {
         Button(armed ? L("Точно?") : L("Завершить")) {
             if armed {
+                // The second click of a double-click is not a confirmation.
+                guard Date().timeIntervalSince(armedAt) > 0.5 else { return }
                 ProcessWatch.terminate(hog)
                 done()
             } else {
+                armedAt = Date()
                 withAnimation(Motion.quick) { armed = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation(Motion.quick) { armed = false } }
             }
@@ -913,7 +651,7 @@ struct ExpandedView: View {
                     case .shelf: ShelfTab(model: model, shelf: model.shelf)
                     case .ai: AgentsTab(model: model, agents: model.agents, limits: model.limits, usage: model.usage)
                     case .calendar: CalendarTab(store: model.calendar)
-                    case .timer: TimerTab(model: model, timer: model.timer)
+                    case .timer: TimerTab(model: model, timer: model.timer, calendar: model.calendar)
                     case .launcher: LauncherTab(model: model, launcher: model.launcher, assistant: model.assistant)
                     case .cuely: CuelyTab(model: model, cuely: model.cuely)
                     case .notes: NotesTab(model: model, notes: model.notes)
@@ -971,66 +709,67 @@ struct ExpandedView: View {
         // Settings → Панель switches tabs and buttons off; the groups close up around what is left.
         let left = Tab.leftSide.filter(\.isShown)
         let right = Tab.rightSide.filter(\.isShown)
-        let keyLock = HeaderItem.keyLock.isShown
         return HStack(spacing: 0) {
-            HStack(spacing: 6) {
-                // Room for every title once only a few tabs are left.
-                if !left.isEmpty { tabGroup(left, titles: left.count <= 3 ? .all : .active) }
+            HStack(spacing: 2) {
+                tabs(left)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
             Color.clear.frame(width: model.notch.width + 12)
-            HStack(spacing: 6) {
-            Spacer(minLength: 0)
-            if !right.isEmpty || keyLock { tabGroup(right, keyLock: keyLock, titles: .none) }
-            // One capsule for status and quick actions, like the tab groups: even gaps on the right.
-            HStack(spacing: 1) {
-                statusChip
-                if HeaderItem.coffee.isShown {
-                    HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer",
-                                 active: caffeine.on, tint: Palette.orange,
-                                 help: caffeine.on ? L("Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить")
-                                                   : L("Кофеин: Mac не будет засыпать (например, пока работают агенты)")) {
-                        withAnimation(Motion.quick) { caffeine.toggle() }
-                    }
-                }
-                if HeaderItem.search.isShown {
-                    HeaderButton(symbol: "magnifyingglass", active: model.tab == .launcher, tint: Palette.blue,
-                                 help: L("Поиск программ и команд (\(Settings.launcherShortcut.title))")) {
-                        model.toggleLauncherFromHotkey()
-                    }
-                }
-                HeaderButton(symbol: "gearshape", help: L("Настройки Nook")) { model.onOpenSettings?(nil) }
-            }
-            .padding(2)
-            .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
+            HStack(spacing: 2) {
+                Spacer(minLength: 0)
+                tabs(right)
+                if !right.isEmpty { Color.clear.frame(width: 6) }
+                capsule
             }
             .frame(maxWidth: .infinity)
         }
         .frame(height: headerHeight)
     }
 
-    /// Which tabs show their name: none (the right half has little room), the open one, or all of them.
-    private enum Titles { case none, active, all }
-
-    private func tabGroup(_ tabs: [Tab], keyLock: Bool = false, titles: Titles) -> some View {
-        HStack(spacing: 1) {
-            ForEach(tabs) { tab in
-                TabPill(tab: tab, active: model.tab == tab, badge: tab == .ai && !agents.permissions.isEmpty,
-                        space: tabSpace, showsTitle: titles == .all || (titles == .active && model.tab == tab)) {
-                    model.select(tab)
-                }
+    /// Icon tabs; the open one sits in a white circle that slides from tab to tab.
+    private func tabs(_ list: [Tab]) -> some View {
+        ForEach(list) { tab in
+            TabPill(tab: tab, active: model.tab == tab, badge: tab == .ai && !agents.permissions.isEmpty, space: tabSpace) {
+                model.select(tab)
             }
-            if keyLock { KeyLockPill(lock: model.keyboardLock) }
         }
-        .padding(2)
-        .background(Capsule().fill(Color.white.opacity(0.07)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08))))
     }
 
+    /// Quick actions and status in one capsule: search, keyboard lock, coffee, settings | weather | battery.
+    private var capsule: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 2) {
+                if HeaderItem.search.isShown {
+                    HeaderButton(symbol: "magnifyingglass", active: model.tab == .launcher,
+                                 help: L("Поиск программ и команд (\(Settings.launcherShortcut.title))")) {
+                        model.toggleLauncherFromHotkey()
+                    }
+                }
+                if HeaderItem.keyLock.isShown { KeyLockPill(lock: model.keyboardLock) }
+                if HeaderItem.coffee.isShown {
+                    HeaderButton(symbol: caffeine.on ? "cup.and.saucer.fill" : "cup.and.saucer", active: caffeine.on,
+                                 help: caffeine.on ? L("Кофеин включён: Mac не засыпает. Нажмите, чтобы выключить")
+                                                   : L("Кофеин: Mac не будет засыпать (например, пока работают агенты)")) {
+                        withAnimation(Motion.quick) { caffeine.toggle() }
+                    }
+                }
+                HeaderButton(symbol: "gearshape", help: L("Настройки Nook")) { model.onOpenSettings?(nil) }
+            }
+            statusChip
+        }
+        .padding(.leading, 4).padding(.trailing, hasStatus ? 10 : 4)
+        .frame(height: 28)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+    }
+
+    private var hasWeather: Bool { weather.temperature != nil && HeaderItem.weather.isShown }
+    private var hasBattery: Bool { battery.hasBattery && HeaderItem.battery.isShown }
+    private var hasStatus: Bool { hasWeather || hasBattery }
+
     @ViewBuilder private var statusChip: some View {
-        let hasWeather = weather.temperature != nil && HeaderItem.weather.isShown
-        if hasWeather || (battery.hasBattery && HeaderItem.battery.isShown) {
-            Button { withAnimation(Motion.smooth) { model.showPower.toggle() } } label: { statusLabel(hasWeather) }
+        if hasStatus {
+            Button { withAnimation(Motion.smooth) { model.showPower.toggle() } } label: { statusLabel }
                 .buttonStyle(.plain)
                 // Never squeezed to "…": the gap around the camera gives way first.
                 .fixedSize()
@@ -1039,32 +778,32 @@ struct ExpandedView: View {
         }
     }
 
-    private func statusLabel(_ hasWeather: Bool) -> some View {
-            HStack(spacing: 6) {
-                if hasWeather, let t = weather.temperature {
-                    Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 11))
-                    Text("\(Int(t.rounded()))°").font(.system(size: 12, weight: .medium))
-                        .contentTransition(.numericText())
-                }
-                if hasWeather && battery.hasBattery && HeaderItem.battery.isShown {
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 11)
-                }
-                if battery.hasBattery && HeaderItem.battery.isShown {
-                    Image(systemName: batteryIcon).font(.system(size: 12))
-                        .foregroundStyle(battery.pluggedIn ? Palette.green : (battery.percent <= 20 ? Palette.red : .white.opacity(0.8)))
-                    if battery.percent <= 20 && !battery.pluggedIn {
-                        Text("\(battery.percent)%").font(.rounded(11)).foregroundStyle(Palette.red)
-                    } else if battery.held {
-                        Image(systemName: "pause.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(Palette.green)
-                    }
-                }
+    private var separator: some View { Rectangle().fill(Color.white.opacity(0.18)).frame(width: 1, height: 12) }
+
+    private var statusLabel: some View {
+        HStack(spacing: 6) {
+            if hasWeather, let t = weather.temperature {
+                separator
+                Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 12))
+                Text("\(Int(t.rounded()))°").contentTransition(.numericText())
             }
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background { if model.showPower { Capsule().fill(Color.white.opacity(0.18)) } }
-            .contentShape(Capsule())
-            .help([hasWeather ? "\(weather.place): \(weather.summary)" : nil,
-                   battery.hasBattery ? L("Батарея \(battery.percent)% · нажмите для подробностей") : nil]
-                .compactMap { $0 }.joined(separator: " · "))
+            if hasBattery {
+                separator
+                Image(systemName: batteryIcon).font(.system(size: 14))
+                    .foregroundStyle(battery.pluggedIn ? Tone.done : (battery.percent <= 20 ? Tone.deny : .white))
+                if battery.held {
+                    Image(systemName: "pause.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(Tone.done)
+                }
+                Text("\(battery.percent) %").foregroundStyle(battery.percent <= 20 && !battery.pluggedIn ? Tone.deny : .white)
+                    .contentTransition(.numericText())
+            }
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .opacity(model.showPower ? 0.7 : 1)
+        .contentShape(Rectangle())
+        .help([hasWeather ? "\(weather.place): \(weather.summary)" : nil,
+               battery.hasBattery ? L("Батарея \(battery.percent)% · нажмите для подробностей") : nil]
+            .compactMap { $0 }.joined(separator: " · "))
     }
 
     private var batteryIcon: String {
@@ -1079,11 +818,10 @@ struct ExpandedView: View {
     }
 }
 
-/// A round icon button at the right end of the header (coffee, settings).
+/// A round icon button in the header capsule (search, coffee, settings); the active one is white.
 struct HeaderButton: View {
     let symbol: String
     var active = false
-    var tint: Color = .white
     let help: String
     let action: () -> Void
     @State private var hover = false
@@ -1091,13 +829,13 @@ struct HeaderButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(active ? tint.lifted() : Color.white.opacity(hover ? 1 : 0.7))
-                .frame(width: 28, height: 22)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(active ? Color.black : Color.white.opacity(hover ? 1 : 0.7))
+                .frame(width: 22, height: 22)
                 .background {
-                    if active { Capsule().fill(tint.opacity(0.22)) } else if hover { Capsule().fill(Color.white.opacity(0.07)) }
+                    if active { Circle().fill(Color.white.opacity(0.92)) } else if hover { Circle().fill(Color.white.opacity(0.1)) }
                 }
-                .contentShape(Capsule())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .animation(Motion.quick, value: hover)
@@ -1106,39 +844,36 @@ struct HeaderButton: View {
     }
 }
 
-/// One tab in the header; the active one carries the sliding pill.
+/// One tab in the header: an icon; the open tab sits in a white circle that slides between tabs.
 struct TabPill: View {
     let tab: Tab
     let active: Bool
     let badge: Bool
     let space: Namespace.ID
-    var showsTitle = true
     let select: () -> Void
     @State private var hover = false
 
     var body: some View {
         Button(action: select) {
-            HStack(spacing: 6) {
-                Image(systemName: tab.icon).font(.system(size: 11, weight: .medium))
-                if showsTitle {
-                    Text(tab.title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize()
-                        .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)))
+            Image(systemName: tab.icon)
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(active ? Color.black : Color.white.opacity(hover ? 1 : 0.58))
+                .frame(width: active ? 32 : 30, height: 28)
+                .background {
+                    if active {
+                        Capsule().fill(Color.white.opacity(0.92)).matchedGeometryEffect(id: "activeTab", in: space)
+                    } else if hover {
+                        Capsule().fill(Color.white.opacity(0.08))
+                    }
                 }
-                if badge { Circle().fill(accent).frame(width: 6, height: 6) }
-            }
-            .padding(.horizontal, showsTitle ? 10 : 7).padding(.vertical, 4)
-            .background {
-                if active {
-                    Capsule().fill(Color.white.opacity(0.18)).matchedGeometryEffect(id: "activeTab", in: space)
-                } else if hover {
-                    Capsule().fill(Color.white.opacity(0.07))
+                .overlay(alignment: .topTrailing) {
+                    // A request waits in this tab: a still yellow dot (yellow = "ждёт тебя").
+                    if badge { Circle().fill(Tone.attention).frame(width: 6, height: 6).offset(x: -5, y: 5) }
                 }
-            }
-            .contentShape(Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .keyboardShortcut(tab.shortcut, modifiers: .command)
-        .foregroundStyle(active || hover ? Color.white : Color.white.opacity(0.6))
         .animation(Motion.quick, value: hover)
         .onHover { hover = $0 }
         .help("\(tab.title)  ⌘\(Tab.allCases.firstIndex(of: tab).map { $0 + 1 } ?? 1)")
@@ -1147,68 +882,9 @@ struct TabPill: View {
 
 // MARK: Home
 
-struct HomeTab: View {
-    @ObservedObject var model: NotchModel
-    var body: some View {
-        HStack(spacing: 10) {
-            NowPlayingCard(np: model.nowPlaying, compact: true).frame(width: 268).entrance(0)
-            AgentsSummary(agents: model.agents, limits: model.limits) { model.select(.ai) }.entrance(1)
-            VStack(spacing: 10) {
-                NextEventCard(store: model.calendar) { model.select(.calendar) }.entrance(2)
-                WeatherCard(weather: model.weather).entrance(3)
-            }
-            .frame(width: 150)
-        }
-    }
-}
-
-struct NextEventCard: View {
-    @ObservedObject var store: CalendarStore
-    var open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            Card {
-                VStack(alignment: .leading, spacing: 3) {
-                    if let e = store.nextEvent {
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar").font(.system(size: 11, weight: .semibold))
-                            Text(e.start <= Date() ? L("Идёт сейчас") : e.start.formatted(.relative(presentation: .named)).capitalizedFirst)
-                                .lineLimit(1)
-                        }
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(accent)
-                        Text(e.title).font(.system(size: 14, weight: .semibold)).lineLimit(e.meetingURL == nil ? 2 : 1)
-                        Text(Self.subtitle(e)).font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(1)
-                        Spacer(minLength: 4)
-                        if let url = e.meetingURL {
-                            Button { NSWorkspace.shared.open(url) } label: { Label("Войти", systemImage: "video.fill") }
-                                .buttonStyle(.pill(.tint(Palette.green), small: true))
-                                .help("Подключиться: \(Self.meetingName(url))")
-                        }
-                    } else if !store.calendarAccess {
-                        Caps(text: L("Календарь"))
-                        Text("Нет доступа").font(.system(size: 14, weight: .semibold))
-                        Text("Покажу встречи").font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Button("Разрешить") { store.requestAccess() }.buttonStyle(.pill(.primary, small: true))
-                    } else {
-                        Caps(text: L("Календарь"))
-                        Text("Сегодня свободно").font(.system(size: 14, weight: .semibold)).lineLimit(2)
-                        Text(store.reminders.isEmpty ? L("Напоминаний нет") : Format.count(store.reminders.count, "напоминание", "напоминания", "напоминаний"))
-                            .font(.system(size: 11.5)).foregroundStyle(muted)
-                    }
-                }
-            }
-        }
-        .buttonStyle(CardButtonStyle())
-    }
-
-    static func subtitle(_ e: CalendarStore.Event) -> String {
-        e.allDay ? L("Весь день")
-            : "\(e.start.formatted(date: .omitted, time: .shortened))–\(e.end.formatted(date: .omitted, time: .shortened))"
-    }
-
-    static func meetingName(_ url: URL) -> String {
+/// The service behind a meeting link: "Zoom", "Google Meet".
+enum Meeting {
+    static func name(_ url: URL) -> String {
         let host = url.host ?? ""
         if host.contains("zoom") { return "Zoom" }
         if host.contains("meet.google") { return "Google Meet" }
@@ -1216,256 +892,6 @@ struct NextEventCard: View {
         if host.contains("webex") { return "Webex" }
         if host.contains("whereby") { return "Whereby" }
         return host
-    }
-}
-
-struct WeatherCard: View {
-    @ObservedObject var weather: Weather
-    var body: some View {
-        Button { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Weather.app")) } label: { card }
-            .buttonStyle(CardButtonStyle())
-            .help("Открыть Погоду")
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 4) {
-                Text(weather.place.isEmpty ? L("Погода") : weather.place)
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 20))
-            }
-            Spacer(minLength: 0)
-            Text(weather.temperature.map { "\(Int($0.rounded()))°" } ?? "—").font(.rounded(34)).lineLimit(1)
-                .contentTransition(.numericText())
-                .animation(Motion.smooth, value: weather.temperature)
-            Text(weather.summary).font(.system(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
-            if let h = weather.high, let l = weather.low {
-                Text("↑\(Int(h.rounded()))°  ↓\(Int(l.rounded()))°").font(.rounded(11, .medium)).foregroundStyle(.white.opacity(0.7))
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glass(tint: [Palette.blue.opacity(0.6), Palette.navy.opacity(0.35)], stroke: .white.opacity(0.12))
-    }
-}
-
-// MARK: Calendar
-
-struct CalendarTab: View {
-    @ObservedObject var store: CalendarStore
-    @State private var newReminder = ""
-
-    var body: some View {
-        if !store.calendarAccess && !store.remindersAccess {
-            Card(tint: [Palette.orange.opacity(0.14), .clear]) {
-                VStack(spacing: 10) {
-                    Badge(symbol: "calendar.badge.plus", colors: [Palette.orange, Palette.red], size: 52)
-                    Text("Покажу события и напоминания прямо в вырезе").font(.system(size: 15, weight: .semibold))
-                    Button(store.asked ? L("Открыть настройки доступа") : L("Разрешить доступ")) { store.requestAccess() }
-                        .buttonStyle(.pill(.primary))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .entrance(0)
-        } else {
-            HStack(alignment: .top, spacing: 10) {
-                Card { events }.frame(maxWidth: .infinity).entrance(0)
-                Card { reminders }.frame(width: 280).entrance(1)
-            }
-            .animation(Motion.smooth, value: store.events.map(\.id))
-            .animation(Motion.smooth, value: store.reminders.map(\.id))
-        }
-    }
-
-    private var events: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("События").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button { store.openCalendar() } label: { Image(systemName: "arrow.up.right.square").font(.system(size: 12)) }
-                    .buttonStyle(.icon).foregroundStyle(muted).help("Открыть Календарь")
-            }
-            if store.events.isEmpty {
-                Text("Сегодня и завтра свободно").font(.system(size: 12)).foregroundStyle(muted)
-            }
-            ListScroll {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(store.events) { e in
-                        HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 2).fill(Color(nsColor: e.color)).frame(width: 3, height: 30)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(e.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                                Text(Self.when(e)).font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
-                            }
-                            Spacer()
-                            if let url = e.meetingURL {
-                                Button("Подключиться") { NSWorkspace.shared.open(url) }
-                                    .buttonStyle(.pill(.tint(Palette.green), small: true))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var reminders: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Напоминания").font(.system(size: 13, weight: .semibold))
-            HStack(spacing: 6) {
-                Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(muted)
-                TextField("Новое напоминание", text: $newReminder)
-                    .textFieldStyle(.plain).font(.system(size: 12))
-                    .onSubmit { store.addReminder(newReminder); newReminder = "" }
-            }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .glass(radius: 10)
-            ListScroll {
-                VStack(alignment: .leading, spacing: 7) {
-                    ForEach(store.reminders) { r in
-                        HStack(spacing: 8) {
-                            Button { store.complete(r) } label: {
-                                Image(systemName: "circle").font(.system(size: 14)).foregroundStyle(Color(nsColor: r.color))
-                            }
-                            .buttonStyle(.icon)
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(r.title).font(.system(size: 12)).lineLimit(1)
-                                if let due = r.due {
-                                    Text(due.formatted(.relative(presentation: .named)))
-                                        .font(.system(size: 10)).foregroundStyle(due < Date() ? Palette.red : muted)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static func when(_ e: CalendarStore.Event) -> String {
-        let day = Calendar.current.isDateInToday(e.start) ? L("Сегодня") : (Calendar.current.isDateInTomorrow(e.start) ? L("Завтра") : e.start.formatted(date: .abbreviated, time: .omitted))
-        if e.allDay { return L("\(day) · весь день") }
-        let time = "\(e.start.formatted(date: .omitted, time: .shortened))–\(e.end.formatted(date: .omitted, time: .shortened))"
-        return [day, time, e.location].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-}
-
-// MARK: Timer
-
-struct TimerTab: View {
-    @ObservedObject var model: NotchModel
-    @ObservedObject var timer: FocusTimer
-    private let presets: [Double] = [1, 3, 5, 10, 15, 25, 45, 60]
-
-    var body: some View {
-        let colors = timer.phase.colors
-        HStack(spacing: 10) {
-            Card(tint: [colors[0].opacity(0.2), .clear], padding: 18) {
-                HStack(spacing: 22) {
-                    TimelineView(.periodic(from: .now, by: 0.25)) { context in
-                        let remaining = timer.remaining(at: context.date)
-                        let fraction = timer.total > 0 ? remaining / timer.total : 0
-                        ZStack {
-                            RingGauge(fraction: (timer.isRunning || timer.isPaused) ? fraction : 1, colors: colors, lineWidth: 10)
-                            VStack(spacing: 2) {
-                                Text(FocusTimer.format(remaining)).font(.rounded(30)).monospacedDigit()
-                                    .contentTransition(.numericText(countsDown: true))
-                                    .animation(Motion.quick, value: Int(remaining))
-                                Text(timer.phase.title).font(.system(size: 11)).foregroundStyle(muted)
-                            }
-                        }
-                        .frame(width: 156, height: 156)
-                        .shadow(color: colors[0].opacity(0.35), radius: 14)
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        if timer.isRunning || timer.isPaused {
-                            HStack(spacing: 8) {
-                                Button(timer.isPaused ? L("Продолжить") : L("Пауза")) { timer.pauseResume() }.buttonStyle(.pill(.primary))
-                                Button(model.focusMode ? L("Стоп") : L("Сброс")) { timer.reset() }.buttonStyle(.pill())
-                            }
-                            HStack(spacing: 8) {
-                                Button("+1 мин") { timer.add(minutes: 1) }.buttonStyle(.pill())
-                                Button("+5 мин") { timer.add(minutes: 5) }.buttonStyle(.pill())
-                            }
-                        } else {
-                            Caps(text: L("Таймер"))
-                            Text("Выберите время справа").font(.system(size: 15, weight: .semibold))
-                            Text("или запустите Помодоро 25 / 5").font(.system(size: 12)).foregroundStyle(muted)
-                        }
-                        if model.focusMode {
-                            Label(model.focusQuiet ? L("Фокус: уведомления ждут, кофеин") : L("Перерыв: уведомления снова видны"),
-                                  systemImage: model.focusQuiet ? "moon.fill" : "cup.and.saucer.fill")
-                                .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.violet.lifted())
-                                .lineLimit(1)
-                        }
-                        if timer.pomodoro {
-                            HStack(spacing: 5) {
-                                ForEach(0..<4) { i in
-                                    Circle().fill(i < timer.completedFocus % 4 || (timer.completedFocus > 0 && timer.completedFocus % 4 == 0 && timer.phase == .longBreak) ? colors[0] : Color.white.opacity(0.15))
-                                        .frame(width: 8, height: 8)
-                                }
-                                Text("помодоро: \(timer.completedFocus)").font(.system(size: 11)).foregroundStyle(muted)
-                            }
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(maxHeight: .infinity)
-                .animation(Motion.smooth, value: timer.isRunning || timer.isPaused)
-            }
-            .entrance(0)
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Caps(text: L("Быстрый старт"))
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                        ForEach(presets, id: \.self) { m in
-                            Button(m >= 60 ? L("1 ч") : L("\(Int(m)) м")) { timer.pomodoro = false; timer.start(minutes: m) }
-                                .buttonStyle(TileStyle())
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    VStack(spacing: 6) {
-                        Button { model.endFocusMode(); timer.startPomodoro() } label: {
-                            Label("Помодоро 25 / 5", systemImage: "flame.fill").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.pill(.gradient(FocusTimer.Phase.focus.colors)))
-                        .help("25 минут работы, 5 минут отдыха")
-                        Button { model.startFocusMode() } label: {
-                            Label(model.focusMode ? L("Режим фокуса включён") : L("Режим фокуса"), systemImage: "moon.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.pill(.gradient([Palette.violet, Palette.blue])))
-                        .disabled(model.focusMode)
-                        .opacity(model.focusMode ? 0.6 : 1)
-                        .help("Помодоро, кофеин и тишина: пока идёт фокус, Nook не показывает уведомления приложений (звонки показывает). «Стоп» выключает режим")
-                    }
-                }
-            }
-            .frame(width: 250)
-            .entrance(1)
-        }
-    }
-}
-
-/// Square-ish glass button for grids of presets.
-struct TileStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { TileBody(configuration: configuration) }
-}
-
-private struct TileBody: View {
-    let configuration: ButtonStyleConfiguration
-    @State private var hover = false
-    var body: some View {
-        configuration.label
-            .font(.rounded(13, .semibold))
-            .frame(maxWidth: .infinity).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(hover ? 0.16 : 0.09)))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.08)))
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-            .contentShape(Rectangle())
-            .onHover { hover = $0 }
     }
 }
 

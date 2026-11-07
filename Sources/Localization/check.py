@@ -12,7 +12,8 @@ CYRILLIC = re.compile('[А-Яа-яЁёІіЇїЄєҐґ«]')
 # Literal titles SwiftUI looks up itself, and L(…).
 LOOKED_UP = re.compile(r'(\b(Text|Button|Toggle|Label|Section|LabeledContent|Picker|TextField|SecureField|Link|Menu|'
                        r'Stepper|DisclosureGroup|ProgressView|GroupBox|ControlGroup)\(|\.(help|navigationTitle|'
-                       r'accessibilityLabel|accessibilityHint)\(|\bL\(|SoundPicker\(title:)\s*$')
+                       r'accessibilityLabel|accessibilityHint)\(|\bL\(|SoundPicker\(title:|Settings(Toggle|Picker|Row|Group)\(|'
+                       r'WarningLine\(text:|PairsSection\(title:|\b(subtitle|footer):)\s*$')
 PLURAL = re.compile(r'\bcount\([^()]*,\s*$|\bcount\([^()]*,\s*"[^"]*",\s*$|\bcount\([^()]*,\s*"[^"]*",\s*"[^"]*",\s*$')
 SPEC = re.compile(r'%(?:lld|ld|d|lf|@)')
 
@@ -87,7 +88,7 @@ def main():
             before = src[max(0, start - 100):start].split('\n')[-1].rstrip()
             if not (LOOKED_UP.search(before) or PLURAL.search(before)):
                 continue
-            if LOOKED_UP.search(before) and not before.endswith('L(') and src[end:end + 4].lstrip().startswith('+'):
+            if LOOKED_UP.search(before) and not before.endswith('L(') and re.match(r'\s*\+', src[end:end + 200]):
                 glued.append(f'{name}:{line}  {text[:70]}')
             k = key(text)
             if k in known:

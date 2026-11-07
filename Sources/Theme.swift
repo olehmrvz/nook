@@ -8,7 +8,6 @@ enum Palette {
     static let pink = Color(hex: 0xFF5FA2)
     static let yellow = Color(hex: 0xFFD60A)
     static let violet = Color(hex: 0x7A5CFF)
-    static let claude = Color(hex: 0xD97757)
     static let orange = Color(hex: 0xFF9F0A)
     static let green = Color(hex: 0x30D158)
     static let mint = Color(hex: 0x63E6BE)
@@ -27,6 +26,154 @@ enum Palette {
 let accent = Palette.orange
 let muted = Color.white.opacity(0.6)
 let faint = Color.white.opacity(0.4)
+
+// MARK: Common language (Figma «Общий язык», round 6)
+
+/// Colour is meaning: the same hue means the same thing in every tab, island and in the notch. No Claude orange.
+enum Tone {
+    /// "Ждёт тебя": a request, a question, a clash in the calendar.
+    static let attention = Color(hex: 0xFFD24D)
+    static let focus = Color(hex: 0xFF6FAE)
+    /// Done, join a meeting, tests passed.
+    static let done = Color(hex: 0x6FDB8F)
+    /// Meetings and AI.
+    static let meeting = Color(hex: 0xA897FF)
+    /// Weather, files, downloads.
+    static let info = Color(hex: 0x8FB4FF)
+    /// Limits and links.
+    static let limit = Color(hex: 0x7CCFF5)
+    /// The "now" mark on time lines.
+    static let now = Color(hex: 0xC6FF3D)
+    static let deny = Color(hex: 0xFF6B6B)
+    /// Agent glyphs: Claude and Codex look the same, the project's colour tells sessions apart.
+    static let ink = Color(hex: 0xE6E6EA)
+}
+
+enum Surface {
+    static let tile = Color(hex: 0x141418)
+    static let raised = Color(hex: 0x1C1C22)
+}
+
+/// The spacing grid. Tiles: 14 pt inside a 1 pt border, 10 pt apart. Shapes that grow out of the notch: content
+/// 18 pt from both sides, the body 6 pt under the camera band, 16 pt to the bottom, blocks 10 pt apart.
+enum Spacing {
+    static let gap: CGFloat = 10
+    /// Inside a tile, border included.
+    static let pad: CGFloat = 15
+    static let radius: CGFloat = 22
+    /// Between rows of a list.
+    static let list: CGFloat = 6
+    static let edge: CGFloat = 18
+    static let under: CGFloat = 6
+    static let bottom: CGFloat = 16
+    /// Least room between content beside the camera and the camera itself.
+    static let clear: CGFloat = 10
+}
+
+/// Graphite tile behind panel content.
+struct TileBackground: ViewModifier {
+    /// accent: a tile in the colour of what it is about (the assistant's question is violet), solid edge.
+    enum Kind { case plain, attention, selected, target(Color), accent(Color) }
+    var kind: Kind = .plain
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Spacing.radius, style: .continuous)
+        content.background {
+            switch kind {
+            case .plain:
+                shape.fill(Surface.tile).overlay(shape.strokeBorder(Color.white.opacity(0.06)))
+            case .attention:
+                // The only warm tile on screen: what waits for you.
+                shape.fill(LinearGradient(colors: [Tone.attention.opacity(0.06), Surface.tile],
+                                          startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6)))
+                    .overlay(shape.strokeBorder(Tone.attention.opacity(0.45)))
+            case .selected:
+                shape.fill(Surface.tile).overlay(shape.strokeBorder(Color.white.opacity(0.7), lineWidth: 1.5))
+            case .accent(let color):
+                shape.fill(LinearGradient(colors: [color.opacity(0.1), Surface.tile],
+                                          startPoint: .topLeading, endPoint: UnitPoint(x: 0.6, y: 0.7)))
+                    .overlay(shape.strokeBorder(color.opacity(0.45)))
+            case .target(let color):
+                shape.fill(color.opacity(0.04))
+                    .overlay(shape.strokeBorder(color.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+            }
+        }
+    }
+}
+
+extension View {
+    func tile(_ kind: TileBackground.Kind = .plain) -> some View { modifier(TileBackground(kind: kind)) }
+}
+
+/// A tile that fills the frame it is given, content at the top left.
+struct Tile<Content: View>: View {
+    var kind: TileBackground.Kind = .plain
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(Spacing.pad)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .tile(kind)
+    }
+}
+
+/// A function's symbol in a tinted rounded square: the head of a tile or a row.
+struct TileIcon: View {
+    let symbol: String
+    var color: Color = Tone.ink
+    var size: CGFloat = 20
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.52, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(color.opacity(0.16)))
+    }
+}
+
+/// Icon and an uppercase label: the first line of most tiles.
+struct TileHeader<Trailing: View>: View {
+    let symbol: String
+    var color: Color = Tone.ink
+    let title: String
+    var titleColor: Color = .white.opacity(0.55)
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 7) {
+            TileIcon(symbol: symbol, color: color)
+            Caps(text: title, color: titleColor)
+            Spacer(minLength: 4)
+            trailing
+        }
+    }
+}
+
+extension TileHeader where Trailing == EmptyView {
+    init(symbol: String, color: Color = Tone.ink, title: String, titleColor: Color = .white.opacity(0.55)) {
+        self.init(symbol: symbol, color: color, title: title, titleColor: titleColor) { EmptyView() }
+    }
+}
+
+/// The project's letter in a terminal cell, the same mark as in the collapsed notch. Lit: the cursor is on it.
+struct Monogram: View {
+    let project: String
+    var size: CGFloat = 24
+    var lit = true
+
+    var body: some View {
+        let color = AgentCursor.color(project)
+        Text(AgentCursor.letter(project))
+            .font(.system(size: size * 0.6, weight: .bold, design: .monospaced))
+            .foregroundStyle(lit ? Color.black : color)
+            .frame(width: (size * 0.78).rounded(), height: size)
+            .background(RoundedRectangle(cornerRadius: max(3, size * 0.16), style: .continuous)
+                .fill(lit ? color : color.opacity(0.16)))
+            .shadow(color: lit ? color.opacity(0.45) : .clear, radius: size * 0.25)
+    }
+}
 
 extension Color {
     /// Deeper, calmer version of a colour for large background washes.
@@ -218,8 +365,47 @@ struct Chip: View {
 
 // MARK: Buttons
 
+/// A button that wipes something asks once more: the first click turns it into "Точно?" for 3 s, the second one
+/// acts. A stray click (the panel can open under a pointer that is busy elsewhere) cannot clear anything.
+struct ConfirmButton<Label: View>: View {
+    let confirm: String
+    let action: () -> Void
+    @ViewBuilder var label: Label
+    @State private var armed = false
+    @State private var armedAt = Date.distantPast
+    @State private var work: DispatchWorkItem?
+
+    var body: some View {
+        Button {
+            if armed {
+                // The second click of a double-click is not a confirmation.
+                guard Date().timeIntervalSince(armedAt) > 0.5 else { return }
+                work?.cancel()
+                armed = false
+                action()
+            } else {
+                armedAt = Date()
+                withAnimation(Motion.quick) { armed = true }
+                let disarm = DispatchWorkItem { withAnimation(Motion.quick) { armed = false } }
+                work = disarm
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: disarm)
+            }
+        } label: {
+            if armed {
+                Text(confirm).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color(hex: 0xFF8A80))
+                    .padding(.horizontal, 10).frame(height: 28)
+                    .background(Capsule().fill(Color(hex: 0xFF453A).opacity(0.14)))
+            } else {
+                label
+            }
+        }
+    }
+}
+
+
 struct PillStyle: ButtonStyle {
-    enum Kind { case primary, glass, tint(Color), gradient([Color]) }
+    /// primary: the one white button of a screen; ghost: the other choices; deny / go: decline and join.
+    enum Kind { case primary, glass, ghost, deny, go, tint(Color), gradient([Color]) }
     var kind: Kind = .glass
     var foreground: Color?
     var small = false
@@ -253,6 +439,9 @@ private struct PillBody: View {
         switch style.kind {
         case .primary: Capsule().fill(Color.white)
         case .glass: Capsule().fill(Color.white.opacity(hover ? 0.2 : 0.14))
+        case .ghost: Capsule().fill(Color.white.opacity(hover ? 0.13 : 0.08))
+        case .deny: Capsule().fill(Color(hex: 0xFF453A).opacity(hover ? 0.2 : 0.12))
+        case .go: Capsule().fill(Tone.done.opacity(hover ? 0.24 : 0.16))
         case .tint(let color): Capsule().fill(color)
         case .gradient(let colors):
             Capsule().fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
@@ -260,8 +449,12 @@ private struct PillBody: View {
     }
 
     private var defaultForeground: Color {
-        if case .primary = style.kind { return .black }
-        return .white
+        switch style.kind {
+        case .primary: return .black
+        case .deny: return Color(hex: 0xFF8A80)
+        case .go: return Tone.done
+        default: return .white
+        }
     }
 }
 
@@ -305,12 +498,13 @@ struct CardButtonStyle: ButtonStyle {
     }
 }
 
+/// Hover lights a card up a little. It does not grow: the tab area is clipped, and a card at its edge
+/// would lose its border and glow under the clip.
 struct HoverLift: ViewModifier {
     @State private var hover = false
     func body(content: Content) -> some View {
         content
-            .brightness(hover ? 0.03 : 0)
-            .scaleEffect(hover && !Motion.reduce ? 1.012 : 1)
+            .brightness(hover ? 0.05 : 0)
             .animation(Motion.quick, value: hover)
             .onHover { hover = $0 }
     }
@@ -324,8 +518,9 @@ struct Entrance: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
+            // No scale with it: offset and scale together on a ScrollView left it scrolled 7.5 pt down after
+            // opening (the Shelf's first row came cut until you scrolled).
             .offset(y: shown ? 0 : 10)
-            .scaleEffect(shown ? 1 : 0.98, anchor: .top)
             .onAppear {
                 guard !shown else { return }
                 withAnimation(Motion.smooth.delay(0.045 * Double(order))) { shown = true }
@@ -450,35 +645,6 @@ struct AmbientGlow: View {
             guard !Motion.reduce else { return }
             withAnimation(.easeInOut(duration: 5).repeatForever(autoreverses: true)) { breathe = true }
         }
-    }
-}
-
-/// Island background: black glass with one clean halo behind the icon.
-/// Full-saturation colour at low opacity: a muted colour over black turns into a brown smudge.
-struct IslandBackdrop: View {
-    var colors: [Color]
-    /// Height of the band under the camera that stays pure black.
-    var blackTop: CGFloat = 0
-
-    var body: some View {
-        GeometryReader { geo in
-            let h = max(geo.size.height, 1)
-            // The icon's centre: island padding (ear + 14) plus half the 40 pt icon, middle of the content row.
-            let icon = UnitPoint(x: (NotchModel.ear + 34) / max(geo.size.width, 1), y: (blackTop + 4 + (h - blackTop - 16) / 2) / h)
-            ZStack {
-                // Neutral glass depth, not a coloured wash: tinted black reads as brown or mud.
-                LinearGradient(colors: [.clear, Color.white.opacity(0.05)], startPoint: .top, endPoint: .bottom)
-                RadialGradient(stops: AmbientGlow.falloff.map { .init(color: colors[0].opacity(0.3 * $0.alpha), location: $0.at) },
-                               center: icon, startRadius: 0, endRadius: 140)
-            }
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
-                                         .init(color: .clear, location: min(1, blackTop / h)),
-                                         .init(color: .black, location: min(1, (blackTop + 30) / h)),
-                                         .init(color: .black, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
-        }
-        .animation(.easeInOut(duration: 0.8).speed(Motion.speed), value: colors)
-        .allowsHitTesting(false)
     }
 }
 

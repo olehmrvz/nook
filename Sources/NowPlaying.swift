@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 /// What plays on the Mac, from any app (Spotify, Music, a browser tab, podcasts).
@@ -62,6 +63,9 @@ final class NowPlaying: ObservableObject {
     private var bridge: Process?
     private var bridgeInput: FileHandle?
     private var buffer = Data()
+    /// The cover being shown (a hash of what the bridge sent): the same cover is not decoded again.
+    private var artworkCode: Int?
+    private let artworkQueue = DispatchQueue(label: "dev.nook.nowplaying.artwork")
     private var bridgeFailures = 0
     private var bridgeStarted = Date()
 
@@ -121,7 +125,11 @@ final class NowPlaying: ObservableObject {
 
     private func receive(_ data: Data) {
         // Only the new chunk can hold the line end: no rescanning megabytes of cover art on every read.
-        guard data.contains(UInt8(ascii: "\n")) else { buffer.append(data); return }
+        guard data.contains(UInt8(ascii: "\n")) else {
+            buffer.append(data)
+            if buffer.count > 32_000_000 { buffer.removeAll() }   // a line that never ends must not fill the memory
+            return
+        }
         buffer.append(data)
         while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
             let line = buffer[buffer.startIndex..<newline]
@@ -155,16 +163,39 @@ final class NowPlaying: ObservableObject {
         set(\.position, json["elapsed"] as? Double ?? 0)
         let stamp = json["timestamp"] as? Double ?? 0
         set(\.positionDate, stamp > 0 ? Date(timeIntervalSince1970: stamp) : Date())
-        if let encoded = json["artwork"] as? String, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
-            setArtwork(image)
+        if let encoded = json["artwork"] as? String {
+            let code = encoded.hashValue
+            guard code != artworkCode else { return }
+            artworkCode = code
+            // Decoded and scaled down off the main thread: a web page can hand over a cover of any size.
+            artworkQueue.async { [weak self] in
+                let image = Self.thumbnail(base64: encoded)
+                let glow = image?.glowColors()
+                DispatchQueue.main.async {
+                    guard let self, self.artworkCode == code else { return }
+                    self.setArtwork(image, glow: glow)
+                }
+            }
         } else if trackChanged {
+            artworkCode = nil
             artwork = nil
         }
+    }
+
+    /// At most 400 px: the notch shows the cover at a few dozen points.
+    private static func thumbnail(base64: String) -> NSImage? {
+        guard let data = Data(base64Encoded: base64), let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                        kCGImageSourceCreateThumbnailWithTransform: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: 400]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 
     private func clear() {
         guard source != nil else { return }
         source = nil; isPlaying = false; title = ""; artist = ""; album = ""
+        artworkCode = nil
         setArtwork(nil)
     }
 
@@ -291,9 +322,9 @@ final class NowPlaying: ObservableObject {
     }
 
     /// Keeps the previous glow while the next cover loads, so the colour does not flash.
-    private func setArtwork(_ image: NSImage?) {
+    private func setArtwork(_ image: NSImage?, glow colors: [Color]?? = nil) {
         artwork = image
-        if let image { glow = image.glowColors() ?? [] } else if source == nil { glow = [] }
+        if let image { glow = (colors ?? image.glowColors()) ?? [] } else if source == nil { glow = [] }
     }
 
     // MARK: Controls

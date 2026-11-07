@@ -61,8 +61,8 @@ Without either each rebuild is ad-hoc signed and macOS may ask again.
 
 ## Command line
 
-`Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close` opens a tab of the running
-app (`power` opens Home with the battery card); `Nook --show settings[:pane]` opens the Settings window
+`Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|limits|close` opens a tab of the running
+app (`power` opens Home with the battery card, `limits` the Agents tab with the limits details); `Nook --show settings[:pane]` opens the Settings window
 (panes: general, panel, launcher, snippets, clipboard, ai, notch, notifications, dictation, agents, privacy, updates,
 thanks).
 `Nook --show launcher` opens the search with the keyboard in it; `Nook --show launcher:<text>` shows the results for
@@ -72,6 +72,11 @@ thanks).
 `Nook --timer 25|stop|pomodoro` and `Nook --prompt` (start Cuely) for Raycast / Shortcuts.
 `Nook --answer allow|always|deny|terminal` answers the oldest pending agent request. It works from your own
 terminal, not from a process an agent started (an agent must not approve its own request).
+The check (`AgentHub.runsUnderAgent`) walks up the caller's parents: claude, codex or node on the way refuses it, and
+so does reaching launchd without passing an app (Terminal, iTerm, Raycast) or a process under `/System` (Shortcuts).
+That stops an agent's `( … & )` or nohup, whose process launchd adopts. It also refuses terminals hosted by a
+background server (Orca's terminal host, herdr, tmux): use Terminal, Raycast or Shortcuts for `--answer` and `--dictate`.
+Timer values are checked: more than 0 and at most 24 h.
 
 ## Notes
 
@@ -191,3 +196,12 @@ terminal, not from a process an agent started (an agent must not approve its own
   `defaults write dev.nook.app AppleLanguages -array en`, restart; `-bool YES` for `NSShowNonLocalizedStrings`
   shows text without a translation in capitals. Delete both keys afterwards.
 
+### AirPods switching
+
+macOS gives no API for "your AirPods moved to another device", and its own banner cannot be turned off
+(`com.apple.BTUserNotifications`, posted by `audioaccessoryd`, has `UNHideSettings`). Nook reads the banner's log line
+through a `/usr/bin/log stream` child (`HeadphoneBanners` in `Sources/Devices.swift`): «PostingBanner: Type
+ReverseRoute …» plus the metrics line that names the other device. The text is not an API: check it after macOS
+updates with `log stream --predicate 'process == "audioaccessoryd" AND eventMessage BEGINSWITH "PostingBanner: Type "'`.
+«Вернуть на Mac» opens the connection if it dropped, then plays 3 s of silence on the AirPods output so macOS routes
+them back; a phone playing media (higher priority) can refuse.

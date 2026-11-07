@@ -28,6 +28,11 @@ final class NotificationWatcher: ObservableObject {
         "com.apple.FaceTime", "com.apple.TelephonyUtilities", "com.apple.mobilephone", "com.apple.InCallService",
     ]
 
+    /// macOS's headphone banners ("Подключены", "Переключились на iPhone"): Nook shows them as its own AirPods
+    /// drops (`AudioDevices`). macOS 27.2 draws them as a system banner without storing them here; a stored copy
+    /// must not come twice. The database keeps this identifier in lower case.
+    private static let headphoneBanners: Set<String> = ["com.apple.btusernotifications"]
+
     func start(onIsland: @escaping (Island) -> Void) {
         self.onIsland = onIsland
         timer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
@@ -109,7 +114,8 @@ final class NotificationWatcher: ObservableObject {
         log("\(bundleID): keys=\(plist.keys.sorted()) req=\(req.keys.sorted()) title=\(!title.isEmpty) body=\(!body.isEmpty)")
 
         let ownID = Bundle.main.bundleIdentifier ?? "dev.nook.app"
-        guard bundleID != ownID, !Settings.mutedApps.contains(bundleID), !(title.isEmpty && body.isEmpty) else { return }
+        guard bundleID != ownID, !Self.headphoneBanners.contains(bundleID.lowercased()), !Settings.mutedApps.contains(bundleID),
+              !(title.isEmpty && body.isEmpty) else { return }
         let appName = Self.appName(for: bundleID)
 
         if Self.callApps.contains(bundleID) || bundleID.lowercased().contains("facetime") {

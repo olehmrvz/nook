@@ -156,7 +156,14 @@ final class Dictation: ObservableObject {
 
     static let maxSeconds: TimeInterval = 300
 
-    func start() { apply() }
+    func start() {
+        apply()
+        // Accessibility granted later (System Settings): the key works at once, no restart needed.
+        DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("com.apple.accessibility.api"),
+                                                            object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self?.apply() }
+        }
+    }
 
     /// After a settings change: watch the key or stop watching, drop the model when dictation is off.
     func apply() {

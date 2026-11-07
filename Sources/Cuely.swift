@@ -32,9 +32,16 @@ final class Cuely: ObservableObject {
 
     private var words: [String] = []
     private var ticker: Timer?
+    /// The engine lives on `audio`: creating the input node queries Core Audio, which can stall (a Bluetooth headset
+    /// switching) and froze the notch when Dictation did it on the main thread.
     private let engine = AVAudioEngine()
+    private let audio = DispatchQueue(label: "dev.nook.cuely.audio")
+    private var tapped = false   // on `audio` only
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    /// Bumped by every stop: callbacks of an older session do nothing.
+    private var session = 0
+    private var quickFailures = 0
     private var loading = true
     private let fileURL = supportDir.appendingPathComponent("cuely.json")
 
@@ -80,6 +87,10 @@ final class Cuely: ObservableObject {
 
     func present() {
         guard let body = current?.body, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // `Nook --prompt` again during a presentation starts it over.
+        ticker?.invalidate()
+        stopListening()
+        quickFailures = 0
         buildLines(body)
         wordIndex = 0
         isPaused = false
@@ -172,39 +183,76 @@ final class Cuely: ObservableObject {
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = true
         self.request = request
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
-        engine.prepare()
-        do { try engine.start() } catch {
-            status = L("Микрофон недоступен — автопрокрутка")
-            startTicker()
-            return
+        let session = self.session
+        let fail = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, session == self.session else { return }
+                self.status = L("Микрофон недоступен — автопрокрутка")
+                self.startTicker()
+            }
         }
-        status = L("Слушаю…")
+        audio.async { [weak self] in
+            guard let self else { return }
+            let input = self.engine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            // No input device: a tap with an empty format raises an exception that ends the app.
+            guard format.sampleRate > 0, format.channelCount > 0 else { return fail() }
+            input.removeTap(onBus: 0)
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
+            self.tapped = true
+            self.engine.prepare()
+            do { try self.engine.start() } catch {
+                input.removeTap(onBus: 0)
+                self.tapped = false
+                return fail()
+            }
+            DispatchQueue.main.async {
+                guard session == self.session else { return }   // stopped meanwhile: stopListening ends the engine
+                self.status = L("Слушаю…")
+                self.recognize(request, with: recognizer, session: session)
+            }
+        }
+    }
+
+    private func recognize(_ request: SFSpeechAudioBufferRecognitionRequest, with recognizer: SFSpeechRecognizer, session: Int) {
+        let began = Date()
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
             if let result {
                 let spoken = result.bestTranscription.segments.suffix(5).map { Self.normalize($0.substring) }
                 DispatchQueue.main.async { self.follow(spoken) }
             }
-            // Recognition sessions end after a pause or about a minute; start a fresh one.
-            if error != nil || result?.isFinal == true {
-                DispatchQueue.main.async {
-                    if self.isPresenting && !self.isPaused && self.voiceFollow { self.beginRecognition() }
+            // Recognition sessions end after a pause or about a minute; start a fresh one. A session this one
+            // replaced reports its cancellation too: only the live one restarts.
+            guard error != nil || result?.isFinal == true else { return }
+            DispatchQueue.main.async {
+                guard session == self.session, self.isPresenting, !self.isPaused, self.voiceFollow else { return }
+                self.quickFailures = error != nil && Date().timeIntervalSince(began) < 2 ? self.quickFailures + 1 : 0
+                if self.quickFailures >= 3 {
+                    self.stopListening()
+                    self.status = L("Распознавание не работает — автопрокрутка")
+                    self.startTicker()
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if session == self.session { self.beginRecognition() }
                 }
             }
         }
     }
 
     private func stopListening() {
+        session += 1
         task?.cancel()
         task = nil
         request?.endAudio()
         request = nil
-        if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        audio.async { [weak self] in
+            guard let self, self.tapped else { return }
+            self.engine.stop()
+            self.engine.inputNode.removeTap(onBus: 0)
+            self.tapped = false
+        }
     }
 
     /// Moves the cursor to where the last spoken words best match the script ahead.

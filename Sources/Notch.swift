@@ -129,6 +129,8 @@ struct Island: Identifiable, Equatable {
         case notification(bundleID: String, app: String, title: String, body: String)
         case call(name: String, bundleID: String)
         case airpods(name: String, levels: [String: Int])
+        /// Automatic switching took the headphones to another device; `device` ("iPhone") when macOS names it.
+        case airpodsAway(name: String, address: String, device: String?)
         case download(name: String, path: String)
         case timerDone(title: String, subtitle: String)
         case event(title: String, start: Date, url: URL?)
@@ -141,10 +143,23 @@ struct Island: Identifiable, Equatable {
         case dictation(title: String, detail: String, settings: Bool)
         /// A short message with a symbol: a command from the search finished, and the like.
         case notice(symbol: String, title: String, detail: String, ok: Bool)
+        /// An agent waits for a permission, an answer or a plan review (`AgentHub.Permission.id`).
+        case request(UUID)
+        /// Two or three agents finished within a few seconds: one drop for all of them.
+        case agentsDone([AgentTurn])
     }
     let id = UUID()
+    let created = Date()
     let kind: Kind
     var seconds: Double = 6
+
+    /// Connected or moved away: the newer of the two replaces the older.
+    var isHeadphones: Bool {
+        switch kind {
+        case .airpods, .airpodsAway: return true
+        default: return false
+        }
+    }
 }
 
 enum NotchGeometry {
@@ -178,8 +193,6 @@ final class NotchModel: ObservableObject {
     /// Larger than the open panel on every side: its shadow must fade out inside the window, or the
     /// window edge cuts it into a visible band.
     static let windowSize = CGSize(width: 900, height: 400)
-    static let islandWidth: CGFloat = 460
-    static let islandExtra: CGFloat = 78
     static let prompterSize = CGSize(width: 600, height: 190)
     static let ear: CGFloat = 8
     static let slot: CGFloat = 46
@@ -188,6 +201,8 @@ final class NotchModel: ObservableObject {
     @Published var tab: Tab = .home
     /// Battery details card under the header chip.
     @Published var showPower = false
+    /// The limits details in place of the Agents feed.
+    @Published var showLimits = false
     @Published var notch = CGSize(width: 190, height: 32)
     @Published var flash: Flash?
     /// Screens asleep or locked: the panel closes and the notch animations pause.
@@ -235,6 +250,9 @@ final class NotchModel: ObservableObject {
     private(set) var sticky = false
     /// Opened for a permission request: stays open until the pointer has visited it.
     private var holdOpen = false
+    /// A text field in the panel has the keyboard: leaving with the pointer would drop the text and send the rest
+    /// of the typing (Return included) to the app in front.
+    private var editing: Bool { panel?.isKeyWindow == true && panel?.firstResponder is NSText }
     private var previousApp: NSRunningApplication?
     /// The panel is on another display for the search; it goes back when it closes.
     private var awayScreen = false
@@ -245,8 +263,10 @@ final class NotchModel: ObservableObject {
     private var tickTimer: Timer?
     private var flashWork: DispatchWorkItem?
     private var islandWork: DispatchWorkItem?
-    private var islandQueue: [Island] = []
-    private var islandHovered = false
+    /// Islands waiting their turn; the drop on screen shows how many ("+2").
+    @Published private(set) var islandQueue: [Island] = []
+    /// The pointer is on the island: it grows a step and does not go away.
+    @Published private(set) var islandHovered = false
 
     var hasLiveActivity: Bool { flash != nil || live != nil }
 
@@ -374,15 +394,21 @@ final class NotchModel: ObservableObject {
             guard let self else { return }
             if presenting { self.collapse(); self.startTicks() }
             self.objectWillChange.send()
+            if !presenting { self.showNextIsland() }   // what came in meanwhile waited in the queue
         }
         agents.start(
             onPermission: { [weak self] in
                 guard let self, !self.resting else { return }   // shown when the screens wake
-                self.holdOpen = true
-                self.expand(tab: .ai)
+                // A new request is more urgent than the limits details, on whichever tab they were opened.
+                self.showLimits = false
+                // The panel is open: the request is in its Agents tab. Closed: it drops out of the notch.
+                if self.expanded { self.select(.ai) } else { self.presentRequest() }
             },
             onDone: { [weak self] island in self?.present(island) }
         )
+
+        agents.$permissions.receive(on: DispatchQueue.main).sink { [weak self] list in self?.permissionsChanged(list) }
+            .store(in: &bag)
 
         // Re-render the collapsed notch when any live source changes.
         for source in [nowPlaying.objectWillChange, agents.objectWillChange, timer.objectWillChange,
@@ -436,8 +462,9 @@ final class NotchModel: ObservableObject {
             collapse()
         } else if !agents.permissions.isEmpty {
             // A request came in while you were away: it is the first thing you see.
-            holdOpen = true
-            expand(tab: .ai)
+            presentRequest()
+        } else {
+            showNextIsland()   // what finished while the screens rested
         }
     }
 
@@ -492,7 +519,7 @@ final class NotchModel: ObservableObject {
     }
 
     var expandedRect: NSRect { topRect(width: Self.expandedSize.width, height: Self.expandedSize.height) }
-    var islandRect: NSRect { topRect(width: Self.islandWidth, height: notch.height + Self.islandExtra) }
+    var islandRect: NSRect { topRect(width: islandFrame.width, height: islandFrame.height) }
     var prompterRect: NSRect { topRect(width: Self.prompterSize.width, height: Self.prompterSize.height) }
 
     /// The part of the window that should take clicks right now; everything else passes through.
@@ -524,7 +551,8 @@ final class NotchModel: ObservableObject {
 
         let interactive = interactiveRect?.contains(point) ?? false
         if let panel, panel.ignoresMouseEvents == interactive { panel.ignoresMouseEvents = !interactive }
-        islandHovered = island != nil && islandRect.contains(point)
+        let onIsland = island != nil && islandRect.contains(point)
+        if onIsland != islandHovered { islandHovered = onIsland }
 
         let now = Date()
         if !expanded {
@@ -550,7 +578,8 @@ final class NotchModel: ObservableObject {
         // Idle for two minutes since it opened: a panel opened by a script while the person was away
         // must not close in the same second.
         if !holdOpen && Date().timeIntervalSince(openedAt) > 120 && idleSeconds > 120 { collapse(); return }
-        if inside || sticky || holdOpen {
+        // Typing in one of its fields (a reminder, the clipboard search): the pointer may drift away.
+        if inside || sticky || holdOpen || editing {
             leaveStart = nil
         } else {
             if leaveStart == nil { leaveStart = now }
@@ -577,6 +606,7 @@ final class NotchModel: ObservableObject {
     func collapse(returnFocus: Bool = true) {
         guard expanded else { return }
         showPower = false
+        showLimits = false
         let wasSticky = sticky
         sticky = false
         holdOpen = false
@@ -630,8 +660,9 @@ final class NotchModel: ObservableObject {
     /// `followPointer: false` keeps the notch's display (a preview from `--show launcher:<text>`).
     func toggleLauncherFromHotkey(query: String = "", focus: Bool = true, followPointer: Bool = true) {
         if expanded && sticky && tab == .launcher && query.isEmpty { collapse(); return }
+        // Also when the panel is already open by hover: Esc and pasting go back to the app you are in.
+        if !sticky { previousApp = NSWorkspace.shared.frontmostApplication }
         if !expanded && followPointer {
-            previousApp = NSWorkspace.shared.frontmostApplication
             // The display you work on, like Spotlight: the one with the pointer.
             let pointer = NSEvent.mouseLocation
             if let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }),
@@ -687,7 +718,7 @@ final class NotchModel: ObservableObject {
     /// The search panel with the assistant's answer.
     func showAnswer() {
         launcher.answerMode = true
-        if !expanded { previousApp = NSWorkspace.shared.frontmostApplication }
+        if !sticky { previousApp = NSWorkspace.shared.frontmostApplication }
         sticky = true
         expand(tab: .launcher)
         tab = .launcher
@@ -817,9 +848,54 @@ final class NotchModel: ObservableObject {
         caffeine.set(coffeeBeforeFocus)
     }
 
+    /// The oldest pending request as a big drop, ahead of anything else on screen.
+    func presentRequest() {
+        guard let first = agents.permissions.first else { return }
+        // The prompter covers drops: the request opens the panel over it, as before drops.
+        if cuely.isPresenting { holdOpen = true; expand(tab: .ai); return }
+        if case .request? = island?.kind { return }   // the drop on screen already shows the oldest one
+        if let current = island { islandQueue.insert(current, at: 0) }
+        islandWork?.cancel()
+        island = nil
+        showIsland(Island(kind: .request(first.id), seconds: 30))
+    }
+
+    /// A request was answered (here, in the panel or in the terminal): the next one takes the drop, or it goes.
+    private func permissionsChanged(_ list: [AgentHub.Permission]) {
+        islandQueue.removeAll { if case .request(let id) = $0.kind { return !list.contains { $0.id == id } }; return false }
+        guard case .request(let id)? = island?.kind, !list.contains(where: { $0.id == id }) else { return }
+        if let next = list.first {
+            island = Island(kind: .request(next.id), seconds: 30)
+            scheduleIslandDismiss(after: 30)
+        } else {
+            dismissIsland()
+        }
+    }
+
     func present(_ new: Island) {
         if focusQuiet, case .notification = new.kind { return }
-        if island == nil && !expanded && !cuely.isPresenting {
+        // While the screens rest only finished turns wait for the wake: a message or a call from hours ago is stale.
+        if resting { guard case .agentDone = new.kind else { return } }
+        // Agents that finish within seconds of each other share one drop instead of queueing.
+        if case .agentDone(let turn) = new.kind {
+            var turns: [AgentTurn]?
+            if case .agentDone(let shown)? = island?.kind, shown.session != turn.session { turns = [shown, turn] }
+            // Three at most fit; a fourth waits for its own drop.
+            if case .agentsDone(let shown)? = island?.kind, shown.count < 3, !shown.contains(where: { $0.session == turn.session }) {
+                turns = shown + [turn]
+            }
+            if let turns {
+                island = Island(kind: .agentsDone(turns), seconds: 8)
+                scheduleIslandDismiss(after: 8)
+                return
+            }
+        }
+        // Headphones that moved away and came back (or the reverse): only the latest state is true.
+        if new.isHeadphones {
+            islandQueue.removeAll(where: \.isHeadphones)
+            if island?.isHeadphones == true { dismissIsland(showNext: false) }
+        }
+        if island == nil && !expanded && !cuely.isPresenting && !resting {
             showIsland(new)
         } else if island?.kind != new.kind && !islandQueue.contains(where: { $0.kind == new.kind }) {
             islandQueue.append(new)
@@ -828,7 +904,7 @@ final class NotchModel: ObservableObject {
     }
 
     private func showIsland(_ new: Island) {
-        guard !resting else { return }
+        guard !resting else { islandQueue.insert(new, at: 0); return }   // shown when the screens wake
         island = new
         startTicks()
         scheduleIslandDismiss(after: new.seconds)
@@ -852,7 +928,19 @@ final class NotchModel: ObservableObject {
     }
 
     private func showNextIsland() {
-        guard island == nil, !expanded, !cuely.isPresenting, !islandQueue.isEmpty else { return }
+        guard island == nil, !expanded, !cuely.isPresenting, !resting else { return }
+        // A call that waited is over; other news older than ten minutes is old. Finished turns still matter.
+        islandQueue.removeAll { island in
+            let age = Date().timeIntervalSince(island.created)
+            switch island.kind {
+            case .call: return age > 30
+            // macOS gives «Вернуть» 20 s; later the drop would offer it for a state that may be gone.
+            case .airpodsAway: return age > 30
+            case .agentDone, .agentsDone, .request: return false
+            default: return age > 600
+            }
+        }
+        guard !islandQueue.isEmpty else { return }
         showIsland(islandQueue.removeFirst())
     }
 

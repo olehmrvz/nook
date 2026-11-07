@@ -4,67 +4,45 @@ import SwiftUI
 
 // MARK: Notes
 
+/// Figma «H · Заметки»: notes as tiles, a new one at the end; the open note in the editor on the right.
 struct NotesTab: View {
     @ObservedObject var model: NotchModel
     @ObservedObject var notes: NotesStore
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Заметки").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Button { notes.newNote(); model.stayOpen() } label: {
-                        Image(systemName: "square.and.pencil").font(.system(size: 12, weight: .semibold))
-                    }
-                    .buttonStyle(.icon).help("Новая заметка")
-                }
-                if notes.notes.isEmpty {
-                    Text("Пока пусто").font(.system(size: 12)).foregroundStyle(faint).padding(.top, 4)
-                }
-                ListScroll {
-                    VStack(spacing: 2) {
+        GeometryReader { geo in
+            let col = (geo.size.width - 3 * Spacing.gap) / 4
+            let row = (geo.size.height - Spacing.gap) / 2
+            HStack(alignment: .top, spacing: Spacing.gap) {
+                ScrollView(showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.fixed(col), spacing: Spacing.gap), GridItem(.fixed(col), spacing: Spacing.gap)],
+                              spacing: Spacing.gap) {
                         ForEach(notes.notes) { note in
-                            row(note).transition(.opacity.combined(with: .move(edge: .top)))
+                            tile(note).frame(height: row).transition(.opacity.combined(with: .scale(scale: 0.96)))
                         }
+                        newTile.frame(height: row)
                     }
                     .animation(Motion.smooth, value: notes.notes.map(\.id))
                 }
+                .defaultScrollAnchor(.top)
+                .frame(width: 2 * col + Spacing.gap)
+                .entrance(0)
+                editor.entrance(1)
             }
-            .padding(12)
-            .frame(width: 200)
-            .glass()
-            .entrance(0)
-
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: Binding(get: { notes.current?.text ?? "" }, set: { notes.update(text: $0) }))
-                    .font(.system(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .padding(10)
-                if (notes.current?.text ?? "").isEmpty {
-                    Text("Пишите — всё сохраняется само").font(.system(size: 13)).foregroundStyle(faint)
-                        .padding(.horizontal, 15).padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-            }
-            .glass(tint: [Palette.yellow.opacity(0.08), .clear])
-            .onTapGesture { model.stayOpen() }
-            .entrance(1)
         }
     }
 
-    private func row(_ note: NotesStore.Note) -> some View {
+    private func tile(_ note: NotesStore.Note) -> some View {
         let selected = note.id == notes.current?.id
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(note.title).font(.system(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1)
-            Text(note.updated.formatted(.relative(presentation: .named))).font(.system(size: 10)).foregroundStyle(faint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8).padding(.vertical, 6)
-        .background {
-            if selected {
-                RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.clear)
-                    .glass(tint: [Palette.yellow.opacity(0.25), Palette.orange.opacity(0.08)], radius: 9)
+        let body = note.text.split(separator: "\n", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
+        return Tile(kind: selected ? .selected : .plain) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(note.title.isEmpty ? L("Без названия") : note.title).font(.system(size: 13, weight: .bold)).lineLimit(2)
+                if !body.isEmpty {
+                    Text(body).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Text(Self.when(note.updated)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
             }
         }
         .contentShape(Rectangle())
@@ -74,6 +52,57 @@ struct NotesTab: View {
             Divider()
             Button("Удалить") { withAnimation(Motion.smooth) { notes.delete(note) } }
         }
+    }
+
+    private var newTile: some View {
+        Button { notes.newNote(); model.stayOpen() } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "plus").font(.system(size: 16, weight: .semibold))
+                Text("Новая заметка").font(.system(size: 12, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tile(.target(Tone.ink))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CardButtonStyle())
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: Binding(get: { notes.current?.text ?? "" }, set: { notes.update(text: $0) }))
+                    .font(.system(size: 13))
+                    .lineSpacing(3)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, -5)
+                if (notes.current?.text ?? "").isEmpty {
+                    Text("Пишите — всё сохраняется само").font(.system(size: 13)).foregroundStyle(faint)
+                        .allowsHitTesting(false)
+                }
+            }
+            if let note = notes.current {
+                HStack {
+                    Text(L("сохранено · ") + note.updated.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
+                    Spacer()
+                    Text("Пишите — всё сохраняется само").font(.system(size: 11)).foregroundStyle(muted)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .padding(Spacing.pad)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .tile()
+        .onTapGesture { model.stayOpen() }
+    }
+
+    /// "сегодня · 18:04", "вчера · 21:10", "3 нояб.".
+    static func when(_ date: Date) -> String {
+        let cal = Calendar.current
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if cal.isDateInToday(date) { return L("сегодня · ") + time }
+        if cal.isDateInYesterday(date) { return L("вчера · ") + time }
+        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 }
 

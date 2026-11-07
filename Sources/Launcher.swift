@@ -107,8 +107,8 @@ enum NookCommand: String, CaseIterable {
         case .shelf: Palette.cyan
         case .notes: Palette.yellow
         case .calendar: Palette.red
-        case .agents: Palette.claude
-        case .timer, .pomodoro, .focus: Palette.orange
+        case .agents: Tone.ink
+        case .timer, .pomodoro, .focus: Tone.focus
         case .coffee: Palette.orange
         case .keyLock: Palette.violet
         case .settings: Color(hex: 0x8E8E93)
@@ -227,6 +227,8 @@ final class Launcher: ObservableObject {
     private var emoji: [Emoji.Entry] = []
     /// Read when the search opens: the front app's menu items and the open windows.
     private var live: [LaunchItem] = []
+    /// The open windows read when the search opened (with Accessibility and the setting on).
+    var openWindows: [WindowList.Window] { live.compactMap { if case .openWindow(let w) = $0.kind { return w } else { return nil } } }
     private let liveQueue = DispatchQueue(label: "nook.launcher.live", qos: .userInitiated)
     private let files = FileSearch()
     private var fileResults: (query: String, urls: [URL]) = ("", [])
@@ -445,6 +447,9 @@ final class Launcher: ObservableObject {
             }
     }
 
+    /// What you type becomes one value: `rock & roll`, `c++` or `where?` must not split the query or end the path.
+    private static let queryValue = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))
+
     func search() {
         let usage = Settings.launcherUsage
         let now = Date().timeIntervalSince1970
@@ -508,7 +513,7 @@ final class Launcher: ObservableObject {
             guard trimmed.lowercased().hasPrefix(name.lowercased() + " ") else { continue }
             let argument = String(trimmed.dropFirst(name.count + 1)).trimmingCharacters(in: .whitespaces)
             guard !argument.isEmpty else { continue }
-            let encoded = argument.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? argument
+            let encoded = argument.addingPercentEncoding(withAllowedCharacters: Self.queryValue) ?? argument
             if let url = URL(string: template.replacingOccurrences(of: "{query}", with: encoded)) {
                 rows.insert(LaunchItem(id: "quicklink:\(name)", title: L("\(name): «\(argument)»"), subtitle: url.host ?? L("Ссылка"),
                                        terms: [], kind: .link(url, symbol: "link")), at: 0)
@@ -526,7 +531,7 @@ final class Launcher: ObservableObject {
         }
         if !trimmed.isEmpty, Settings.launcherFallbacks {
             // Always under the results: "Use «query» with…".
-            let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
+            let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: Self.queryValue) ?? trimmed
             if let google = URL(string: "https://www.google.com/search?q=\(encoded)") {
                 rows.append(LaunchItem(id: "fallback:google", title: L("Искать «\(trimmed)» в Google"), subtitle: L("Интернет"),
                                        terms: [], kind: .link(google, symbol: "magnifyingglass")))
@@ -718,6 +723,9 @@ final class Launcher: ObservableObject {
 
 // MARK: View
 
+/// Search (Figma «Поиск — раунд 1», B «Главное совпадение»): the field, then the selected result as a card on the
+/// left with what Nook knows about it and its keys, and the short list on the right. The calculator and the
+/// assistant's answer take the whole width.
 struct LauncherTab: View {
     @ObservedObject var model: NotchModel
     @ObservedObject var launcher: Launcher
@@ -725,80 +733,191 @@ struct LauncherTab: View {
     @FocusState private var focused: Bool
     @Namespace private var selectionSpace
 
+    static let heroWidth: CGFloat = 290
+
     var body: some View {
         let items = launcher.results
-        let aliases = Settings.launcherAliases
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .medium)).foregroundStyle(muted)
-                TextField("Программы, настройки, команды Nook", text: $launcher.query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 15))
-                    .focused($focused)
-                    .onSubmit { launcher.answerMode ? copyAnswer() : open(items, reveal: false) }
-                    .onKeyPress(keys: [.return]) { press in
-                        guard press.modifiers.contains(.command) else { return .ignored }
-                        if launcher.answerMode { pasteAnswer() } else { open(items, reveal: true) }
-                        return .handled
+        let selected = items.indices.contains(launcher.selection) ? items[launcher.selection] : nil
+        VStack(spacing: Spacing.gap) {
+            field(items).frame(height: 36).entrance(0)
+            Group {
+                if launcher.answerMode {
+                    answer
+                } else if let selected, case .answer(let result) = selected.kind {
+                    CalculatorTile(answer: result, query: launcher.query, google: items.first { $0.id == "fallback:google" },
+                                   copy: { open(items, reveal: false) }, goOn: { open(items, reveal: true) },
+                                   search: { item in model.collapse(returnFocus: false); launcher.open(item) })
+                } else if let selected {
+                    HStack(alignment: .top, spacing: Spacing.gap) {
+                        hero(selected, items: items).frame(width: Self.heroWidth)
+                        list(items)
                     }
-                    // Tab sends what is typed to the assistant.
-                    .onKeyPress(.tab) {
-                        let text = launcher.query.trimmingCharacters(in: .whitespaces)
-                        if !text.isEmpty { ask(text) }
-                        return .handled
-                    }
-                    .onKeyPress(.downArrow) { move(1, count: items.count); return .handled }
-                    .onKeyPress(.upArrow) { move(-1, count: items.count); return .handled }
-                    // Esc clears the field first, then closes.
-                    .onKeyPress(.escape) {
-                        if launcher.answerMode {
-                            assistant.cancel()
-                            launcher.answerMode = false
-                        } else if launcher.query.isEmpty {
-                            model.collapse()
-                        } else {
-                            launcher.query = ""
-                        }
-                        return .handled
-                    }
-                Text(selectedHint(items)).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .glass(radius: 12)
-            .entrance(0)
-
-            if launcher.answerMode {
-                AnswerPanel(assistant: assistant).entrance(1)
-            } else if items.isEmpty {
-                VStack(spacing: 8) {
-                    Badge(symbol: "magnifyingglass", colors: [Palette.blue, Palette.violet], size: 44)
-                    Text(launcher.query.isEmpty ? L("Начните печатать название программы") : L("Ничего не найдено"))
-                        .font(.system(size: 12)).foregroundStyle(muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollViewReader { proxy in
-                    ListScroll {
-                        LazyVStack(spacing: 2) {
-                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                LaunchRow(item: item, icon: icon(item), alias: aliases[item.id],
-                                          selected: index == launcher.selection, selectionSpace: selectionSpace) {
-                                    launcher.selection = index
-                                    open(items, reveal: false)
-                                }
-                                .id(item.id)
-                            }
-                        }
-                        .animation(Motion.quick, value: launcher.selection)
-                    }
-                    .entrance(1)
-                    .onChange(of: launcher.selection) { _, new in
-                        if items.indices.contains(new) { proxy.scrollTo(items[new].id) }
-                    }
+                } else {
+                    nothing
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .entrance(1)
         }
         .onAppear { if model.sticky && model.panel?.isKeyWindow == true { focused = true } }
+    }
+
+    // MARK: Field
+
+    private func field(_ items: [LaunchItem]) -> some View {
+        HStack(spacing: 10) {
+            if launcher.answerMode {
+                TileIcon(symbol: "sparkles", color: Tone.meeting, size: 22)
+            } else {
+                Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .medium)).foregroundStyle(muted)
+                    .frame(width: 22)
+            }
+            TextField("Программы, файлы, команды…", text: $launcher.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .focused($focused)
+                .onSubmit { launcher.answerMode ? copyAnswer() : open(items, reveal: false) }
+                .onKeyPress(keys: [.return]) { press in
+                    guard press.modifiers.contains(.command) else { return .ignored }
+                    if launcher.answerMode { pasteAnswer() } else { open(items, reveal: true) }
+                    return .handled
+                }
+                // Tab sends what is typed to the assistant.
+                .onKeyPress(.tab) {
+                    let text = launcher.query.trimmingCharacters(in: .whitespaces)
+                    if !text.isEmpty { ask(text) }
+                    return .handled
+                }
+                .onKeyPress(.downArrow) { move(1, count: items.count); return .handled }
+                .onKeyPress(.upArrow) { move(-1, count: items.count); return .handled }
+                // Esc clears the field first, then closes.
+                .onKeyPress(.escape) {
+                    if launcher.answerMode {
+                        assistant.cancel()
+                        launcher.answerMode = false
+                    } else if launcher.query.isEmpty {
+                        model.collapse()
+                    } else {
+                        launcher.query = ""
+                    }
+                    return .handled
+                }
+            if launcher.answerMode {
+                if assistant.working {
+                    HStack(spacing: 6) { Spinner(color: Tone.meeting); Text("отвечает…").font(.system(size: 11)).foregroundStyle(faint) }
+                }
+            } else if !launcher.query.trimmingCharacters(in: .whitespaces).isEmpty {
+                HStack(spacing: 6) { KeyCap(text: "Tab"); Text("спросить AI").font(.system(size: 11)).foregroundStyle(faint) }
+            }
+        }
+        .padding(.leading, 7).padding(.trailing, 12)
+        .frame(maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Surface.tile)
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.06))))
+    }
+
+    // MARK: Selected result
+
+    private func hero(_ item: LaunchItem, items: [LaunchItem]) -> some View {
+        let asks: Bool = if case .ask = item.kind { true } else { false }
+        return LaunchHero(item: item, icon: icon(item), alias: Settings.launcherAliases[item.id],
+                          keys: Settings.launcherHotkeys[item.id].flatMap(Shortcut.init(stored:))?.title,
+                          usage: Settings.launcherUsage[item.id], windows: windows(of: item),
+                          recent: launcher.query.trimmingCharacters(in: .whitespaces).isEmpty,
+                          nothingFound: asks && !hasMatches(items),
+                          primary: { open(items, reveal: false) }, reveal: { open(items, reveal: true) })
+    }
+
+    /// The app's open windows, read when the search opened (Accessibility).
+    private func windows(of item: LaunchItem) -> [String] {
+        guard case .app(let url) = item.kind else { return [] }
+        return launcher.openWindows.filter { $0.bundle?.standardizedFileURL == url.standardizedFileURL }
+            .map(\.title).filter { !$0.isEmpty }
+    }
+
+    /// Something matched besides asking the assistant and the web fallbacks.
+    private func hasMatches(_ items: [LaunchItem]) -> Bool {
+        items.contains { item in
+            if case .ask = item.kind { return false }
+            return !item.id.hasPrefix("fallback:")
+        }
+    }
+
+    // MARK: List
+
+    private func list(_ items: [LaunchItem]) -> some View {
+        let recent = launcher.query.trimmingCharacters(in: .whitespaces).isEmpty
+        let aliases = Settings.launcherAliases
+        let usage = Settings.launcherUsage
+        return ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 6) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        LaunchRow(item: item, icon: icon(item), alias: aliases[item.id],
+                                  trailing: recent ? usage[item.id].flatMap(LaunchHero.ago) : nil,
+                                  keys: Settings.launcherHotkeys[item.id].flatMap(Shortcut.init(stored:))?.title,
+                                  selected: index == launcher.selection, selectionSpace: selectionSpace) {
+                            launcher.selection = index
+                            open(items, reveal: false)
+                        }
+                        .id(item.id)
+                    }
+                    if !recent && !hasMatches(items) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Caps(text: L("Ничего не найдено"), color: faint)
+                            Text("Проверено: программы, настройки, команды, окна, меню, файлы, сниппеты.")
+                                .font(.system(size: 12)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.top, 12)
+                    }
+                }
+                .animation(Motion.quick, value: launcher.selection)
+            }
+            .defaultScrollAnchor(.top)
+            .onChange(of: launcher.selection) { _, new in
+                if items.indices.contains(new) { proxy.scrollTo(items[new].id) }
+            }
+        }
+    }
+
+    private var nothing: some View {
+        Tile {
+            VStack(spacing: 8) {
+                TileIcon(symbol: "magnifyingglass", color: Tone.info, size: 40)
+                Text(launcher.query.isEmpty ? L("Начните печатать название программы") : L("Ничего не найдено"))
+                    .font(.system(size: 12)).foregroundStyle(muted)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: Assistant
+
+    private var answer: some View {
+        HStack(alignment: .top, spacing: Spacing.gap) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 7) { TileIcon(symbol: "sparkles", color: Tone.meeting, size: 20); Caps(text: L("Вопрос")) }
+                Text(assistant.question).font(.system(size: 16, weight: .bold)).lineLimit(3).padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Settings.aiProvider.title.components(separatedBy: " (").first ?? "")
+                    .font(.system(size: 11.5)).foregroundStyle(muted).padding(.top, 6)
+                Spacer(minLength: 0)
+                HStack(spacing: 6) {
+                    Button { copyAnswer() } label: { PillKeys(title: L("Скопировать"), keys: "↩") }
+                        .buttonStyle(.pill(.primary, small: true)).disabled(assistant.answer.isEmpty)
+                    Button { pasteAnswer() } label: { PillKeys(title: L("Вставить"), keys: "⌘↩") }
+                        .buttonStyle(.pill(.ghost, small: true)).disabled(assistant.answer.isEmpty)
+                    Spacer(minLength: 0)
+                    HStack(spacing: 5) { KeyCap(text: "Esc"); Text("назад").font(.system(size: 11)).foregroundStyle(faint) }
+                }
+            }
+            .padding(Spacing.pad)
+            .frame(width: Self.heroWidth, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .tile(.accent(Tone.meeting))
+            AnswerPanel(assistant: assistant)
+        }
     }
 
     private func ask(_ question: String) {
@@ -836,21 +955,6 @@ struct LauncherTab: View {
         case .openWindow(let window): window.bundle.flatMap { launcher.icons[$0.path] }
         case .menu: NSWorkspace.shared.frontmostApplication?.bundleURL.flatMap { launcher.icons[$0.path] }
         case .nook, .answer, .link, .window, .snippet, .emoji, .command, .ask, .ai: nil
-        }
-    }
-
-    private func selectedHint(_ items: [LaunchItem]) -> String {
-        guard items.indices.contains(launcher.selection) else { return "" }
-        switch items[launcher.selection].kind {
-        case .app: return L("↩ открыть · ⌘↩ в Finder")
-        case .snippet, .emoji: return L("↩ вставить")
-        case .menu: return L("↩ выполнить")
-        case .ask: return L("↩ или Tab: спросить")
-        case .ai: return L("↩ с выделенным текстом")
-        case .openWindow: return L("↩ перейти")
-        case .file: return L("↩ открыть · ⌘↩ в Finder")
-        case .answer(let answer): return answer.isError ? "" : L("↩ скопировать · ⌘↩ считать дальше")
-        default: return L("↩ открыть")
         }
     }
 
@@ -917,10 +1021,14 @@ struct LauncherTab: View {
     }
 }
 
+/// One result in the list: icon, title (and its own word), what it is or when it was opened, its keys.
 struct LaunchRow: View {
     let item: LaunchItem
     let icon: NSImage?
     var alias: String?
+    /// "3 мин" for what was opened lately; else what kind of thing it is.
+    var trailing: String?
+    var keys: String?
     let selected: Bool
     let selectionSpace: Namespace.ID
     let action: () -> Void
@@ -928,17 +1036,25 @@ struct LaunchRow: View {
 
     var body: some View {
         Button(action: action) {
-            Group {
-                if case .answer(let answer) = item.kind { AnswerCard(answer: answer) } else { row }
+            HStack(spacing: 10) {
+                LaunchIcon(item: item, icon: icon, size: 20)
+                Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                if let alias { Chip(text: alias, color: .white.opacity(0.75)) }
+                Spacer(minLength: 8)
+                if let keys { KeyCap(text: keys) } else {
+                    Text(trailing ?? item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1).truncationMode(.middle)
+                }
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
             .background {
+                let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
                 if selected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear)
-                        .glass(tint: [Palette.blue.opacity(0.28), Palette.violet.opacity(0.1)], radius: 12)
+                    shape.fill(Surface.raised)
+                        .overlay(shape.strokeBorder(Color.white.opacity(0.7), lineWidth: 1.5))
                         .matchedGeometryEffect(id: "selection", in: selectionSpace)
                 } else if hover {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05))
+                    shape.fill(Color.white.opacity(0.05))
                 }
             }
             .contentShape(Rectangle())
@@ -947,15 +1063,151 @@ struct LaunchRow: View {
         .focusable(false)
         .onHover { hover = $0 }
     }
+}
 
-    private var row: some View {
-        HStack(spacing: 10) {
-            LaunchIcon(item: item, icon: icon, size: 26)
-            Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-            if let alias { Chip(text: alias, color: .white.opacity(0.75)) }
-            Spacer(minLength: 8)
-            Text(item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1)
+/// The selected result, large: what it is and where, the person's own word and keys, how often it was opened, the
+/// app's open windows; its actions with their keys.
+struct LaunchHero: View {
+    let item: LaunchItem
+    let icon: NSImage?
+    let alias: String?
+    let keys: String?
+    /// [count, last opened (seconds since 1970)] from `Settings.launcherUsage`.
+    let usage: [Double]?
+    let windows: [String]
+    /// Nothing typed: the list is what was opened lately.
+    let recent: Bool
+    /// Only the assistant and the web are left for this query.
+    let nothingFound: Bool
+    let primary: () -> Void
+    let reveal: () -> Void
+
+    /// "сейчас", "3 мин", "2 ч", "вчера", "5 дн".
+    static func ago(_ entry: [Double]) -> String? {
+        guard entry.count == 2 else { return nil }
+        let seconds = max(0, Date().timeIntervalSince1970 - entry[1])
+        if seconds < 60 { return L("сейчас") }
+        if seconds < 3600 { return L("\(Int(seconds / 60)) мин") }
+        if seconds < 86_400 { return L("\(Int(seconds / 3600)) ч") }
+        if seconds < 2 * 86_400 { return L("вчера") }
+        return L("\(Int(seconds / 86_400)) дн")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                if case .ask = item.kind {
+                    TileIcon(symbol: "sparkles", color: Tone.meeting, size: 32)
+                } else {
+                    LaunchIcon(item: item, icon: icon, size: 44)
+                }
+                Spacer(minLength: 8)
+                if let keys {
+                    KeyCap(text: keys)
+                } else if case .ask = item.kind {
+                    KeyCap(text: "Tab")
+                } else if recent, let usage, let when = Self.ago(usage) {
+                    Text(when == L("сейчас") ? when : when + L(" назад")).font(.system(size: 11)).foregroundStyle(faint)
+                }
+            }
+            Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7).padding(.top, 10)
+            Text(subtitle).font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(nothingFound ? 3 : 1)
+                .truncationMode(.middle).padding(.top, 3)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) { facts }.padding(.top, 10)
+            Spacer(minLength: 0)
+            actions
         }
+        .padding(Spacing.pad)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .tile(isAsk ? .accent(Tone.meeting) : .plain)
+    }
+
+    private var isAsk: Bool { if case .ask = item.kind { true } else { false } }
+
+    private var title: String {
+        if case .ask = item.kind { return L("Спросить AI") }
+        return item.title
+    }
+
+    private var subtitle: String {
+        switch item.kind {
+        case .ask(let question):
+            return "«\(question)»" + (nothingFound ? "\n" + L("Среди программ, файлов и меню ничего — даже в другой раскладке.") : "")
+        case .app(let url):
+            // System apps live in a sealed volume ("/System/Cryptexes/App/System/Applications"): say what that is.
+            let folder = url.deletingLastPathComponent().path
+            return L("Программа · ") + (folder.hasPrefix("/System") ? L("встроенная в macOS") : (folder as NSString).abbreviatingWithTildeInPath)
+        case .file(let url):
+            return (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+        default:
+            return item.subtitle
+        }
+    }
+
+    /// Two lines at most: they share the tile with the actions.
+    @ViewBuilder private var facts: some View {
+        if !windows.isEmpty {
+            Caps(text: L("Открытые окна"), color: faint)
+            ForEach(windows.prefix(alias == nil ? 2 : 1), id: \.self) { title in
+                HStack(spacing: 7) {
+                    Image(systemName: "macwindow").font(.system(size: 10.5)).foregroundStyle(muted)
+                    Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                }
+            }
+        } else if let usage, usage.count == 2, !isAsk {
+            let times = Int(usage[0])
+            HStack(spacing: 8) {
+                Caps(text: L("Открывали"), color: faint)
+                Text(Format.count(times, "раз", "раза", "раз") + " · " + Format.when(Date(timeIntervalSince1970: usage[1])))
+                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+            }
+        }
+        if let alias {
+            HStack(spacing: 8) { Caps(text: L("Сокращение"), color: faint); Chip(text: alias, color: .white.opacity(0.75)) }
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        HStack(spacing: 6) {
+            Button(action: primary) { PillKeys(title: primaryTitle, keys: "↩") }.buttonStyle(.pill(.primary, small: true))
+            switch item.kind {
+            case .app, .file:
+                Button(action: reveal) { PillKeys(title: L("В Finder"), keys: "⌘↩") }.buttonStyle(.pill(.ghost, small: true))
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    private var primaryTitle: String {
+        switch item.kind {
+        case .ask: L("Спросить")
+        case .snippet, .emoji: L("Вставить")
+        case .menu, .ai, .nook, .command, .shortcut, .window: L("Выполнить")
+        case .openWindow: L("Перейти")
+        default: L("Открыть")
+        }
+    }
+}
+
+/// A key or a combination on a small cap: "Tab", "⌥⌘P".
+struct KeyCap: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            .padding(.horizontal, 6).frame(height: 18)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.white.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color.white.opacity(0.1))))
+    }
+}
+
+/// A pill's label with its key after it: "Открыть ↩".
+struct PillKeys: View {
+    let title: String
+    let keys: String
+    var body: some View {
+        HStack(spacing: 6) { Text(title); Text(keys).opacity(0.5) }
     }
 }
 
@@ -995,34 +1247,28 @@ struct LaunchIcon: View {
     }
 }
 
-/// The assistant's answer as it streams in.
+/// The assistant's answer as it streams in, in a tile beside the question.
 struct AnswerPanel: View {
     @ObservedObject var assistant: Assistant
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles").foregroundStyle(Palette.violet.lifted())
-                Text(assistant.question).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
-                Spacer(minLength: 8)
-                if assistant.working { ProgressView().controlSize(.small) }
-            }
             ScrollView(showsIndicators: false) {
                 Text(rendered)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13.5))
+                    .lineSpacing(3)
                     .foregroundStyle(.white.opacity(0.92))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .defaultScrollAnchor(.bottom)
             if let failure = assistant.failure {
-                Label(failure, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11.5)).foregroundStyle(Palette.orange)
+                Label(failure, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11.5)).foregroundStyle(Tone.deny)
             }
-            Text("↩ скопировать · ⌘↩ вставить · Esc назад").font(.system(size: 10.5)).foregroundStyle(faint)
         }
-        .padding(12)
+        .padding(Spacing.pad)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glass(radius: 14)
+        .tile()
     }
 
     /// Bold, italics and code from Markdown; line breaks kept.
@@ -1033,30 +1279,56 @@ struct AnswerPanel: View {
     }
 }
 
-/// The calculator's answer: the result large, what it is under it.
-struct AnswerCard: View {
+/// The calculator's answer across the whole width: the result large, what it is, copy or go on from it.
+struct CalculatorTile: View {
     let answer: Calculator.Answer
+    let query: String
+    let google: LaunchItem?
+    let copy: () -> Void
+    let goOn: () -> Void
+    let search: (LaunchItem) -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: answer.isError ? "exclamationmark.triangle.fill" : "equal")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(answer.isError ? Palette.orange : .white)
-                .frame(width: 24, height: 24)
-                .background(RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .fill(answer.isError ? Palette.orange.opacity(0.18) : Palette.violet.opacity(0.55)))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(answer.result)
-                    .font(.rounded(answer.isError ? 13 : 17, .semibold))
-                    .foregroundStyle(answer.isError ? Palette.orange.lifted() : .white)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
-                if !answer.isError {
-                    Text(answer.detail).font(.system(size: 10.5)).foregroundStyle(faint).lineLimit(1)
-                }
+        let (number, unit) = Self.split(answer.result)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                TileIcon(symbol: answer.isError ? "exclamationmark.triangle.fill" : "equal", color: answer.isError ? Tone.deny : Tone.ink, size: 20)
+                Caps(text: L("Калькулятор"))
+                Spacer(minLength: 8)
+                if !answer.isError { Text(answer.detail).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1) }
+            }
+            Text(query.trimmingCharacters(in: .whitespaces) + " →").font(.system(size: 15, weight: .medium)).foregroundStyle(muted)
+                .lineLimit(1).padding(.top, 14)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(number).font(.rounded(answer.isError ? 22 : 64, .heavy))
+                    .foregroundStyle(answer.isError ? Tone.deny : .white)
+                    .lineLimit(1).minimumScaleFactor(0.4).textSelection(.enabled)
+                if let unit { Text(unit).font(.rounded(28, .heavy)).foregroundStyle(.white.opacity(0.5)) }
             }
             Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                if !answer.isError {
+                    Button(action: copy) { PillKeys(title: L("Скопировать"), keys: "↩") }.buttonStyle(.pill(.primary, small: true))
+                    Button(action: goOn) { PillKeys(title: L("Считать дальше"), keys: "⌘↩") }.buttonStyle(.pill(.ghost, small: true))
+                }
+                Spacer(minLength: 0)
+                if let google {
+                    Button { search(google) } label: {
+                        HStack(spacing: 6) { Image(systemName: "globe").foregroundStyle(Tone.limit); Text("Искать в Google") }
+                    }
+                    .buttonStyle(.pill(.ghost, small: true))
+                }
+            }
         }
-        .padding(.vertical, 2)
+        .padding(Spacing.pad)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .tile()
+    }
+
+    /// "5 784,00 UAH" → number and unit; a result without letters at its end stays whole.
+    static func split(_ result: String) -> (String, String?) {
+        let parts = result.split(separator: " ")
+        guard parts.count > 1, let last = parts.last, last.allSatisfy(\.isLetter) else { return (result, nil) }
+        return (parts.dropLast().joined(separator: " "), String(last))
     }
 }

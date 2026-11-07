@@ -26,11 +26,18 @@ enum TextInsertion {
         var delay = 0.0
         if let target, !target.isTerminated, NSWorkspace.shared.frontmostApplication != target {
             target.activate()
-            delay = 0.15
+            delay = 0.1
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        // ⌘V only once the app is in front (another Space, a busy app can take a while): else it would land in the
+        // app you switched to. It never came: the text stays on the clipboard to paste by hand.
+        func pasteWhenFront(waited: Double) {
+            if let target, !target.isTerminated, NSWorkspace.shared.frontmostApplication != target {
+                guard waited < 1 else { restoring = false; done?(); return }
+                return DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { pasteWhenFront(waited: waited + 0.03) }
+            }
             NotchModel.sendPaste()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            // A busy app reads the clipboard late: putting the old one back too soon would paste that instead.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 restoring = false
                 // Copied something else meanwhile: keep that.
                 if board.changeCount == ours {
@@ -41,6 +48,7 @@ enum TextInsertion {
                 done?()
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { pasteWhenFront(waited: delay) }
     }
 
     /// Unicode key events, at most 4 UTF-16 units each (Chromium drops longer ones), never splitting a pair.

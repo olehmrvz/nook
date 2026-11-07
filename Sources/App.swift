@@ -118,7 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             settings.show(SettingsPane(rawValue: String(name.dropFirst("settings:".count))))
             return
         }
-        if name.hasPrefix("timer:"), let minutes = Double(name.dropFirst(6)) {
+        // A day at most: "inf" or "1e18" minutes would crash the countdown, "nan" would never end.
+        if name.hasPrefix("timer:"), let minutes = Double(name.dropFirst(6)), minutes > 0, minutes <= 24 * 60 {
             model.timer.pomodoro = false
             model.timer.start(minutes: minutes)
             return
@@ -126,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if name == "pomodoro" { model.endFocusMode(); model.timer.startPomodoro(); return }
         if name == "focus" { model.startFocusMode(); return }
         if name == "power" { model.open(tab: .home); model.showPower = true; return }
+        if name == "limits" { model.open(tab: .ai); model.showLimits = true; return }
         if name == "timer-stop" { model.timer.reset(); return }
         model.open(tab: Tab(rawValue: name) ?? .home)
     }

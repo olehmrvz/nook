@@ -28,7 +28,7 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 
 ## Checking changes
 
-- Open tabs without the mouse: `/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|close`.
+- Open tabs without the mouse: `/Applications/Nook.app/Contents/MacOS/Nook --show home|clipboard|shelf|ai|notes|mirror|calendar|timer|cuely|power|limits|close`.
   Settings window: `--show settings[:<pane>]` (`SettingsPane`); capture it with
   `screencapture -l<window id>` (it is a normal window, not the notch panel).
   `mirror` turns the camera on (first time: a macOS camera prompt) — do not open it in routine checks.
@@ -60,6 +60,9 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   calling thread and froze the whole notch once. Use the per-service serial queues.
 - Inserted SwiftUI content appears at its final size: clip on the persistent container in `RootView`,
   not on the content, or it draws outside the growing notch.
+- Never `scaleEffect` (or a `.scale` transition) a view that contains a ScrollView: AppKit shifts the scroll
+  view by half the shrink and keeps that offset, so a list longer than its room opens with its first row cut.
+  Use opacity, blur or offset instead.
 - The agent (Claude Code auto mode) may not edit `~/.claude/settings.json`, LaunchAgents or the keychain;
   ask the user to run `Nook --install-hooks`, the menu item, or `make-cert.sh` with `!`.
 - Now Playing: MediaRemote answers nothing to Nook itself (macOS 15.4+). The bridge in `Sources/MediaRemote`

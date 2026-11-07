@@ -246,3 +246,110 @@ Not verified yet: the whole notarization path (no Developer ID certificate yet),
 `signedByNook` inside the running app.
 Later: Homebrew tap (`brew install --cask olehmrvz/tap/nook`, `auto_updates true`); not in homebrew/cask yet
 (too few stars for its notability rule).
+
+## Full review and fixes (2026-11-07, branch `olehmrvz/feature`, not committed)
+
+Review of `c8491ec` by five Orca workers (3 Codex, 2 Claude), every finding checked against the code. Rejected: "agent
+starts dictation through `dictate:start`" (the check exists). Fixed:
+- `--answer`/`--dictate` check: a chain that reaches launchd without an app or a `/System` process is refused
+  (an agent's `( … & )` got ppid 1 and passed). Side effect: Orca/herdr/tmux terminals are refused too.
+- Permission card: invisible, bidi and no-break characters shown as `⟨U+…⟩`, 40+ spaces as `⟨␠×N⟩`; the line chip
+  counts wrapped lines. "Always" for folders shows the full path.
+- `--timer inf|1e18` crashed (Int trap), `nan` never ended: 0 < minutes ≤ 24 h, `format` clamps.
+- Main thread: Cuely's engine on its own queue (`stop()` no longer creates the input node), API key presence without
+  decrypting (`Keychain.exists`), file icons by type, Agents tab "Connect" off main.
+- Stale `previousApp` (paste/Esc into an old app), hover panel closing while a field is edited, islands lost while
+  resting or stuck after the prompter, Pomodoro "+5 min" (hidden in Pomodoro), double-click kill, volume HUD toggle
+  without restart, volume keys swallowed on HDMI outputs, ducked level kept in defaults and restored after a crash,
+  AI copy of the selection waits up to 1 s, paste waits for the target app, cover art decoded and scaled off main,
+  quicklink values encode `& + = ? #`, the geocoder gets the rounded position, two tooltips translated (check.py now
+  sees `+` on the next line).
+Verified: full `swiftc` build (no new warnings), check.py 683/683, extracted functions in a scratch binary (orphan
+refused, Orca app child accepted, reveal/format/encoding/device UID cases). Not run in the real app (needs install).
+Left: TOCTOU of the staged update and of the bridge dylib (same-user attacker, low), Spotify cover fetch not listed
+in README (the user asked not to edit README now).
+
+## Home redesign: six directions (2026-11-07)
+- The Figma page "Nook" (0:1) was empty: the A–D variants from 2026-10-26 are gone (not on any page).
+- New frame "Главный экран — 6 направлений (7 нояб. 2026)" (node 382:2):
+  https://www.figma.com/design/TKW5XTlfIPhx9RdAb4TVoA?node-id=382-2
+  A «Сейчас» (397:2) one urgent item large + queue; B «Обложка» (384:2) artwork colours the panel;
+  C «Пульт» (398:2) agent columns waiting / working / done; D «День» (399:2) day timeline + three cards;
+  E «Плитки» (400:2) saturated widget tiles; F «Команда» (401:2) the existing launcher (⌥Space) on Home.
+- One demo data set on every board: Claude «nook» waits 2 min (swiftc), Codex «atlas-api» works 45 min, «landing»
+  done at 17:45; focus 17:40–18:30 (25 of 50 min left); meeting 18:30; Claude limits 42 % / 68 %; panel 780 × 326 pt,
+  black band under the camera kept. Keys shown are the app's real ones (⌘1–⌘0 tabs, right ⌥ dictation). No Enter-to-approve:
+  the panel only takes the keyboard for text fields. Built as HTML and imported with
+  html_to_figma (plain layers, not components). Ring arcs are SVG paths: dashed strokes break in the import.
+- USER liked D «День» and E «Плитки», found E too bright. Round 2 (frame 392:2, right of 382:2), grounded palette
+  (graphite tiles, colour only in icon / number / progress; bright only the "now" marker and the waiting agent):
+  G «День и плитки» (402:2) short day strip + four tiles; H «Тихие плитки» (403:2) the E grid in graphite;
+  I «Циферблат» (404:2) a 12–24 h clock face (events outer ring, agent runs inner rings) + four tiles.
+- Round 3 (frame 407:2, right of 392:2), new ideas on the same base (time from D, modules from E, round-2 palette):
+  J «Горизонт» (408:2) three zones was / now / next, the now zone widest; K «Сводка» (412:2) a few sentences with
+  inline pills and buttons + three tiles; L «Табло» (410:2) a departures board: time (split-flap digits), what, detail,
+  status, action, music ticker. Import pitfall: text that wraps around inline pills breaks in html_to_figma —
+  build such text as one flex row per line.
+- USER: «Горизонт» is interesting but «было» is pointless. v2 (414:2, in J's place; v1 408:2 dimmed in the free slot):
+  only forward — Сейчас / Скоро (до 19:00) / Позже (вечер); the farther, the smaller and quieter. The finished agent
+  (landing) sits in Сейчас with «Посмотреть»; the line under Сейчас is the focus progress.
+- USER picked G «День и плитки» and H «Тихие плитки» (2026-11-07) and asked to design the whole app in both.
+  Round 4 frame 416:2 (right of 407:2): G column left, H column right. Inventory of every screen came from code
+  (tabs, header, collapsed notch, islands, HUD flashes, settings panes) and drives the content.
+  - [x] Batch 1: tabs in G and H — Главная, Агенты, Буфер, Полка, Календарь, Таймер, Заметки (417:2–430:2).
+    One demo story everywhere: pomodoro focus 2 of 4 (17:55–18:20, 14:32 left), meeting 18:30 overlaps focus 3.
+  - [ ] Batch 2: shared screens — Поиск (results / calculator / AI answer), agent question and plan cards, Cuely
+    (tab + prompter), Зеркало, power card, keyboard lock.
+  - [ ] Batch 3: collapsed notch states, islands, HUD flashes; Settings window; empty / no-access states.
+  Generator (scratch, not in the repo): gen.py, round2.py, round3.py, app.py + build.py (fonts) + snap (WebKit render).
+- USER rejected round 4: "looks like no redesign at all" — worst: too close to the current app, no common style.
+  Cause: tabs were redrawn from the code inventory one to one in a darker palette (a reskin), mass-produced.
+  Round 4 frame renamed "черновик, не принят". USER chose: per tab, 3–4 truly different ideas, like Home.
+- Round 5 (frame 452:2, right of 416:2): «Общий язык» board (surfaces, colour = meaning, type, project monogram,
+  5 rules) + Агенты: Решения / Приборы / Лента / Сцена; Буфер: Колода / Полки по типам / Закреплённое и сегодня /
+  Мастерская (453:2–461:2).
+- USER picks (2026-11-07): Агенты = «Лента» crossed with H tiles; Буфер / Полка / Календарь / Заметки = H from round 4;
+  Таймер H "в целом неплохо". Asked: compact Claude limits, Codex limits with any window (5 ч, неделя, месяц, N ч),
+  «Всегда» in the request card, no time column in the feed.
+- Round 6 «выбранное» (frame 463:2, right of 452:2): new Агенты «Лента × плитки» (464:2) + «Лимиты компактно» sheet
+  (467:2: one line per provider, windows from the service, pace ↑ / low / no-data states, details on click) + clones
+  of the chosen H screens and both Home variants (G 417:2 / H 418:2 — one still to choose).
+- Таймер: USER asked to merge the G timer (427:2) into the chosen H one. Done in round 6 (469:2, replaced the H clone):
+  ring + quick start + «Добавить» from H, the G pomodoro strip with the meeting lane instead of «Следом».
+- USER: fewer Claude colours. Palette now: attention «ждёт тебя» = yellow #FFD24D (yellow edge on graphite, no warm
+  wash), focus = Nook pink #FF6FAE, agent glyphs neutral #E6E6EA (Claude like Codex), deny = red #FF6B6B, mockup
+  wallpaper cool blue/violet. Chosen set re-rendered: frame 471:2 «Раунд 6 · выбранное» replaced the old 463:2.
+- Round 7 (frame 471:3): islands — Ушки / Капля / Карточка / Строка дня; collapsed notch — Буквы / Нить / Числа.
+- USER rejected round 7 (frame dimmed, renamed): separate cards are wrong — notifications grow only from the notch.
+  «Капля» was "более менее", but the bottom lifetime strip is pointless. Collapsed notch: keep it as it is in the app
+  now (project letter under the blinking cursor), none of the three ideas. USER wants notifications to be excellent.
+- Round 8 (frame 491:2, right of 471:3): «Капля» as one system, no strip, no cards. Colour of meaning = a halo
+  around the icon inside the drop (bottom glow was tried and read as a strip again). Boards: средняя «Сообщает»
+  (492:2, 8 kinds: агент закончил, встреча, сообщение, звонок, фокус, AirPods, загрузка, трек; 460 × 38+68 pt),
+  большая «Спрашивает» (493:2: разрешение, вопрос, план, нагрузка на Mac; 540 pt, stays until answered),
+  поведение «Как живёт» (494:2: grow storyboard 0,12/0,26/0,34 с, hover holds + ×, queue «ещё 2» right of the
+  camera, unanswered → collapses to the yellow letter, focus holds drops), подача «Насколько сочно» (495:2:
+  Чёрная / Ореол (recommended) / Ушки).
+- Home: two Home screens are in the chosen set because Home G vs H was never picked; recommended H + G day strip.
+- USER liked round 8 and asked for one more round "чтобы убедиться, что это лучшее", ideally better. Round 7 frame
+  471:3 is no longer on the page and round 8 sits at x 16887 (moved outside this session).
+- Round 9 «Капля, докрученная» (frame 498:2, right of 491:2): 499:2 сравнение 8 → 9 on the same events;
+  500:2 «Три высоты» (вспышка — ears only, капля 62 pt, большая капля); 501:2 «Новости» (band beside the camera
+  carries meta: «Claude · 45 мин» / diff, «18:30» / countdown, app / count; focus warns that the meeting hits
+  focus 3; two agents done = one drop with two rows); 502:2 «Нужен ответ» (540 pt, 16–20 pt lower than round 8);
+  503:2 «Мелочи — вбок» (AirPods, трек, загрузка, тихий чат as ear flashes; system flashes stay as in the app);
+  504:2 «Растёт на шаг» (flash → drop on hover, hover detail, click grows the drop into the Агенты panel, queue «+2»,
+  unanswered → yellow letter, focus holds drops). Form: 12 pt concave corners. Halo look kept.
+- Spacing pass (USER: "проверь каждый дизайн на паддинги и гэпы"; pointed at a flash with unequal sides and the
+  collapsed timer pressed to the right edge). Measured every drop / flash / tile with a WebKit + JS audit
+  (scratch: measure, audit_drops.js, audit_tiles.js, report.py). Grid now: notch shapes EDGE 18 on both sides (ear
+  content pinned to the edges, not centred), body 6 under the band, bottom 16, GAP 10, list rows 6, ≥ 10 pt to the
+  camera; drop heights are computed from their blocks. Tiles: 14 inner padding, 10 gaps, exact column widths; Агенты
+  feed lost its third event row to fit 262 pt (limits line was 2 pt from the bottom). Result: 0 flags in rounds 8/9,
+  tiles all ≥ 14 except known artefacts (cover-art blob, big-number line boxes, a full-bleed image). Re-imported in
+  place: round 6 boards 510–518 (471:2), round 8 530–533 (491:2), round 9 534–539 (498:2). Height notes updated
+  (R9 vs R8: 100 vs 104, 168 vs 172, flash 38 vs 104). G Главная (473:2) is gone from 471:2 (removed outside this
+  session) — confirm H as Home.
+- Next concrete action: the user compares rounds 8 and 9 and picks; then Home
+  G or H, Поиск (4 ideas), agent question / plan cards inside Лента, empty states, Cuely, Зеркало, Батарея,
+  Блокировка, Настройки.

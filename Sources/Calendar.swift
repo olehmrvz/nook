@@ -53,6 +53,11 @@ enum Settings {
         get { d.bool(forKey: "askedKeyAccess") }
         set { d.set(newValue, forKey: "askedKeyAccess") }
     }
+    /// The output lowered for dictation and not yet put back (from, to, device UID): survives a crash or a kill.
+    static var duckedVolume: [String: Any]? {
+        get { d.dictionary(forKey: "duckedVolume") }
+        set { d.set(newValue, forKey: "duckedVolume") }
+    }
     static var focusHUD: Bool {
         get { d.object(forKey: "focusHUD") as? Bool ?? true }
         set { d.set(newValue, forKey: "focusHUD") }

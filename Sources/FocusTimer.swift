@@ -34,8 +34,9 @@ final class FocusTimer: ObservableObject {
     var progress: Double { total > 0 ? 1 - remaining() / total : 0 }
 
     func start(minutes: Double) {
+        guard minutes.isFinite, minutes > 0 else { return }
         phase = pomodoro ? .focus : .plain
-        run(seconds: minutes * 60)
+        run(seconds: min(minutes, 24 * 60) * 60)
     }
 
     func startPomodoro() {
@@ -113,7 +114,7 @@ final class FocusTimer: ObservableObject {
     }
 
     static func format(_ seconds: TimeInterval) -> String {
-        let s = Int(seconds.rounded(.up))
+        let s = seconds.isFinite ? Int(min(max(seconds, 0), 359_999).rounded(.up)) : 0
         if s >= 3600 { return String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) }
         return String(format: "%d:%02d", s / 60, s % 60)
     }

@@ -198,7 +198,8 @@ final class ClipboardStore: ObservableObject {
         return NSImage(contentsOf: imagesDir.appendingPathComponent(name))
     }
 
-    /// Cached preview for list rows. The first call starts a background load and returns nil.
+    /// Cached preview for the tiles (≈ 180 × 104 pt, so 360 px covers Retina). The first call starts a background
+    /// load and returns nil.
     func thumbnail(for item: ClipItem) -> NSImage? {
         guard let name = item.imageFile else { return nil }
         if let cached = thumbnails[name] { return cached }
@@ -207,7 +208,7 @@ final class ClipboardStore: ObservableObject {
         let url = imagesDir.appendingPathComponent(name)
         io.async { [weak self] in
             let options = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                           kCGImageSourceThumbnailMaxPixelSize: 96] as CFDictionary
+                           kCGImageSourceThumbnailMaxPixelSize: 360] as CFDictionary
             let image = CGImageSourceCreateWithURL(url as CFURL, nil)
                 .flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, options) }
                 .map { NSImage(cgImage: $0, size: .zero) }
