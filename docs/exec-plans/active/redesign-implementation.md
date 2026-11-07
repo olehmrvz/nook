@@ -198,4 +198,5 @@ Launcher B:
 Done and released: the redesign is commit cbfd1d3, merged to main with the glow fix (07dfdea) and shipped as v60
 (Nook 1.60, notarized, 2026-11-07; see github-launch.md). After v60: the Core Animation breathing glow is committed
 on main (fix-bugs session; item 7); release it after the user checks the build. Still open: the collapsed case in
-item 7 and the not-verified items in step 8.
+item 7 and the not-verified items in step 8. The feature worktree's uncommitted edits (Theme.swift, CLAUDE.md, this
+plan) are duplicates or older drafts of main: do not commit them; discard them with the user's OK and fast-forward.

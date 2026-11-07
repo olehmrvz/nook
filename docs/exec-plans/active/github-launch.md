@@ -31,12 +31,16 @@ then do everything at once.
       lines, install from Nook.dmg (notarized: no Gatekeeper workaround), permissions, privacy, build, support, license.
 - [x] Logo decided (USER 2026-11-07 16:50): N «Чистая», a black N on a lime tile (`make-icon.sh` in feature).
 - [x] Promo icon → `promo/assets/icon.png` (1024 px from make-icon.sh), both promos rebuilt and checked (16:57).
-- [x] Idle CPU (item 7 in `redesign-implementation.md`): AmbientGlow's repeatForever "breathe" removed — commit
-      "Glow: no breathing loop"; panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 % (installed 1.58).
+- [x] Idle CPU, panel open (item 7 in `redesign-implementation.md`): v60 shipped the glow static — commit "Glow: no
+      breathing loop"; panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 % (installed 1.58). After v60 the breathing is
+      back in Core Animation (317cca6, on main; 0.4–1.1 % open, 0.5 % collapsed), not released yet. Item 7 stays open for
+      one case: a spike with the notch collapsed, not reproduced.
 - [x] Feature tree committed as cbfd1d3 (with the fix-bugs agent's clipboard tile and scroll-origin fixes).
 - [x] The user authorized the release ("подписывай и собирай"); installed 1.58 checked for idle CPU.
 - [x] Merged: main = develop = 5cae956 (feature cbfd1d3 + glow fix + README); main, develop and fix-bugs worktrees fast-forwarded.
-      The feature worktree stays at cbfd1d3: an unknown session left an uncommitted AmbientGlow → Core Animation rewrite there.
+      The feature worktree stays at cbfd1d3 with uncommitted edits by the fix-bugs session: `Sources/Theme.swift` and
+      `CLAUDE.md` are identical to 317cca6, `redesign-implementation.md` is an older draft. Do not commit them: all of it
+      is on main. Discard them (with the user's OK) and fast-forward feature to main.
 - [x] Draft checked against the final code (changes feed, launcher card, AirPods drop added); icon → `docs/images/icon.png`.
 - [x] Screenshots of the real app (English UI via the app's own AppleLanguages, removed afterwards): demo
       PermissionRequest (hero), demo Stop (done drop), `--show launcher:disk util` and `450 + 20%`; window-only capture
