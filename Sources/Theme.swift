@@ -614,8 +614,9 @@ struct AmbientGlow: View {
     var glows: [Glow]
     /// Height of the band under the camera that stays pure black, like the hardware notch.
     var blackTop: CGFloat = 0
-    @State private var breathe = false
 
+    // Static on purpose: a "breathing" repeatForever scale re-rendered the gradients every frame (5–10 % CPU in a
+    // bare repro while open) and kept running in samples taken with the notch collapsed (23–25 % idle).
     var body: some View {
         GeometryReader { geo in
             let h = max(geo.size.height, 1)
@@ -631,7 +632,6 @@ struct AmbientGlow: View {
                         .transition(.opacity)
                 }
             }
-            .scaleEffect(breathe ? 1.05 : 0.97)
             // Colour rises from below and never reaches the notch line.
             .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
                                          .init(color: .clear, location: min(1, blackTop / h)),
@@ -641,10 +641,6 @@ struct AmbientGlow: View {
         }
         .animation(.easeInOut(duration: 0.8).speed(Motion.speed), value: glows)
         .allowsHitTesting(false)
-        .onAppear {
-            guard !Motion.reduce else { return }
-            withAnimation(.easeInOut(duration: 5).repeatForever(autoreverses: true)) { breathe = true }
-        }
     }
 }
 

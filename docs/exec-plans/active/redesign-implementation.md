@@ -153,7 +153,9 @@ Launcher B:
    width), nothing found («qzxwvj»: violet «Спросить AI» card + Google / Словарь + what was searched). Not seen:
    the empty field (needs the keyboard) and the assistant's answer (needs Tab). New tile kind `.accent(Color)`.
    Not done from A «Группы»: group captions in the list (the user liked them too) — offer as a next step.
-7. [ ] OPEN — idle CPU spikes: twice measured 23–25 % for minutes (rule: ≤ 0.5 %). Samples: the main thread busy
+7. [x] FIXED 2026-11-07 (video session): `AmbientGlow`'s repeatForever "breathe" removed — the only endless SwiftUI
+   animation (high.sample: RepeatAnimation + CPU radial gradients + several tab bodies per frame; bare repro 5–10 % while
+   open vs 0.1–2 %). Installed 1.58: panel open 8–16 % → 1.1–1.8 %, collapsed 0.2–0.4 %. Was: idle CPU spikes: twice measured 23–25 % for minutes (rule: ≤ 0.5 %). Samples: the main thread busy
    in NSHostingView.layout with a live SwiftUI ScrollView (`HostingScrollView.updateValue`) and running
    animations while the notch was collapsed; once with the panel open on the Shelf. Not reproduced after a
    restart: fresh 0.3–0.6 % after Агенты, Поиск, калькулятор, Settings; opening the Shelf gives ~30 s of 2–4 %
