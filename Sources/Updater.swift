@@ -2,8 +2,8 @@ import AppKit
 import Security
 
 /// Updates from the GitHub releases of the Nook repository (published by `release.sh`).
-/// Checks a minute after launch and every 6 hours, downloads a newer build, checks that it carries the same
-/// signature as the running Nook, and installs it when the notch is idle; then Nook restarts itself.
+/// Checks a minute after launch and every 6 hours, downloads a newer build, checks that it is signed by Nook
+/// (`signedByNook`), and installs it when the notch is idle; then Nook restarts itself.
 final class Updater {
     static let repo = "olehmrvz/nook"
 
@@ -78,7 +78,7 @@ final class Updater {
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 let app = dir.appendingPathComponent("Nook.app")
                 guard Self.run("/usr/bin/ditto", ["-x", "-k", file.path, dir.path]),
-                      Self.sameSigner(app),
+                      Self.signedByNook(app),
                       let plist = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")),
                       plist["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier,
                       Int(plist["CFBundleVersion"] as? String ?? "") == version
@@ -123,7 +123,7 @@ final class Updater {
         let pid = ProcessInfo.processInfo.processIdentifier
         queue.async {
             // Checked again right before it replaces Nook: the copy waited in a temporary folder.
-            guard Self.sameSigner(staged.app) else {
+            guard Self.signedByNook(staged.app) else {
                 DispatchQueue.main.async {
                     self.staged = nil
                     self.status = L("Обновление изменилось после скачивания и не установлено.")
@@ -149,20 +149,40 @@ final class Updater {
         }
     }
 
-    /// The new build must satisfy the running Nook's designated requirement: same bundle id and the
-    /// same signing certificate. A tampered or foreign download fails here.
-    static func sameSigner(_ app: URL) -> Bool {
+    /// Official releases (release.sh): Nook's Developer ID, team T2KMY2TV9W. It names the team, not one
+    /// certificate, so a renewed certificate keeps updates working.
+    static let releaseRequirement = "identifier \"dev.nook.app\" and anchor apple generic"
+        + " and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13]"
+        + " and certificate leaf[subject.OU] = T2KMY2TV9W"
+
+    /// Official releases before Developer ID (v10 and earlier): "Nook Local Signing" of the Nook repository.
+    static let legacyRequirement = "identifier \"dev.nook.app\""
+        + " and certificate leaf = H\"76a699582536149bb53212178f4a1b2a2dc15cc1\""
+
+    /// The new build must satisfy the running Nook's designated requirement (same bundle id and signing
+    /// certificate). A copy signed like the old releases also takes official Developer ID releases, so it can
+    /// move to them; a contributor's own build (ad-hoc, another certificate) does not. A tampered or foreign
+    /// download fails here.
+    static func signedByNook(_ app: URL) -> Bool {
         var me: SecCode?
         var mine: SecStaticCode?
-        var requirement: SecRequirement?
+        var own: SecRequirement?
         var candidate: SecStaticCode?
         guard SecCodeCopySelf([], &me) == errSecSuccess, let me,
               SecCodeCopyStaticCode(me, [], &mine) == errSecSuccess, let mine,
-              SecCodeCopyDesignatedRequirement(mine, [], &requirement) == errSecSuccess, let requirement,
+              SecCodeCopyDesignatedRequirement(mine, [], &own) == errSecSuccess, let own,
               SecStaticCodeCreateWithPath(app as CFURL, [], &candidate) == errSecSuccess, let candidate
         else { return false }
+        var accepted = [own]
+        var legacy: SecRequirement?
+        var release: SecRequirement?
+        if SecRequirementCreateWithString(legacyRequirement as CFString, [], &legacy) == errSecSuccess, let legacy,
+           SecCodeCheckValidity(me, [], legacy) == errSecSuccess,
+           SecRequirementCreateWithString(releaseRequirement as CFString, [], &release) == errSecSuccess, let release {
+            accepted.append(release)
+        }
         let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
-        return SecStaticCodeCheckValidity(candidate, flags, requirement) == errSecSuccess
+        return accepted.contains { SecStaticCodeCheckValidity(candidate, flags, $0) == errSecSuccess }
     }
 
     @discardableResult

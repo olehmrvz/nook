@@ -16,12 +16,14 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
 
 - `./install.sh` — compiles `Sources/*.swift` with `swiftc` (Command Line Tools only), installs
   `/Applications/Nook.app`, signs it, restarts it. Add new system frameworks to the `swiftc` line there.
-- Releases: `./release.sh` (clean tree) builds, checks the signature and publishes GitHub release `v<commit count>`
-  with `Nook.zip`; installed copies update themselves (`Sources/Updater.swift`). The repo is public so the
-  updater can read releases without a token. Release only after the user has checked the build. Never publish an
-  ad-hoc build: the updater rejects builds not signed with the same certificate.
-- Signing: identity "Nook Local Signing" (created once by `make-cert.sh`) keeps macOS permissions across
-  rebuilds; without it the build is ad-hoc and macOS asks for permissions again.
+- Releases: `./release.sh` (clean tree, HEAD = origin/main) signs with Developer ID (team T2KMY2TV9W),
+  notarizes, staples and publishes GitHub release `v<commit count>` with `Nook.dmg` and `Nook.zip`; installed
+  copies update themselves (`Sources/Updater.swift`). The repo is public so the updater can read releases
+  without a token. Release only after the user has checked the build. Never publish an ad-hoc build: the updater
+  rejects builds not signed by Nook. Setup, bridge release (`--local-signing`): `docs/DEVELOPMENT.md` → Releases.
+- Signing: `install.sh` prefers a Developer ID Application certificate, then "Nook Local Signing"
+  (`make-cert.sh`); a stable identity keeps macOS permissions across rebuilds, ad-hoc makes macOS ask again.
+  Notary credentials live in the keychain profile `nook`; only the user can create them (`!` or Terminal).
 - New permission? Add its usage string to `Info.plist`, or macOS kills the app on first use.
 
 ## Checking changes
@@ -64,8 +66,8 @@ Active plan and open items: `docs/exec-plans/active/nook-notch-app.md`.
   runs inside `/usr/bin/perl`; `install.sh` builds the dylib with clang and copies it into Resources.
   Test it read-only (`perl nook-media.pl <dylib>` with stdin closed after a few seconds); sending
   `toggle`/`next` would change the user's playback.
-- `install.sh` signs with "Nook Local Signing"; macOS may show a keychain prompt for codesign that only the
-  user can answer — the build then waits.
+- `install.sh` signs with the Developer ID key if the keychain has one, else "Nook Local Signing"; macOS may show
+  a keychain prompt for that key that only the user can answer — the build then waits.
 - The tab area has a fixed height (`contentHeight`): the notch is 38 pt on this Mac, so a tab gets
   326 − 22 − 32 − 10 = 262 pt. Taller content is clipped; check new cards against that.
 - The panel takes the keyboard only for text fields (`becomesKeyOnlyIfNeeded`). Do not make it key on open:
