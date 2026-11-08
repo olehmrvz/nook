@@ -3,8 +3,9 @@ import SwiftUI
 
 // MARK: Agents (Figma «Агенты · Лента × плитки»)
 
-/// Sessions as tiles on the left (a click shows only that session), on the right what the agents changed: the
-/// pending request, files, tests, commits and finished turns. The limits sit in the caption above it.
+/// Sessions as tiles on the left (a click shows only that session), on the right what the agents did: the
+/// pending request, the answers of finished turns (AgentReply.swift), then files, tests and commits. The limits sit in
+/// the caption above it.
 struct AgentsTab: View {
     @ObservedObject var model: NotchModel
     @ObservedObject var agents: AgentHub
@@ -132,18 +133,20 @@ struct AgentsTab: View {
             }
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 6) {
-                    if !changes.isEmpty {
-                        VStack(spacing: 0) { ForEach(changes) { ChangeRow(change: $0) } }
-                    }
+                    // What the agents answered comes first: that is what a finished turn is read for.
                     ForEach(done) { s in
                         let canReply = agents.canReply(s)
                         VStack(spacing: 6) {
-                            DoneRow(session: s, onReply: canReply ? { model.startReply(to: s.id) } : nil)
+                            ReplyCard(session: s, folded: done.count > 1 ? 50 : 66,
+                                      onReply: canReply ? { model.startReply(to: s.id) } : nil)
                             if canReply && model.replyTo == s.id {
                                 ReplyField(model: model, agents: agents, session: s)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
+                    }
+                    if !changes.isEmpty {
+                        VStack(spacing: 0) { ForEach(changes) { ChangeRow(change: $0) } }
                     }
                     if changes.isEmpty && done.isEmpty && request == nil {
                         // Reading and searching are not shown: say why the feed is quiet.
@@ -424,34 +427,6 @@ struct RequestLine: View {
                                               startPoint: .topLeading, endPoint: UnitPoint(x: 0.6, y: 0.6)))
             .overlay(shape.strokeBorder(Tone.attention.opacity(0.5))))
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { withAnimation(Motion.quick) { armed = true } } }
-    }
-}
-
-/// A finished turn: the project, "готово" and the agent's last words; reply right here.
-struct DoneRow: View {
-    let session: AgentHub.Session
-    var onReply: (() -> Void)?
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Monogram(project: session.project, size: 18, lit: false)
-            Text(session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(width: 80, alignment: .leading)
-            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Tone.done).frame(width: 14)
-            Text(session.lastMessage.map { $0.isEmpty ? L("ход завершён") : L("ответ: ") + $0 } ?? L("ход завершён"))
-                .font(.system(size: 12)).foregroundStyle(muted).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let onReply {
-                Button("Ответить", action: onReply).buttonStyle(.pill(.ghost, small: true))
-                    .help("Написать агенту прямо отсюда: текст уйдёт в его терминал")
-            }
-        }
-        .padding(.leading, 8).padding(.trailing, 6)
-        .frame(height: 32)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.04))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Tone.done.opacity(0.22))))
-        .contentShape(Rectangle())
-        .onTapGesture { AgentHub.focus(pid: session.pid, terminal: session.terminal) }
-        .help(session.lastMessage ?? "")
     }
 }
 

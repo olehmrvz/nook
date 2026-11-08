@@ -27,7 +27,7 @@ mkdir -p "$BUILD"
 swiftc -parse-as-library -target "$ARCH-apple-macosx14.0" -O \
   -framework SwiftUI -framework AppKit -framework Carbon -framework IOKit -framework QuickLookThumbnailing \
   -framework EventKit -framework AVFoundation -framework Speech -framework Contacts -framework IOBluetooth \
-  -framework CoreLocation -framework Vision -lsqlite3 \
+  -framework CoreLocation -framework Vision -framework Accelerate -lsqlite3 \
   "$PROJECT_DIR"/Sources/*.swift -o "$BUILD/Nook"
 
 # System "Now Playing" bridge: a small dylib that Apple's perl loads (see Sources/MediaRemote).

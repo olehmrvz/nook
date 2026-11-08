@@ -36,6 +36,7 @@ extension Island {
         case .dictation: return Tone.meeting
         case .notice(_, _, _, let ok): return ok ? Tone.done : Tone.deny
         case .request: return Tone.attention
+        case .update: return Tone.info
         }
     }
 }
@@ -245,6 +246,9 @@ struct DropView: View {
                 glyph(r.provider.rawValue)
                 Text("\(r.provider.title) · \(DropRequest.toolName(r))")
             }
+        case .update:
+            Image(systemName: "arrow.down.circle.fill").font(.system(size: 12)).foregroundStyle(Tone.info)
+            Text("Обновление")
         }
     }
 
@@ -307,6 +311,8 @@ struct DropView: View {
                 }
                 Circle().fill(Tone.attention).frame(width: 7, height: 7)
             }
+        case .update(let version):
+            Text("1.\(version)").font(.rounded(13, .heavy)).foregroundStyle(Tone.info)
         default:
             EmptyView()
         }
@@ -370,6 +376,7 @@ struct DropView: View {
         case .limit: TileIcon(symbol: "gauge.with.dots.needle.67percent", color: island.tone, size: 40)
         case .dictation: TileIcon(symbol: "waveform", color: Tone.meeting, size: 40)
         case .notice(let symbol, _, _, _): TileIcon(symbol: symbol, color: island.tone, size: 40)
+        case .update: Image(nsImage: NSApp.applicationIconImage).resizable()
         default: EmptyView()
         }
     }
@@ -387,6 +394,7 @@ struct DropView: View {
         case .limit(let title, let left, _): Text(L("\(title): осталось \(left)%"))
         case .dictation(let title, _, _): Text(title)
         case .notice(_, let title, _, _): Text(title)
+        case .update(let version): Text(L("Вышла Nook 1.\(version)"))
         default: EmptyView()
         }
     }
@@ -410,6 +418,7 @@ struct DropView: View {
             Text(resets.map { L("сброс ") + Format.when($0) } ?? L("время сброса неизвестно"))
         case .dictation(_, let detail, _): Text(detail)
         case .notice(_, _, let detail, _): Text(detail)
+        case .update: Text("Скачана и проверена · Nook перезапустится за секунду")
         default: EmptyView()
         }
     }
@@ -452,6 +461,13 @@ struct DropView: View {
             Button("Открыть") { NotificationWatcher.open(bundleID: bundleID); model.dismissIsland() }.buttonStyle(.pill(.go, small: true))
         case .dictation(_, _, let settings) where settings:
             Button("Настройки") { model.dismissIsland(); model.onOpenSettings?(.dictation) }.buttonStyle(.pill(.ghost, small: true))
+        case .update:
+            HStack(spacing: 6) {
+                Button("Позже") { model.dismissIsland() }.buttonStyle(.pill(.ghost, small: true))
+                    .help("Nook напомнит при следующей проверке; установить можно и в Настройках → Обновления")
+                Button("Установить") { model.dismissIsland(showNext: false); model.updater.install() }
+                    .buttonStyle(.pill(.primary, small: true))
+            }
         case .airpodsAway(let name, let address, _):
             // The result comes as its own drop: the headphones with their battery, or why it failed.
             Button("Вернуть на Mac") { model.dismissIsland(); model.bluetooth.bringBack(address: address, name: name) }
@@ -554,7 +570,7 @@ struct DropView: View {
             if settings { model.onOpenSettings?(.dictation) }
             return
         // «Вернуть» is a button of its own: a click on the drop must not pull the headphones from the other device.
-        case .airpods, .airpodsAway, .hog, .notice: break
+        case .airpods, .airpodsAway, .hog, .notice, .update: break
         }
         model.dismissIsland()
     }

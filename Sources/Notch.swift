@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
@@ -147,6 +148,8 @@ struct Island: Identifiable, Equatable {
         case request(UUID)
         /// Two or three agents finished within a few seconds: one drop for all of them.
         case agentsDone([AgentTurn])
+        /// A newer Nook is downloaded and checked: install it now or later.
+        case update(version: Int)
     }
     let id = UUID()
     let created = Date()
@@ -198,7 +201,9 @@ final class NotchModel: ObservableObject {
     static let slot: CGFloat = 46
 
     @Published var expanded = false
-    @Published var tab: Tab = .home
+    @Published var tab: Tab = .home {
+        didSet { if tab != .clipboard { clipboardFromSearch = false } }
+    }
     /// Battery details card under the header chip.
     @Published var showPower = false
     /// The limits details in place of the Agents feed.
@@ -207,6 +212,9 @@ final class NotchModel: ObservableObject {
     @Published var flash: Flash?
     /// Screens asleep or locked: the panel closes and the notch animations pause.
     @Published private(set) var resting = false
+    /// A game fills the notch's display (GameWatch.swift): Nook sleeps. No notch, no hover, drops wait for the end of
+    /// the game; the hotkeys still open the search and the clipboard.
+    @Published private(set) var gaming = false
     /// Frame of the screen the notch lives on, set when the panel is placed (not looked up 30 times a second).
     var screenFrame = NSScreen.screens.first?.frame ?? .zero
     @Published private(set) var island: Island?
@@ -238,6 +246,7 @@ final class NotchModel: ObservableObject {
     let focus = FocusWatcher()
     let keyboardLock = KeyboardLock()
     let updater = Updater()
+    let gameWatch = GameWatch()
     let dictation = Dictation()
     let launcher = Launcher()
     let snippets = Snippets()
@@ -248,6 +257,13 @@ final class NotchModel: ObservableObject {
     weak var panel: NotchPanel?
     /// Opened from the hotkey: stays open until Esc, a pick or a click outside.
     private(set) var sticky = false
+    /// Bumped when a hotkey gives the panel the keyboard: the open tab focuses its field. `onAppear` alone missed
+    /// the case where the tab was already open (by hover), and the typing went nowhere.
+    @Published private(set) var focusRequest = 0
+    /// The clipboard was opened from the search with ⌘1: Esc and ⌘1 go back there instead of closing.
+    @Published private(set) var clipboardFromSearch = false
+    /// Where ↩ pastes a clipboard entry: the app the panel was opened from.
+    var pasteTargetName: String? { sticky && AXIsProcessTrusted() ? previousApp?.localizedName : nil }
     /// Opened for a permission request: stays open until the pointer has visited it.
     private var holdOpen = false
     /// A text field in the panel has the keyboard: leaving with the pointer would drop the text and send the rest
@@ -259,7 +275,16 @@ final class NotchModel: ObservableObject {
     private var hoverStart: Date?
     private var leaveStart: Date?
     private var dragBaseline = NSPasteboard(name: .drag).changeCount
-    private var draggingFile = false
+    /// A menu is open, Nook's own or another app's in the menu bar: since when. Hovering the notch must not open the
+    /// panel under it (the status menu drops right beside the notch), and an open panel must not close under a
+    /// context menu. Expires after 30 s in case the end of a menu goes unnoticed.
+    private var menuOpenSince: Date?
+    private var menuOpen: Bool { menuOpenSince.map { Date().timeIntervalSince($0) < 30 } ?? false }
+    /// A file is being dragged in (the drag pasteboard changed while the button is down, and the press did not start
+    /// in the open panel): the shelf shows where to drop. A tile dragged out of the shelf does not count.
+    @Published private(set) var draggingFile = false
+    private var pressed = false
+    private var pressStartedInPanel = false
     private var tickTimer: Timer?
     private var flashWork: DispatchWorkItem?
     private var islandWork: DispatchWorkItem?
@@ -269,6 +294,10 @@ final class NotchModel: ObservableObject {
     @Published private(set) var islandHovered = false
 
     var hasLiveActivity: Bool { flash != nil || live != nil }
+    /// Asleep for a game, with nothing opened by a key on screen: the notch is not drawn.
+    var hidden: Bool {
+        gaming && !expanded && island == nil && flash == nil && !cuely.isPresenting && dictation.phase == .idle
+    }
 
     /// What the collapsed notch shows on its sides, by priority.
     enum Live: Equatable { case dictation, ai, keyLock, permission, prompter, timer, download, agents, music }
@@ -303,7 +332,13 @@ final class NotchModel: ObservableObject {
         notch.width + 2 * Self.ear + 2 * slotWidth
     }
 
+    /// The streaming model's text grows the notch into a drop of two lines under the camera while you speak.
+    var dictationTextHeight: CGFloat {
+        flash == nil && live == .dictation && !dictation.liveText.isEmpty ? 46 : 0
+    }
+
     func start() {
+        watchMenus()
         nowPlaying.start()
         clipboard.start()
         shelf.start { [weak self] url in self?.show(.screenshot(url), for: 3.5) }
@@ -347,13 +382,14 @@ final class NotchModel: ObservableObject {
         bluetooth.start { [weak self] island in self?.present(island) }
         weather.start()
         notes.start()
-        updater.isIdle = { [weak self] in
-            guard let self else { return false }
-            // A restart would drop coffee mode (the Mac sleeps, agents stop), a running timer, the keyboard lock,
-            // and dictation: what was said, or the clipboard waiting to come back after the paste.
-            return !self.expanded && self.island == nil && !self.cuely.isPresenting && self.agents.permissions.isEmpty
-                && !self.caffeine.on && !self.timer.isRunning && !self.timer.isPaused && !self.keyboardLock.isLocked
-                && !self.dictation.isBusy && !TextInsertion.restoring
+        // A new version is offered, never installed behind the person's back: a restart drops coffee mode, a running
+        // timer, the keyboard lock and dictation.
+        updater.onReady = { [weak self] version in
+            self?.present(Island(kind: .update(version: version), seconds: 20))
+        }
+        updater.onInstallFailed = { [weak self] reason in
+            self?.present(Island(kind: .notice(symbol: "exclamationmark.triangle.fill", title: L("Обновление не установлено"),
+                                               detail: reason, ok: false), seconds: 8))
         }
         updater.start()
         volume.onChange = { [weak self] level, muted in
@@ -398,7 +434,8 @@ final class NotchModel: ObservableObject {
         }
         agents.start(
             onPermission: { [weak self] in
-                guard let self, !self.resting else { return }   // shown when the screens wake
+                // Shown when the screens wake or the game ends; unanswered by then, it goes back to the terminal.
+                guard let self, !self.resting, !self.gaming else { return }
                 // A new request is more urgent than the limits details, on whichever tab they were opened.
                 self.showLimits = false
                 // The panel is open: the request is in its Agents tab. Closed: it drops out of the notch.
@@ -434,6 +471,10 @@ final class NotchModel: ObservableObject {
             if !self.expandedRect.contains(NSEvent.mouseLocation) { self.collapse() }
         }
 
+        gameWatch.screen = { NotchGeometry.screen }
+        gameWatch.onChange = { [weak self] on in self?.setGaming(on) }
+        gameWatch.start()
+
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
             self?.setResting(true)
@@ -468,6 +509,23 @@ final class NotchModel: ObservableObject {
         }
     }
 
+    private func setGaming(_ value: Bool) {
+        guard gaming != value else { return }
+        gaming = value
+        if value {
+            // Opened by a key, it stays until closed; anything else goes out of the way.
+            if !sticky { collapse() }
+            if let current = island, !expanded {
+                if case .request = current.kind {} else { islandQueue.insert(current, at: 0) }
+                dismissIsland(showNext: false)
+            }
+        } else if !agents.permissions.isEmpty {
+            presentRequest()
+        } else {
+            showNextIsland()   // what came in during the game
+        }
+    }
+
     // MARK: Pointer polling
 
     private var fastTicks: Bool { tickTimer != nil }
@@ -475,6 +533,8 @@ final class NotchModel: ObservableObject {
     /// Something near the notch or on screen needs the pointer watched closely.
     private func needsTicks(at point: NSPoint) -> Bool {
         if expanded || island != nil || cuely.isPresenting { return true }
+        // Asleep for a game: nothing near the notch reacts, so no polling while it runs.
+        if gaming { return false }
         let f = screenFrame
         return f.maxY - point.y < 110 && abs(point.x - f.midX) < max(collapsedWidth, 300) / 2 + 160
     }
@@ -537,15 +597,19 @@ final class NotchModel: ObservableObject {
         if !needsTicks(at: point) && NSEvent.pressedMouseButtons == 0 {
             if let panel, !panel.ignoresMouseEvents { panel.ignoresMouseEvents = true }
             hoverStart = nil
+            pressed = false
             stopTicks()
             return
         }
         let pressed = NSEvent.pressedMouseButtons & 1 != 0
+        if pressed && !self.pressed { pressStartedInPanel = expanded && expandedRect.contains(point) }
+        self.pressed = pressed
         let dragCount = NSPasteboard(name: .drag).changeCount
+        // Assigned only when it changes: this runs 30 times a second and the views watch it.
         if !pressed {
             dragBaseline = dragCount
-            draggingFile = false
-        } else if dragCount != dragBaseline {
+            if draggingFile { draggingFile = false }
+        } else if dragCount != dragBaseline, !draggingFile, !pressStartedInPanel {
             draggingFile = true
         }
 
@@ -558,7 +622,7 @@ final class NotchModel: ObservableObject {
         if !expanded {
             leaveStart = nil
             // An island or the prompter owns the notch; hovering it does not open the panel.
-            guard island == nil, !cuely.isPresenting, hotRect.contains(point) else { hoverStart = nil; return }
+            guard island == nil, !cuely.isPresenting, !menuOpen, !gaming, hotRect.contains(point) else { hoverStart = nil; return }
             if draggingFile {
                 expand(tab: .shelf)
             } else if !pressed {
@@ -579,7 +643,7 @@ final class NotchModel: ObservableObject {
         // must not close in the same second.
         if !holdOpen && Date().timeIntervalSince(openedAt) > 120 && idleSeconds > 120 { collapse(); return }
         // Typing in one of its fields (a reminder, the clipboard search): the pointer may drift away.
-        if inside || sticky || holdOpen || editing {
+        if inside || sticky || holdOpen || editing || menuOpen {
             leaveStart = nil
         } else {
             if leaveStart == nil { leaveStart = now }
@@ -610,6 +674,7 @@ final class NotchModel: ObservableObject {
         let wasSticky = sticky
         sticky = false
         holdOpen = false
+        clipboardFromSearch = false
         expanded = false
         if let panel, panel.isKeyWindow, !cuely.isPresenting {
             // Hand keyboard focus back to the app the user was in, without hiding the window
@@ -644,6 +709,81 @@ final class NotchModel: ObservableObject {
         expand(tab: tab)
     }
 
+    /// Other apps' menus come as distributed notifications; Nook's own (the status menu, context menus in the panel)
+    /// as local ones, which arrive at once even while Nook's own menu holds the main run loop.
+    private func watchMenus() {
+        let open: (Notification) -> Void = { [weak self] _ in self?.menuOpenSince = Date() }
+        let closed: (Notification) -> Void = { [weak self] _ in self?.menuOpenSince = nil }
+        let distributed = DistributedNotificationCenter.default()
+        distributed.addObserver(forName: NSNotification.Name("com.apple.HIToolbox.beginMenuTrackingNotification"),
+                                object: nil, queue: .main, using: open)
+        distributed.addObserver(forName: NSNotification.Name("com.apple.HIToolbox.endMenuTrackingNotification"),
+                                object: nil, queue: .main, using: closed)
+        NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main, using: open)
+        NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main, using: closed)
+    }
+
+    /// The status menu opens: a panel opened only by hovering steps aside.
+    func statusMenuWillOpen() {
+        if expanded && !sticky { collapse(returnFocus: false) }
+    }
+
+    /// Keys the panel takes before the Edit menu, matched by key code so they work on any keyboard layout:
+    /// ⌘1 switches Search ⇄ Clipboard, ⌘C copies the chosen clipboard entry (text selected in the field is
+    /// copied as usual).
+    func performKeyEquivalent(_ event: NSEvent) -> Bool {
+        guard expanded, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return false }
+        switch Int(event.keyCode) {
+        case kVK_ANSI_1 where tab == .launcher || (tab == .clipboard && clipboardFromSearch):
+            switchSearchClipboard()
+            return true
+        case kVK_ANSI_C where tab == .clipboard:
+            if let editor = panel?.firstResponder as? NSTextView, editor.selectedRange().length > 0 { return false }
+            let items = clipboard.filtered
+            guard items.indices.contains(clipboard.selection) else { return false }
+            copyClip(items[clipboard.selection])
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// ⌘1: the clipboard over the search, and back. The keyboard stays in the panel.
+    func switchSearchClipboard() {
+        if tab == .launcher {
+            if !sticky { stayOpen() }
+            clipboard.query = ""
+            clipboard.selection = 0
+            clipboardFromSearch = true
+            tab = .clipboard
+        } else {
+            clipboardFromSearch = false
+            tab = .launcher
+        }
+        panel?.makeKeyAndOrderFront(nil)
+        focusRequest &+= 1
+    }
+
+    /// Esc anywhere in the panel: the clipboard opened from the search goes back there, everything else closes.
+    func escapeKey() {
+        if clipboardFromSearch { switchSearchClipboard() } else { collapse() }
+    }
+
+    /// ⌘C on a clipboard entry: onto the clipboard, nothing pasted.
+    func copyClip(_ item: ClipItem) {
+        clipboard.copyToPasteboard(item)
+        collapse()
+        show(.copied, for: 1.4)
+    }
+
+    /// A click in a list that is driven by keys (the clipboard): the panel opened by hover does not have the keyboard,
+    /// so from this click on the arrows, ↩ and Esc go to it, and ↩ pastes into the app the person was in.
+    func takeKeyboard() {
+        stayOpen()
+        if panel?.isKeyWindow != true { panel?.makeKeyAndOrderFront(nil) }
+        focusRequest &+= 1
+    }
+
     /// Keeps the panel open while the user types in it (until Esc or a click outside).
     func stayOpen() {
         if !sticky { previousApp = NSWorkspace.shared.frontmostApplication }
@@ -676,7 +816,10 @@ final class NotchModel: ObservableObject {
         launcher.query = query
         expand(tab: .launcher)
         tab = .launcher
-        if focus { panel?.makeKeyAndOrderFront(nil) }
+        if focus {
+            panel?.makeKeyAndOrderFront(nil)
+            focusRequest &+= 1
+        }
     }
 
     /// An AI action on the selection of the app in front (from the search or its own shortcut).
@@ -786,6 +929,7 @@ final class NotchModel: ObservableObject {
         clipboard.selection = 0
         expand(tab: .clipboard)
         panel?.makeKeyAndOrderFront(nil)
+        focusRequest &+= 1
     }
 
     /// Copies a clipboard entry and, when allowed, pastes it into the previous app.
@@ -813,6 +957,13 @@ final class NotchModel: ObservableObject {
     }
 
     func show(_ flash: Flash, for seconds: Double) {
+        // During a game only what a key press asked for: the volume and brightness keys.
+        if gaming {
+            switch flash {
+            case .volume, .brightness: break
+            default: return
+            }
+        }
         flashWork?.cancel()
         if self.flash?.kind == flash.kind {
             withAnimation(.easeOut(duration: 0.12)) { self.flash = flash }   // the same flash, a new value
@@ -895,7 +1046,7 @@ final class NotchModel: ObservableObject {
             islandQueue.removeAll(where: \.isHeadphones)
             if island?.isHeadphones == true { dismissIsland(showNext: false) }
         }
-        if island == nil && !expanded && !cuely.isPresenting && !resting {
+        if island == nil && !expanded && !cuely.isPresenting && !resting && !gaming {
             showIsland(new)
         } else if island?.kind != new.kind && !islandQueue.contains(where: { $0.kind == new.kind }) {
             islandQueue.append(new)
@@ -904,7 +1055,7 @@ final class NotchModel: ObservableObject {
     }
 
     private func showIsland(_ new: Island) {
-        guard !resting else { islandQueue.insert(new, at: 0); return }   // shown when the screens wake
+        guard !resting, !gaming else { islandQueue.insert(new, at: 0); return }   // shown when the screens wake
         island = new
         startTicks()
         scheduleIslandDismiss(after: new.seconds)
@@ -928,7 +1079,7 @@ final class NotchModel: ObservableObject {
     }
 
     private func showNextIsland() {
-        guard island == nil, !expanded, !cuely.isPresenting, !resting else { return }
+        guard island == nil, !expanded, !cuely.isPresenting, !resting, !gaming else { return }
         // A call that waited is over; other news older than ten minutes is old. Finished turns still matter.
         islandQueue.removeAll { island in
             let age = Date().timeIntervalSince(island.created)
@@ -994,6 +1145,10 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        model.performKeyEquivalent(event) || super.performKeyEquivalent(with: event)
+    }
 
     /// On the notch's own display, or on `screen` for a while (the search opens where the pointer is).
     func reposition(on screen: NSScreen? = nil) {

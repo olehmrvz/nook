@@ -58,6 +58,8 @@ final class ClipboardStore: ObservableObject {
     /// Small previews of image entries, keyed by file name; loaded off the main thread.
     @Published private(set) var thumbnails: [String: NSImage] = [:]
     private var loadingThumbnails = Set<String>()
+    @Published private(set) var imageInfos: [String: ImageInfo] = [:]
+    private var loadingInfos = Set<String>()
     private let io = DispatchQueue(label: "nook.clipboard")
 
     private let maxUnpinned = 300
@@ -213,6 +215,31 @@ final class ClipboardStore: ObservableObject {
                 .flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, options) }
                 .map { NSImage(cgImage: $0, size: .zero) }
             DispatchQueue.main.async { if let image { self?.thumbnails[name] = image } }
+        }
+        return nil
+    }
+
+    struct ImageInfo: Equatable {
+        var width: Int
+        var height: Int
+        var bytes: Int64
+    }
+
+    /// Pixel size and file size of an image entry (Nook's own copy). The first call starts a background read and
+    /// returns nil.
+    func imageInfo(for item: ClipItem) -> ImageInfo? {
+        guard let name = item.imageFile else { return nil }
+        if let cached = imageInfos[name] { return cached }
+        guard !loadingInfos.contains(name) else { return nil }
+        loadingInfos.insert(name)
+        let url = imagesDir.appendingPathComponent(name)
+        io.async { [weak self] in
+            let properties = CGImageSourceCreateWithURL(url as CFURL, nil)
+                .flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) } as? [CFString: Any]
+            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+            let info = ImageInfo(width: properties?[kCGImagePropertyPixelWidth] as? Int ?? 0,
+                                 height: properties?[kCGImagePropertyPixelHeight] as? Int ?? 0, bytes: bytes)
+            DispatchQueue.main.async { self?.imageInfos[name] = info }
         }
         return nil
     }

@@ -43,7 +43,9 @@ The same notch replaces a handful of small utilities. It is one free app, and ev
 - **Questions and plans.** Pick one of the agent's options, or approve its plan, in one click.
 - **What changed.** The feed shows results, not tool calls: each file with the lines it gained and lost, tests
   with their counts, commits and pushes, commands that failed.
-- **When it's done.** A drop tells you what the turn did. One click brings back its terminal tab.
+- **When it's done.** A drop tells you what the turn did. In the feed you read the whole answer, with its lists,
+  code and tables, next to what you asked and how long it took; a question the agent ends with stands out. One click
+  brings back its terminal tab.
 - **Reply from the notch.** Your text goes straight into the agent's herdr or tmux pane.
 - **Limits and cost.** Claude (5 hours and week) and Codex limits with reset times, plus today's tokens and cost at
   API prices, read from local transcripts.
@@ -55,7 +57,7 @@ The same notch replaces a handful of small utilities. It is one free app, and ev
 <p align="center"><img src="docs/images/search.jpg" alt="Search from the notch: the best match as a card, the rest beside it" width="820"></p>
 
 - **⌥Space** opens one search for apps, System Settings, menu items of the app in front, open windows, files,
-  Apple Shortcuts, emoji, quicklinks (`yt cats`) and your own shell commands.
+  Apple Shortcuts, emoji, quicklinks (`yt cats`) and your own shell commands. **⌘1** switches to the clipboard.
 - **Calculator** as you type: `450 + 20%`, `5 km in miles`, `10 eur to usd`, `1 btc to eur`. The last rates are kept,
   so it works offline.
 
@@ -83,8 +85,10 @@ The same notch replaces a handful of small utilities. It is one free app, and ev
 
 ### Clipboard and shelf
 
-- **⌃⌘V:** 300 items, pins, search, a filter by type and text from images. Password managers are ignored.
-- **Shelf:** drop a file on the notch and drag it out later or AirDrop it. Screenshots land there by themselves.
+- **⌃⌘V:** 300 items with a preview, pins, a filter by type and text from images. Type to filter, arrows to choose,
+  Return pastes, ⌘C copies. Password managers are ignored.
+- **Shelf:** drag a file to the notch and drop it on the shelf; drag it out later or AirDrop it. Screenshots land
+  there by themselves.
 
 ### Every day
 
@@ -94,7 +98,10 @@ The same notch replaces a handful of small utilities. It is one free app, and ev
   your iPhone, one click brings them back to the Mac.
 - Volume, brightness and Do Not Disturb in the notch instead of the system HUD; weather and battery.
 - Keyboard lock for 30 seconds, to wipe the keyboard clean.
-- A settings window, the tabs and buttons you want in the header, English or Russian (or the system's language).
+- Sleeps while a game fills the screen: no notch over the game and nothing opens on hover. The search and clipboard
+  shortcuts still work.
+- A settings window, the tabs and buttons you want in the header; English, German, Ukrainian or Russian (or the
+  system's language).
 
 ## Install
 
@@ -106,7 +113,7 @@ Claude Code and Codex connect by themselves on first launch; restart agents that
 once whether to trust Nook's hooks — allow it. Settings: ⚙︎ in the panel or the menu bar icon.
 
 Requires an Apple Silicon Mac with macOS 14 or later. On a Mac without a notch, Nook draws a small pill at the top.
-Nook updates itself: it checks every 6 hours and installs the new version when the panel is closed.
+Nook checks for updates every 6 hours and offers a new version in the notch; it installs when you click Install.
 
 ## Permissions
 

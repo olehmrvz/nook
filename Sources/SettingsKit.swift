@@ -88,6 +88,9 @@ struct SettingsRow<Accessory: View>: View {
         self.accessory = accessory()
     }
 
+    /// Text that is already final (a name, a value from `L`). Disfavoured like SwiftUI's own `Text` overload: without
+    /// it a string literal picked this one (String is the default literal type) and the row stayed in Russian.
+    @_disfavoredOverload
     init<S: StringProtocol>(_ title: S, subtitle: String? = nil, @ViewBuilder accessory: () -> Accessory) {
         self.title = Text(title)
         self.subtitle = subtitle.map { Text($0) }
@@ -143,11 +146,14 @@ struct SettingsToggle<Label: View>: View {
 /// A row with a pop-up menu of choices.
 struct SettingsPicker<Value: Hashable, Options: View>: View {
     private let title: Text
+    /// A line under the title about the chosen value; text already in the person's language.
+    private let subtitle: String?
     @Binding private var selection: Value
     private let options: Options
 
-    init(_ title: LocalizedStringKey, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
+    init(_ title: LocalizedStringKey, subtitle: String? = nil, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
         self.title = Text(title)
+        self.subtitle = subtitle
         _selection = selection
         self.options = options()
     }
@@ -155,7 +161,12 @@ struct SettingsPicker<Value: Hashable, Options: View>: View {
     var body: some View {
         SettingsLine {
             HStack(spacing: 12) {
-                title.font(.system(size: 13))
+                VStack(alignment: .leading, spacing: 2) {
+                    title.font(.system(size: 13))
+                    if let subtitle {
+                        Text(subtitle).font(.system(size: 11.5)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 Spacer(minLength: 12)
                 Picker("", selection: $selection) { options }
                     .labelsHidden().pickerStyle(.menu).fixedSize()

@@ -1,0 +1,14 @@
+/* Ukrainian texts of the macOS permission prompts; Info.plist holds the Russian ones. */
+
+"NSAppleEventsUsageDescription" = "Nook показує, що грає в Spotify чи Музиці, і керує відтворенням.";
+"NSDesktopFolderUsageDescription" = "Nook кладе нові знімки екрана з робочого столу на полицю.";
+"NSCalendarsFullAccessUsageDescription" = "Nook показує ваші найближчі події та нагадує про зустрічі.";
+"NSRemindersFullAccessUsageDescription" = "Nook показує нагадування й позначає їх виконаними.";
+"NSCameraUsageDescription" = "Вкладка «Дзеркало» показує камеру, лише поки вона відкрита. Нічого не записується.";
+"NSMicrophoneUsageDescription" = "Nook слухає мікрофон для диктування та для суфлера Cuely. Звук обробляється лише на цьому Mac і не зберігається.";
+"NSSpeechRecognitionUsageDescription" = "Cuely розпізнає мовлення, щоб текст ішов за вами. Коли можливо, розпізнавання відбувається на Mac.";
+"NSContactsUsageDescription" = "Nook показує фото абонента з Контактів.";
+"NSBluetoothAlwaysUsageDescription" = "Nook показує заряд AirPods під час підключення.";
+"NSLocationWhenInUseUsageDescription" = "Nook показує погоду для вашого міста.";
+"NSLocationUsageDescription" = "Nook показує погоду для вашого міста.";
+"NSDownloadsFolderUsageDescription" = "Nook показує прогрес і готові завантаження.";

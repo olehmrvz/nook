@@ -120,7 +120,23 @@ def main():
             for row in rows:
                 print('  ' + row)
     print(f'{len(english)} entries, {len(used)} used, {len(missing)} missing.')
-    return 1 if missing or glued else 0
+    # Every other language has exactly the English keys, and each value keeps its key's placeholders.
+    other_problems = 0
+    for path in sorted(glob.glob(os.path.join(ROOT, 'Sources/Localization/*.lproj/Localizable.strings'))):
+        language = os.path.basename(os.path.dirname(path)).split('.')[0]
+        if language in ('en', 'ru'):
+            continue
+        table = json.loads(subprocess.run(['plutil', '-convert', 'json', '-o', '-', path],
+                                          capture_output=True, check=True).stdout)
+        rows = [f'no {language} for: {k[:80]}' for k in english if k not in table]
+        rows += [f'{language} only: {k[:80]}' for k in table if k not in english]
+        rows += [f'{language} placeholders differ: {k[:80]}' for k, v in table.items()
+                 if k in english and SPEC.findall(k) != SPEC.findall(v)]
+        for row in rows:
+            print('  ' + row)
+        print(f'{language}: {len(table)} entries, {len(rows)} problems.')
+        other_problems += len(rows)
+    return 1 if missing or glued or other_problems else 0
 
 
 if __name__ == '__main__':

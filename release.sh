@@ -1,6 +1,7 @@
 #!/bin/bash
 # Publishes the current commit as a GitHub release. Every installed Nook checks the latest release every
-# 6 hours, downloads it and installs it by itself (Sources/Updater.swift). Run from a clean tree.
+# 6 hours, downloads and checks it, and offers it in the notch; it installs when the person clicks Install
+# (Sources/Updater.swift). Run from a clean tree.
 # A release is signed with Nook's Developer ID and notarized by Apple, so a download opens without warnings.
 # It carries Nook.dmg (for people) and Nook.zip (for the updater). One-time setup: docs/DEVELOPMENT.md.
 # `--local-signing`: the one bridge release signed with "Nook Local Signing", not notarized. Copies from before
@@ -76,7 +77,17 @@ if [ $LOCAL = 0 ]; then
   mkdir -p "$DMG_DIR"
   ditto "$APP" "$DMG_DIR/Nook.app"
   ln -s /Applications "$DMG_DIR/Applications"
-  hdiutil create -quiet -volname Nook -srcfolder "$DMG_DIR" -format UDZO -ov "$DMG"
+  # The window's picture and layout from dmg/make-assets.sh (committed): a lime tile like the icon, an arrow to
+  # Applications. The layout finds the picture by volume name and path, so the name stays "Nook" and the file system
+  # HFS+. Without them the image opens as a plain Finder window.
+  if [ -f "$PROJECT_DIR/dmg/DS_Store" ] && [ -f "$PROJECT_DIR/dmg/background.tiff" ]; then
+    mkdir -p "$DMG_DIR/.background"
+    cp "$PROJECT_DIR/dmg/background.tiff" "$DMG_DIR/.background/background.tiff"
+    cp "$PROJECT_DIR/dmg/DS_Store" "$DMG_DIR/.DS_Store"
+  else
+    echo "No DMG layout (dmg/DS_Store, dmg/background.tiff): the window stays plain. Run dmg/make-assets.sh and commit them." >&2
+  fi
+  hdiutil create -quiet -volname Nook -srcfolder "$DMG_DIR" -fs HFS+ -format UDZO -ov "$DMG"
   rm -rf "$DMG_DIR"
   codesign --sign "$IDENTITY" --timestamp "$DMG"
   notarize "$DMG"
@@ -115,4 +126,4 @@ for FILE in "${ASSETS[@]}"; do NOTES="$NOTES
 - $(basename "$FILE"): $(shasum -a 256 "$FILE" | cut -d' ' -f1)"; done
 gh release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$(git rev-parse HEAD)" \
   --title "Nook 1.$BUILD_NUMBER" --notes "$NOTES"
-echo "Released $TAG: installed copies update within 6 hours (or menu → Updates → Check now)."
+echo "Released $TAG: installed copies offer it within 6 hours (or menu → Updates → Check now)."

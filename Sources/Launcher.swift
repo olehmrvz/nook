@@ -227,8 +227,6 @@ final class Launcher: ObservableObject {
     private var emoji: [Emoji.Entry] = []
     /// Read when the search opens: the front app's menu items and the open windows.
     private var live: [LaunchItem] = []
-    /// The open windows read when the search opened (with Accessibility and the setting on).
-    var openWindows: [WindowList.Window] { live.compactMap { if case .openWindow(let w) = $0.kind { return w } else { return nil } } }
     private let liveQueue = DispatchQueue(label: "nook.launcher.live", qos: .userInitiated)
     private let files = FileSearch()
     private var fileResults: (query: String, urls: [URL]) = ("", [])
@@ -748,9 +746,11 @@ struct LauncherTab: View {
                                    copy: { open(items, reveal: false) }, goOn: { open(items, reveal: true) },
                                    search: { item in model.collapse(returnFocus: false); launcher.open(item) })
                 } else if let selected {
-                    HStack(alignment: .top, spacing: Spacing.gap) {
-                        hero(selected, items: items).frame(width: Self.heroWidth)
+                    // The whole width for the results and one bar of actions: the big card and "N min ago" said
+                    // little and cost two thirds of the room.
+                    VStack(spacing: Spacing.gap) {
                         list(items)
+                        actionBar(selected, items: items)
                     }
                 } else {
                     nothing
@@ -760,6 +760,7 @@ struct LauncherTab: View {
             .entrance(1)
         }
         .onAppear { if model.sticky && model.panel?.isKeyWindow == true { focused = true } }
+        .onChange(of: model.focusRequest) { _, _ in focused = true }
     }
 
     // MARK: Field
@@ -818,21 +819,11 @@ struct LauncherTab: View {
 
     // MARK: Selected result
 
-    private func hero(_ item: LaunchItem, items: [LaunchItem]) -> some View {
+    private func actionBar(_ item: LaunchItem, items: [LaunchItem]) -> some View {
         let asks: Bool = if case .ask = item.kind { true } else { false }
-        return LaunchHero(item: item, icon: icon(item), alias: Settings.launcherAliases[item.id],
-                          keys: Settings.launcherHotkeys[item.id].flatMap(Shortcut.init(stored:))?.title,
-                          usage: Settings.launcherUsage[item.id], windows: windows(of: item),
-                          recent: launcher.query.trimmingCharacters(in: .whitespaces).isEmpty,
-                          nothingFound: asks && !hasMatches(items),
-                          primary: { open(items, reveal: false) }, reveal: { open(items, reveal: true) })
-    }
-
-    /// The app's open windows, read when the search opened (Accessibility).
-    private func windows(of item: LaunchItem) -> [String] {
-        guard case .app(let url) = item.kind else { return [] }
-        return launcher.openWindows.filter { $0.bundle?.standardizedFileURL == url.standardizedFileURL }
-            .map(\.title).filter { !$0.isEmpty }
+        return LaunchActionBar(item: item, icon: icon(item), nothingFound: asks && !hasMatches(items),
+                               primary: { open(items, reveal: false) }, reveal: { open(items, reveal: true) },
+                               clipboard: { model.switchSearchClipboard() })
     }
 
     /// Something matched besides asking the assistant and the web fallbacks.
@@ -848,13 +839,11 @@ struct LauncherTab: View {
     private func list(_ items: [LaunchItem]) -> some View {
         let recent = launcher.query.trimmingCharacters(in: .whitespaces).isEmpty
         let aliases = Settings.launcherAliases
-        let usage = Settings.launcherUsage
         return ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 6) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         LaunchRow(item: item, icon: icon(item), alias: aliases[item.id],
-                                  trailing: recent ? usage[item.id].flatMap(LaunchHero.ago) : nil,
                                   keys: Settings.launcherHotkeys[item.id].flatMap(Shortcut.init(stored:))?.title,
                                   selected: index == launcher.selection, selectionSpace: selectionSpace) {
                             launcher.selection = index
@@ -1021,13 +1010,11 @@ struct LauncherTab: View {
     }
 }
 
-/// One result in the list: icon, title (and its own word), what it is or when it was opened, its keys.
+/// One result in the list: icon, title (and its own word), what it is, its keys.
 struct LaunchRow: View {
     let item: LaunchItem
     let icon: NSImage?
     var alias: String?
-    /// "3 мин" for what was opened lately; else what kind of thing it is.
-    var trailing: String?
     var keys: String?
     let selected: Bool
     let selectionSpace: Namespace.ID
@@ -1042,7 +1029,7 @@ struct LaunchRow: View {
                 if let alias { Chip(text: alias, color: .white.opacity(0.75)) }
                 Spacer(minLength: 8)
                 if let keys { KeyCap(text: keys) } else {
-                    Text(trailing ?? item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1).truncationMode(.middle)
+                    Text(item.subtitle).font(.system(size: 11)).foregroundStyle(faint).lineLimit(1).truncationMode(.middle)
                 }
             }
             .padding(.horizontal, 10)
@@ -1065,75 +1052,42 @@ struct LaunchRow: View {
     }
 }
 
-/// The selected result, large: what it is and where, the person's own word and keys, how often it was opened, the
-/// app's open windows; its actions with their keys.
-struct LaunchHero: View {
+/// Under the results: where the selected one is, and what ↩, ⌘↩ and ⌘1 do.
+struct LaunchActionBar: View {
     let item: LaunchItem
     let icon: NSImage?
-    let alias: String?
-    let keys: String?
-    /// [count, last opened (seconds since 1970)] from `Settings.launcherUsage`.
-    let usage: [Double]?
-    let windows: [String]
-    /// Nothing typed: the list is what was opened lately.
-    let recent: Bool
     /// Only the assistant and the web are left for this query.
     let nothingFound: Bool
     let primary: () -> Void
     let reveal: () -> Void
-
-    /// "сейчас", "3 мин", "2 ч", "вчера", "5 дн".
-    static func ago(_ entry: [Double]) -> String? {
-        guard entry.count == 2 else { return nil }
-        let seconds = max(0, Date().timeIntervalSince1970 - entry[1])
-        if seconds < 60 { return L("сейчас") }
-        if seconds < 3600 { return L("\(Int(seconds / 60)) мин") }
-        if seconds < 86_400 { return L("\(Int(seconds / 3600)) ч") }
-        if seconds < 2 * 86_400 { return L("вчера") }
-        return L("\(Int(seconds / 86_400)) дн")
-    }
+    let clipboard: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                if case .ask = item.kind {
-                    TileIcon(symbol: "sparkles", color: Tone.meeting, size: 32)
-                } else {
-                    LaunchIcon(item: item, icon: icon, size: 44)
-                }
-                Spacer(minLength: 8)
-                if let keys {
-                    KeyCap(text: keys)
-                } else if case .ask = item.kind {
-                    KeyCap(text: "Tab")
-                } else if recent, let usage, let when = Self.ago(usage) {
-                    Text(when == L("сейчас") ? when : when + L(" назад")).font(.system(size: 11)).foregroundStyle(faint)
-                }
+        HStack(spacing: 8) {
+            LaunchIcon(item: item, icon: icon, size: 16)
+            Text(where_).font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 8)
+            Button(action: clipboard) { PillKeys(title: L("Буфер"), keys: "⌘1") }
+                .buttonStyle(.pill(.ghost, small: true)).focusable(false).help("Буфер обмена поверх поиска (⌘1, назад — Esc)")
+            switch item.kind {
+            case .app, .file:
+                Button(action: reveal) { PillKeys(title: L("В Finder"), keys: "⌘↩") }
+                    .buttonStyle(.pill(.ghost, small: true)).focusable(false)
+            default:
+                EmptyView()
             }
-            Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7).padding(.top, 10)
-            Text(subtitle).font(.system(size: 11.5)).foregroundStyle(muted).lineLimit(nothingFound ? 3 : 1)
-                .truncationMode(.middle).padding(.top, 3)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 6) { facts }.padding(.top, 10)
-            Spacer(minLength: 0)
-            actions
+            Button(action: primary) { PillKeys(title: primaryTitle, keys: "↩") }
+                .buttonStyle(.pill(.primary, small: true)).focusable(false)
         }
-        .padding(Spacing.pad)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .tile(isAsk ? .accent(Tone.meeting) : .plain)
+        .padding(.leading, 10)
+        .frame(height: 30)
     }
 
-    private var isAsk: Bool { if case .ask = item.kind { true } else { false } }
-
-    private var title: String {
-        if case .ask = item.kind { return L("Спросить AI") }
-        return item.title
-    }
-
-    private var subtitle: String {
+    /// What the selected result is and where it lives.
+    private var where_: String {
         switch item.kind {
-        case .ask(let question):
-            return "«\(question)»" + (nothingFound ? "\n" + L("Среди программ, файлов и меню ничего — даже в другой раскладке.") : "")
+        case .ask:
+            return nothingFound ? L("Среди программ, файлов и меню ничего — даже в другой раскладке.") : L("Спросить AI")
         case .app(let url):
             // System apps live in a sealed volume ("/System/Cryptexes/App/System/Applications"): say what that is.
             let folder = url.deletingLastPathComponent().path
@@ -1142,43 +1096,6 @@ struct LaunchHero: View {
             return (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
         default:
             return item.subtitle
-        }
-    }
-
-    /// Two lines at most: they share the tile with the actions.
-    @ViewBuilder private var facts: some View {
-        if !windows.isEmpty {
-            Caps(text: L("Открытые окна"), color: faint)
-            ForEach(windows.prefix(alias == nil ? 2 : 1), id: \.self) { title in
-                HStack(spacing: 7) {
-                    Image(systemName: "macwindow").font(.system(size: 10.5)).foregroundStyle(muted)
-                    Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-                }
-            }
-        } else if let usage, usage.count == 2, !isAsk {
-            let times = Int(usage[0])
-            HStack(spacing: 8) {
-                Caps(text: L("Открывали"), color: faint)
-                // "раз" is both the one and the many form, so English could not tell "1 time" from "5 times".
-                Text((times == 1 ? L("1 раз") : Format.count(times, "раз", "раза", "раз")) + " · "
-                     + Format.when(Date(timeIntervalSince1970: usage[1])))
-                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-            }
-        }
-        if let alias {
-            HStack(spacing: 8) { Caps(text: L("Сокращение"), color: faint); Chip(text: alias, color: .white.opacity(0.75)) }
-        }
-    }
-
-    @ViewBuilder private var actions: some View {
-        HStack(spacing: 6) {
-            Button(action: primary) { PillKeys(title: primaryTitle, keys: "↩") }.buttonStyle(.pill(.primary, small: true))
-            switch item.kind {
-            case .app, .file:
-                Button(action: reveal) { PillKeys(title: L("В Finder"), keys: "⌘↩") }.buttonStyle(.pill(.ghost, small: true))
-            default:
-                EmptyView()
-            }
         }
     }
 

@@ -41,6 +41,12 @@ extension Settings {
         get { ParakeetModel(rawValue: defaults.string(forKey: "dictationModel") ?? "") ?? .ultra }
         set { defaults.set(newValue.rawValue, forKey: "dictationModel") }
     }
+    /// What the streaming model (Живая) listens for: "auto", or "ru", "uk", "en", "de". A named language is more
+    /// accurate: with "auto" a Ukrainian start can come out in Russian.
+    static var dictationLanguage: String {
+        get { defaults.string(forKey: "dictationLanguage") ?? "auto" }
+        set { defaults.set(newValue, forKey: "dictationLanguage") }
+    }
     /// A system sound by name (`/System/Library/Sounds`), "" for none. The first version had one switch for both.
     static var dictationStartSound: String {
         get { defaults.string(forKey: "dictationStartSound") ?? (oldSoundsSwitch ? "Tink" : "") }
@@ -113,6 +119,8 @@ final class Dictation: ObservableObject {
     var paused = false { didSet { apply() } }
     /// Bumped when a model is installed or deleted, so views read `isInstalled` again.
     @Published private(set) var installs = 0
+    /// The streaming model's text so far while recording (Живая); empty otherwise. The notch shows it.
+    @Published private(set) var liveText = ""
     /// Recording, recognising or putting the clipboard back: no restart for an update now.
     var isBusy: Bool { phase != .idle || TextInsertion.restoring }
 
@@ -127,6 +135,10 @@ final class Dictation: ObservableObject {
     private let queue = DispatchQueue(label: "nook.dictation", qos: .userInitiated)
     private var engine: ParakeetEngine?
     private var engineModel: ParakeetModel?
+    /// The streaming model, kept between recordings like `engine` (main thread).
+    private var stream: NemotronStream?
+    /// The stream the microphone feeds during this recording; read on `audioQueue`, guarded by `lock`.
+    private var feeding: NemotronStream?
     private var unloadWork: DispatchWorkItem?
     private var downloader: ParakeetDownload?
 
@@ -353,6 +365,12 @@ final class Dictation: ObservableObject {
         session += 1
         let current = session
         lock.withLock { samples.removeAll(keepingCapacity: true) }
+        liveText = ""
+        if model == .nemotron {
+            let live = loadedStream()
+            live.begin(language: Settings.dictationLanguage)
+            lock.withLock { feeding = live }
+        }
         phase = .recording
         startedAt = Date()
         installKeys()
@@ -410,18 +428,21 @@ final class Dictation: ObservableObject {
         audioQueue.async { [weak self] in
             guard let self else { return }
             self.closeMicrophone()
-            let audio = self.lock.withLock { () -> [Float] in
-                defer { self.samples = [] }
-                return self.samples
+            let (audio, live) = self.lock.withLock { () -> ([Float], NemotronStream?) in
+                defer { self.samples = []; self.feeding = nil }
+                return (self.samples, self.feeding)
             }
-            DispatchQueue.main.async { self.transcribe(audio) }
+            DispatchQueue.main.async { self.transcribe(audio, live: live) }
         }
     }
 
-    private func transcribe(_ audio: [Float]) {
+    /// `live`: the streaming model heard it all already and only decodes the tail; else Parakeet reads `audio`.
+    private func transcribe(_ audio: [Float], live: NemotronStream?) {
         let seconds = Double(audio.count) / Double(ParakeetEngine.sampleRate)
         guard audio.count > ParakeetEngine.sampleRate / 3 else {
             note(String(format: "too short: %.2f s of audio", seconds))
+            live?.reset()
+            liveText = ""
             phase = .idle
             return
         }
@@ -432,35 +453,51 @@ final class Dictation: ObservableObject {
             guard let self else { return }
             let context = Settings.dictationSmartCase ? Self.textBeforeCursor() : nil
             let started = Date()
-            let result = Result { try self.engine(for: model).transcribe(audio) }
-            self.note(String(format: "%.1f s of audio recognized in %.2f s: ", seconds, Date().timeIntervalSince(started))
-                      + ((try? result.get()).map { "\($0.count) characters" } ?? String(describing: result)))
-            DispatchQueue.main.async {
-                self.phase = .idle
-                switch result {
-                case .success(let text):
-                    let fitted = Self.fit(text, after: context)
-                    if fitted.isEmpty {
-                        self.onNotice?(L("Речь не распознана"), L("Говорите ближе к микрофону или громче"), false)
-                    } else {
-                        self.insert(fitted, into: target)
-                    }
-                case .failure(let error):
-                    self.onNotice?(L("Не удалось распознать речь"), error.localizedDescription, false)
-                }
-                self.scheduleUnload()
+            let deliver: (Result<String, Error>) -> Void = { result in
+                self.note(String(format: "%.1f s of audio recognized in %.2f s%@: ", seconds, Date().timeIntervalSince(started),
+                                 live == nil ? "" : " (streaming)")
+                          + ((try? result.get()).map { "\($0.count) characters" } ?? String(describing: result)))
+                DispatchQueue.main.async { self.deliver(result, context: context, into: target) }
+            }
+            if let live {
+                live.finish(deliver)
+            } else {
+                deliver(Result { try self.engine(for: model).transcribe(audio) })
             }
         }
+    }
+
+    /// On the main thread: the recognized text goes in, or the person hears why not.
+    private func deliver(_ result: Result<String, Error>, context: String?, into target: NSRunningApplication?) {
+        phase = .idle
+        liveText = ""
+        switch result {
+        case .success(let text):
+            let fitted = Self.fit(text, after: context)
+            if fitted.isEmpty {
+                onNotice?(L("Речь не распознана"), L("Говорите ближе к микрофону или громче"), false)
+            } else {
+                insert(fitted, into: target)
+            }
+        case .failure(let error):
+            onNotice?(L("Не удалось распознать речь"), error.localizedDescription, false)
+        }
+        scheduleUnload()
     }
 
     func cancel() {
         guard phase == .recording else { return }
         endRecording()
         phase = .idle
+        liveText = ""
         audioQueue.async { [weak self] in
             guard let self else { return }
             self.closeMicrophone()
-            self.lock.withLock { self.samples = [] }
+            let live = self.lock.withLock { () -> NemotronStream? in
+                defer { self.samples = []; self.feeding = nil }
+                return self.feeding
+            }
+            live?.reset()
         }
     }
 
@@ -485,10 +522,11 @@ final class Dictation: ObservableObject {
         var sum: Float = 0
         for sample in chunk { sum += sample * sample }
         let level = min(1, sqrt(sqrt(sum / Float(chunk.count))) * 2.2)
-        lock.withLock {
-            guard samples.count < Int(Self.maxSeconds) * ParakeetEngine.sampleRate else { return }
-            samples.append(contentsOf: chunk)
+        let live = lock.withLock { () -> NemotronStream? in
+            if samples.count < Int(Self.maxSeconds) * ParakeetEngine.sampleRate { samples.append(contentsOf: chunk) }
+            return feeding
         }
+        live?.feed(chunk)
         DispatchQueue.main.async { self.onLevel?(level) }
     }
 
@@ -563,6 +601,10 @@ final class Dictation: ObservableObject {
         unloadWork?.cancel()
         let model = Settings.dictationModel
         guard model.isInstalled else { done?(); return }
+        if model == .nemotron {
+            loadedStream { done?() }
+            return
+        }
         queue.async { [weak self] in
             _ = try? self?.engine(for: model)
             if let done { DispatchQueue.main.async(execute: done) }
@@ -578,8 +620,26 @@ final class Dictation: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(minutes * 60), execute: work)
     }
 
+    /// The streaming model, created and loaded once (on its own queue); the text so far goes to `liveText`.
+    @discardableResult
+    private func loadedStream(then done: (() -> Void)? = nil) -> NemotronStream {
+        let live = stream ?? NemotronStream()
+        if stream == nil {
+            live.onPartial = { [weak self] text in
+                guard let self, self.phase != .idle, self.liveText != text else { return }
+                self.liveText = text
+            }
+            live.onError = { [weak self] error in self?.note("streaming model: \(error)") }
+            stream = live
+        }
+        live.load { _ in done?() }
+        return live
+    }
+
     func unload() {
         unloadWork?.cancel()
+        stream?.unload()
+        stream = nil
         queue.async { [weak self] in
             self?.engine = nil
             self?.engineModel = nil

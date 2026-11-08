@@ -370,9 +370,6 @@
 "Начните печатать название программы" = "Start typing an app name";
 /* Launcher.swift:775 */
 "Ничего не найдено" = "Nothing found";
-/* Launcher.swift:845 */
-/* Launcher.swift:846 */
-"↩ вставить" = "↩ paste";
 /* Launcher.swift:847 */
 /* Launcher.swift:848 */
 /* Launcher.swift:849 */
@@ -428,10 +425,6 @@
 "Быстрая" = "Fast";
 /* Parakeet.swift:19 */
 "Точная" = "Accurate";
-/* Parakeet.swift:25 */
-"Parakeet Redux: меньше места и памяти" = "Parakeet Redux: less disk space and memory";
-/* Parakeet.swift:26 */
-"Parakeet Ultra: точнее, особенно для русского и украинского" = "Parakeet Ultra: more accurate, especially for Russian and Ukrainian";
 /* Parakeet.swift:244 */
 "Файл модели не прошёл проверку: %@. Попробуйте ещё раз." = "A model file failed the check: %@. Try again.";
 /* Parakeet.swift:264 */
@@ -468,20 +461,6 @@
 "Обновления" = "Updates";
 /* SettingsWindow.swift:31 */
 "Спасибо автору" = "Thank the Author";
-/* SettingsWindow.swift:405 */
-"Локальный сертификат Nook" = "Nook’s local certificate";
-/* SettingsWindow.swift:407 */
-"Без постоянной подписи" = "No lasting signature";
-/* SettingsWindow.swift:414 */
-"Подписано сертификатом разработчика и проверено Apple: macOS открывает Nook без предупреждений." = "Signed with a Developer ID and checked by Apple: macOS opens Nook without warnings.";
-/* SettingsWindow.swift:416 */
-"Подписано сертификатом разработчика. Эту сборку Apple ещё не проверяла (нотаризация), её собрали на этом Mac." = "Signed with a Developer ID. Apple hasn’t checked this build yet (notarization); it was built on this Mac.";
-/* SettingsWindow.swift:418 */
-"Подписано сертификатом «Nook Local Signing». macOS сохраняет разрешения между сборками." = "Signed with the “Nook Local Signing” certificate. macOS keeps permissions between builds.";
-/* SettingsWindow.swift:420 */
-"Обновление установится, только если оно подписано так же, как эта копия." = "An update installs only if it is signed the same way as this copy.";
-/* SettingsWindow.swift:422 */
-"Сборка без сертификата: macOS будет заново спрашивать разрешения, а обновления с GitHub не установятся." = "Built without a certificate: macOS will ask for permissions again, and updates from GitHub won’t install.";
 /* SettingsWindow.swift:537 */
 "Запускать при входе в систему" = "Open at login";
 /* SettingsWindow.swift:538 */
@@ -766,18 +745,6 @@
 "Показать в Finder" = "Show in Finder";
 /* SettingsWindow.swift:1295 */
 "Проверить сейчас" = "Check Now";
-/* SettingsWindow.swift:1303 */
-"Обновлять автоматически" = "Update automatically";
-/* SettingsWindow.swift:1307 */
-"Подпись" = "Signature";
-/* SettingsWindow.swift:1309 */
-"Проверка Apple" = "Apple check";
-/* SettingsWindow.swift:1310 */
-"Нотаризовано" = "Notarized";
-/* SettingsWindow.swift:1310 */
-"Нет" = "No";
-/* SettingsWindow.swift:1314 */
-"Эта копия" = "This copy";
 /* SettingsWindow.swift:1318 */
 "Все версии и что нового" = "All versions and what’s new";
 /* SettingsWindow.swift:1319 */
@@ -886,8 +853,6 @@
 /* Theme.swift:106 */
 "токенов" = "tokens";
 /* Updater.swift:37 */
-"Обновление скачано и установится, когда Nook закрыт." = "The update is downloaded and installs when Nook is closed.";
-/* Updater.swift:37 */
 "Проверка уже идёт." = "A check is already running.";
 /* Updater.swift:39 */
 "Перенесите Nook в папку «Программы», тогда он сможет обновляться." = "Move Nook to the Applications folder so it can update itself.";
@@ -899,8 +864,6 @@
 "Не удалось скачать обновление. Попробую позже." = "Couldn’t download the update. I’ll try later.";
 /* Updater.swift:87 */
 "Обновление не прошло проверку подписи и не установлено." = "The update failed the signature check and was not installed.";
-/* Updater.swift:93 */
-"Скачана версия 1.%lld, установится, когда Nook закрыт." = "Version 1.%lld is downloaded and installs when Nook is closed.";
 /* Updater.swift:129 */
 "Обновление изменилось после скачивания и не установлено." = "The update changed after it was downloaded and was not installed.";
 /* Updater.swift:138 */
@@ -1312,7 +1275,6 @@
 "Через " = "In ";
 "Картинка" = "Picture";
 "Файл" = "File";
-"Закреплено" = "Pinned";
 "Ещё %lld ждут: покажу следом" = "%lld more waiting: they come next";
 "агент" = "agent";
 "агента" = "agents";
@@ -1460,7 +1422,6 @@
 "новый" = "new";
 "Ещё %lld ждут ответа" = "%lld more waiting for an answer";
 "Команда не видна целиком: откроется полностью" = "The command is not shown in full: it opens whole";
-"ответ: " = "reply: ";
 "Программы, файлы, команды…" = "Apps, files, commands…";
 "отвечает…" = "answering…";
 "спросить AI" = "ask AI";
@@ -1469,16 +1430,11 @@
 "Спросить AI" = "Ask AI";
 "Среди программ, файлов и меню ничего — даже в другой раскладке." = "Nothing among apps, files and menus — not even in the other keyboard layout.";
 "Программа · " = "App · ";
-"Открывали" = "Opened";
-"Сокращение" = "Alias";
 "Спросить" = "Ask";
 "Выполнить" = "Run";
 "Перейти" = "Go to";
 "Считать дальше" = "Keep calculating";
 "Искать в Google" = "Search Google";
-"раз" = "times";
-"раза" = "times";
-"1 раз" = "once";
 "встроенная в macOS" = "built into macOS";
 /* Drops.swift, Devices.swift: headphones that moved to another device */
 "Вернуть на Mac" = "Back to Mac";
@@ -1488,3 +1444,105 @@
 "Не удалось вернуть «%@»" = "Couldn’t bring back “%@”";
 "Выберите их в Пункте управления → Bluetooth" = "Choose them in Control Center → Bluetooth";
 "удалён" = "deleted";
+/* ClipboardList.swift:52 */
+"Назад к поиску (Esc)" = "Back to Search (Esc)";
+/* ClipboardList.swift:100 */
+"в %@" = "into %@";
+/* ClipboardList.swift:102 */
+"копировать" = "copy";
+/* ClipboardList.swift:148 */
+"Только скопировать" = "Copy Only";
+/* ClipboardList.swift:193 */
+"Цвет" = "Colour";
+/* ClipboardList.swift:194 */
+"Код" = "Code";
+/* ClipboardList.swift:270 */
+"Картинка · %@" = "Picture · %@";
+/* ClipboardList.swift:309 */
+"Источник" = "Source";
+/* ClipboardList.swift:310 */
+"Тип" = "Type";
+/* ClipboardList.swift:313 */
+"Размер" = "Size";
+/* ClipboardList.swift:343 */
+"символ" = "character";
+/* ClipboardList.swift:343 */
+"символа" = "characters";
+/* ClipboardList.swift:343 */
+"символов" = "characters";
+/* ClipboardList.swift:344 */
+"строка" = "line";
+/* ClipboardList.swift:344 */
+"строки" = "lines";
+/* ClipboardList.swift:344 */
+"строк" = "lines";
+/* ClipboardList.swift:389 */
+"и ещё %lld" = "and %lld more";
+/* Launcher.swift:1071 */
+"Буфер обмена поверх поиска (⌘1, назад — Esc)" = "Clipboard over the search (⌘1, back with Esc)";
+/* Theme.swift:245 */
+"вчера в %@" = "yesterday at %@";
+/* App.swift:186 */
+"Установить Nook 1.%lld" = "Install Nook 1.%lld";
+/* Drops.swift:251 */
+"Обновление" = "Update";
+/* Drops.swift:397 */
+"Вышла Nook 1.%lld" = "Nook 1.%lld is out";
+/* Drops.swift:421 */
+"Скачана и проверена · Nook перезапустится за секунду" = "Downloaded and checked · Nook restarts in a second";
+/* Drops.swift:466 */
+"Позже" = "Later";
+/* Drops.swift:467 */
+"Nook напомнит при следующей проверке; установить можно и в Настройках → Обновления" = "Nook reminds you at the next check; you can also install it in Settings → Updates";
+/* Drops.swift:468 */
+"Установить" = "Install";
+/* SettingsWindow.swift:1299 */
+"Установить 1.%lld" = "Install 1.%lld";
+/* SettingsWindow.swift:1314 */
+"Проверять автоматически" = "Check Automatically";
+/* ShelfTiles.swift:62 */
+"Отпустите — файл ляжет на полку первым" = "Drop it — the file goes first on the shelf";
+/* ShelfTiles.swift:63 */
+"Он остаётся на своём месте; на полке — ссылка на него" = "It stays where it is; the shelf keeps a link to it";
+/* Updater.swift:42 */
+"Версия 1.%lld скачана: нажмите «Установить»." = "Version 1.%lld is downloaded: click “Install”.";
+/* Nemotron.swift:341 */
+"Описание модели повреждено." = "The model description is damaged.";
+/* Parakeet.swift:23 */
+"Живая" = "Live";
+/* SettingsWindow.swift:1116 */
+"Язык речи" = "Spoken Language";
+/* SettingsWindow.swift:1117 */
+"Определять самой" = "Detect Automatically";
+/* Notch.swift:375 */
+"Обновление не установлено" = "Update not installed";
+/* Parakeet.swift:29 */
+"Меньше места и памяти. Текст появится, когда отпустите клавишу" = "Less disk and memory. The text appears when you release the key";
+/* Parakeet.swift:30 */
+"Лучше всех понимает русский и украинский. Текст появится, когда отпустите клавишу" = "Understands Russian and Ukrainian best. The text appears when you release the key";
+/* Parakeet.swift:31 */
+"Текст виден прямо во время речи, но ошибок больше, чем у Точной" = "You see the text while you speak, but it makes more mistakes than Accurate";
+/* Agents feed: before the prompt of the finished turn */
+"Вы: " = "You: ";
+/* Agents feed: tooltip of the question an agent ends its answer with */
+"Агент спрашивает: ответьте здесь или в его терминале" = "The agent is asking: answer here or in its terminal";
+/* Agents feed: fold a long answer */
+"Свернуть" = "Collapse";
+/* Agents feed: unfold a long answer */
+"Весь ответ" = "Full answer";
+/* Agents feed: context menu of an answer */
+"Скопировать ответ" = "Copy answer";
+/* Agents feed: tooltip of an answer's header */
+"Нажмите — откроется терминал агента" = "Click to open the agent's terminal";
+/* Agents feed: tooltip of the copy button */
+"Скопировать ответ целиком" = "Copy the whole answer";
+/* Agents feed: a turn finished, with how long it ran ("12 мин") */
+"готово за %@" = "done in %@";
+/* Settings → General → Screen: when Nook sleeps */
+"Засыпать" = "Sleep";
+/* Settings → General → Screen: under «Засыпать» */
+"Вырез прячется и не открывается наведением, уведомления ждут конца игры. Сочетания клавиш работают." = "The notch hides and does not open on hover; notifications wait until the game ends. Keyboard shortcuts keep working.";
+/* Settings → General → Screen → Засыпать: option */
+"В играх" = "In games";
+/* Settings → General → Screen → Засыпать: option */
+"В любой программе на весь экран" = "In any full-screen app";

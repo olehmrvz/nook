@@ -24,6 +24,10 @@ final class AgentHub: ObservableObject {
         var action: String?
         /// Its last answer, kept after the turn ends.
         var lastMessage: String?
+        /// The same answer whole, as the agent wrote it (markdown), for the Agents feed.
+        var reply: String?
+        /// How long the last finished turn ran.
+        var took: TimeInterval?
         /// Text of the last Notification hook ("Claude is waiting for your input").
         var note: String?
         var toolCount = 0
@@ -332,6 +336,8 @@ final class AgentHub: ObservableObject {
                 sessions[i].prompt = Self.firstLine(raw["prompt"] as? String, limit: 160)
                 sessions[i].action = nil
                 sessions[i].lastMessage = nil
+                sessions[i].reply = nil
+                sessions[i].took = nil
                 sessions[i].note = nil
                 sessions[i].toolCount = 0
                 sessions[i].edited = []
@@ -418,11 +424,14 @@ final class AgentHub: ObservableObject {
             if let i = index {
                 sessions[i].status = .done
                 sessions[i].tool = nil
-                let message = Self.plain(raw["last_assistant_message"] as? String ?? "")
+                let markdown = (raw["last_assistant_message"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let message = Self.plain(markdown)
                 let duration = sessions[i].turnStarted.map { Date().timeIntervalSince($0) }
                 sessions[i].turnStarted = nil
+                sessions[i].took = duration
                 sessions[i].action = nil
                 sessions[i].lastMessage = message.isEmpty ? nil : String(message.prefix(220))
+                sessions[i].reply = markdown.isEmpty ? nil : String(markdown.prefix(12_000))
                 // Short turns (a quick answer you are watching anyway) do not need an island.
                 if (duration ?? 60) >= Settings.agentDoneMinSeconds {
                     let turn = AgentTurn(provider: provider.rawValue, session: key, project: sessions[i].project,
@@ -1240,6 +1249,8 @@ extension AgentHub.Session {
         prompt = try c.decodeIfPresent(String.self, forKey: .prompt)
         action = try c.decodeIfPresent(String.self, forKey: .action)
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
+        reply = try c.decodeIfPresent(String.self, forKey: .reply)
+        took = try c.decodeIfPresent(TimeInterval.self, forKey: .took)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         toolCount = try c.decodeIfPresent(Int.self, forKey: .toolCount) ?? 0
         edited = try c.decodeIfPresent([String].self, forKey: .edited) ?? []

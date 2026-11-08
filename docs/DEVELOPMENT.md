@@ -36,6 +36,13 @@ One-time setup on the release Mac (needs the paid Apple Developer Program; the a
 notarizes `Nook.dmg`, checks both with `spctl`, and publishes. Notarization takes a few minutes; on a
 rejection the script prints Apple's log and publishes nothing.
 
+The DMG window (a lime tile like the icon, an arrow from Nook to Applications) comes from `dmg/background.tiff`
+and `dmg/DS_Store`, which `release.sh` copies into the image (volume "Nook", HFS+: the layout finds the picture by
+volume name and path). `dmg/make-assets.sh` redraws the picture and has Finder record the layout on a scratch image
+(the first run asks for permission to control Finder); commit both files afterwards. Without them `release.sh` warns
+and the image opens as a plain Finder window. Finder keeps black icon names on a window with a picture,
+in Dark Mode too, so the picture stays light.
+
 Copies released before Developer ID (v10 and earlier, signed with "Nook Local Signing") accept only that
 certificate. Move them once with a bridge release: `./release.sh --local-signing` (old signing, not notarized)
 ships the updater that also accepts Developer ID builds; the next `./release.sh` is notarized. A copy that
@@ -112,16 +119,41 @@ Timer values are checked: more than 0 and at most 24 h.
   AppleScript covers Spotify and Music.
 - **Agents:** Claude Code and Codex hooks call `agent-hook.sh`, which sends the event over an owner-only unix
   socket with a random token. Permission requests wait for the answer in the notch (110 s, then the terminal).
+  `Stop` keeps the whole answer (`Session.reply`, markdown, ≤ 12 000 characters, in `sessions.json`) and the turn's
+  length (`took`). The Agents feed draws it first, in `ReplyCard` (`Sources/AgentReply.swift`): a line-based markdown
+  reader (headings, lists, code, tables, quotes; inline marks by `AttributedString`), folded to 4 lines (3 when
+  several turns are done) and unfolded by a click; a last paragraph ending in «?» is pulled out under the answer with
+  the yellow edge. Test it with a fake session: `UserPromptSubmit` then `Stop` with `last_assistant_message`.
+- **Sleep in games** (`Sources/GameWatch.swift`): when the app in front fills the notch's display, Nook hides the
+  notch (`NotchModel.hidden`, opacity 0, loops paused), stops hover polling and holds drops back until it leaves;
+  hotkeys and `--show` still open the panel, the volume and brightness keys still flash. Settings → General →
+  Засыпать: «В играх» (default; `LSApplicationCategoryType` `public.app-category.*games` as Game Mode needs, or a
+  known cloud app such as GeForce NOW `com.nvidia.gfnpc.mall`; a window from under the menu bar down counts), «В
+  любой программе на весь экран» (a window over the whole display, or `AXFullScreen` on the focused window: a native
+  full-screen window on a notch display starts below the menu bar, whose window stays listed as the black band beside
+  the notch), «Никогда». Checked on app switches, Space and display changes, again
+  1.5 s later; every 3 s only while a game is in front. Window lists and Info.plist are read on its own queue.
 - **Updates:** `Sources/Updater.swift` reads the latest GitHub release, downloads `Nook.zip`, accepts it only if
-  it is signed by Nook (`signedByNook`: the running app's designated requirement or Nook's Developer ID), and
-  installs it when the panel is closed.
+  it is signed by Nook (`signedByNook`: the running app's designated requirement or Nook's Developer ID), and then
+  offers it: a drop «Вышла Nook 1.N» (Позже / Установить), again on every later check, plus Settings → Updates
+  and the status menu. It installs only when asked (a restart drops coffee mode, timers and dictation).
 - **Volume:** `Sources/Volume.swift` watches the default output device (CoreAudio). With Accessibility access it
   also takes the volume keys (event tap on NX_SYSDEFINED), sets the level itself in 1/16 steps (⌥⇧: 1/64), so the
   macOS HUD does not appear. Without access the keys stay with macOS and Nook only shows the change.
 - **Brightness:** built-in display via DisplayServices (private). Shown only after a brightness key, never for
   automatic brightness. **Focus / Do Not Disturb:** `Sources/Focus.swift` watches `~/Library/DoNotDisturb/DB`
   (needs Full Disk Access) with file-system events, no polling; `focus-debug.log` records structure only.
-- **Pointer:** event-driven polling; the panel takes the keyboard only for text fields.
+- **Pointer:** event-driven polling; the panel takes the keyboard only for text fields. While any menu is open
+  (another app's: HIToolbox's distributed begin/end menu tracking notifications; Nook's own: `NSMenu` ones),
+  hovering does not open the panel and an open panel does not close: the status menu drops right beside the notch.
+- **Keys:** an accessory app has no menu bar, so `installEditMenu()` adds an invisible Edit menu for ⌘A/⌘C/⌘V/⌘X/⌘Z in
+  fields (no Close or Quit: they would close the notch). The panel takes ⌘1 (Search ⇄ Clipboard) and ⌘C (copy the
+  chosen clipboard entry when no text is selected) in `NotchModel.performKeyEquivalent`; Settings takes ⌘W and ⌘Q.
+  All match the key code: with a Cyrillic layout the characters are «ц», «й», «с».
+- **Clipboard:** `Sources/ClipboardList.swift`. Type to filter, ↑↓ choose, ↩ pastes into the app the panel was
+  opened from (copies without Accessibility), ⌘C copies, double click pastes; the chosen entry shows in full with
+  its source, type, size and time. From the search, ⌘1 opens it over the search and Esc or ⌘1 goes back. Opened by
+  hover the panel has no keyboard; a click on an entry gives it the keyboard (`takeKeyboard`), so the arrows work.
 - **Search (launcher):** `Sources/Launcher.swift`. ⌥Space or the recorded shortcut (`ShortcutRecorder.swift`,
   Carbon hot key id 2) opens the `.launcher` tab on the display with the pointer; the panel moves back when it closes.
   Index off the main thread, again when older than a minute: apps in /Applications (hidden links too: Safari lives
@@ -178,19 +210,35 @@ Timer values are checked: more than 0 and at most 24 h.
   without the app, compile `Sources/Parakeet.swift` with a small `main.swift` (it needs `supportDir`) and feed it
   `say -o x.aiff` speech. Ultra: 7 s of speech in ~0.1 s on M-series, first load ~10 s (Core ML compiles for the
   Neural Engine), then ~0.2 s. Redux needs macOS 15 and loads slower (~12 s).
+- **Streaming dictation engine (not in the UI yet):** `Sources/Nemotron.swift`, NVIDIA Nemotron 3.5 ASR Streaming 0.6B
+  in FluidInference's Core ML build (`multilingual/1120ms`, 615 MB, pinned like Parakeet; installed to
+  `Models/nemotron-3.5-1120ms` by `ModelDownload(manifest: NemotronModel.manifest)`). `NemotronStream`: `begin(language:)`
+  ("auto", "ru", "uk", "en", …), `feed` from any thread, `onPartial` every 1.12 s of audio (the text only grows),
+  `finish` decodes the tail plus one chunk of silence (without it the closing full stop is often missing).
+  Mel features in Swift as one stream (Accelerate), encoder caches carried between chunks, greedy RNN-T. M4 Pro:
+  first load in a new executable ~10 s, then ~0.15 s; 15 ms per chunk when busy, ~50 ms in real time (the Neural
+  Engine wakes up per chunk); ~65 MB footprint. Try it with a scratch CLI that compiles `Parakeet.swift`,
+  `Nemotron.swift` and stubs for `supportDir` and `L`, as for Parakeet. Core ML outputs are autoreleased: decoding many
+  chunks in one work item needs a pool per chunk (it once reached 391 MB on 3 minutes of audio).
 
 ## Localization
 
-- Russian is the source text and the key. English lives in `Sources/Localization/en.lproj/Localizable.strings`;
-  `ru.lproj` stays empty so macOS counts Russian as one of Nook's languages. `install.sh` copies both into the app.
-  Permission prompts: Russian in `Info.plist`, English in `en.lproj/InfoPlist.strings`; a new usage string needs both.
+- Russian is the source text and the key. English, German and Ukrainian live in
+  `Sources/Localization/{en,de,uk}.lproj/Localizable.strings`; `ru.lproj` stays empty so macOS counts Russian as one
+  of Nook's languages. `install.sh` copies every `.lproj` into the app; `Info.plist` lists them in
+  `CFBundleLocalizations`. Permission prompts: Russian in `Info.plist`, the others in `<lang>.lproj/InfoPlist.strings`;
+  a new usage string needs all four.
 - Literal titles (`Text("…")`, `Button("…")`, `Toggle`, `Picker`, `Section`, `LabeledContent`, `.help`) are looked
   up by SwiftUI. Text built in code goes through `L("…")` (`Sources/Localization.swift`). Text glued with `+`
   inside `Text(…)` is a plain String and is not looked up: wrap the Russian part in `L(…)`.
 - Interpolations become `%@` (String), `%lld` (Int), `%d` (Int32), `%lf` (Double) in the key; with any
-  interpolation a literal `%` becomes `%%`. Plurals: `Format.count(n, one, few, many)`; English uses `one` and `many`.
+  interpolation a literal `%` becomes `%%`. Plurals: `Format.count(n, one, few, many)`; English and German use `one`
+  and `many`, Ukrainian all three like Russian (each word is its own entry).
 - Words the calculator reads in the input, search keywords, AI prompts and logs are not translated.
-- After adding text: `python3 Sources/Localization/check.py` lists Russian text without English (exit status 1).
+- After adding text: `python3 Sources/Localization/check.py` lists Russian text without English, and German or
+  Ukrainian entries that are missing, extra or with other placeholders (exit status 1). New text needs all three.
+- A view with both a `LocalizedStringKey` and a `StringProtocol` init must mark the second `@_disfavoredOverload`
+  (as SwiftUI's `Text` does), or string literals pick it and stay Russian (it happened to `SettingsRow`).
 - Settings → General → Language writes `AppleLanguages` and a matching `AppleLocale` (`en_UA`: English words, the
   region's formats) into Nook's defaults; a new language needs a restart. Try English without the menu:
   `defaults write dev.nook.app AppleLanguages -array en`, restart; `-bool YES` for `NSShowNonLocalizedStrings`

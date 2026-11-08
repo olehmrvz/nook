@@ -26,6 +26,11 @@ enum Settings {
         get { d.object(forKey: "notificationText") as? Bool ?? false }
         set { d.set(newValue, forKey: "notificationText") }
     }
+    /// When Nook sleeps for an app that fills its display (GameWatch.swift).
+    static var gameSleep: GameSleep {
+        get { d.string(forKey: "gameSleep").flatMap(GameSleep.init) ?? .games }
+        set { d.set(newValue.rawValue, forKey: "gameSleep") }
+    }
     /// Keep the notch out of screenshots, recordings and screen sharing.
     static var hideFromCapture: Bool {
         get { d.object(forKey: "hideFromCapture") as? Bool ?? false }

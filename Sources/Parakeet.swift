@@ -5,11 +5,14 @@ import Foundation
 /// Speech recognition on this Mac: Parakeet TDT 0.6B v3 (NVIDIA) in the Core ML builds of FluidInference,
 /// CC-BY-4.0. 25 languages, found by the model itself. The greedy TDT decoding follows FluidAudio (Apache-2.0),
 /// rewritten for Nook (see NOTICE).
+/// The dictation models; `nemotron` is the streaming one (`Sources/Nemotron.swift`), the others are Parakeet.
 enum ParakeetModel: String, CaseIterable, Identifiable {
     /// moondream's ternary re-training: a 2-bit encoder, small and fast (macOS 15: iOS 18 Core ML ops).
     case redux
     /// moondream's full post-training: an int8 encoder, the best accuracy.
     case ultra
+    /// NVIDIA Nemotron 3.5 ASR Streaming: the text appears while you speak; less accurate than Ultra.
+    case nemotron
 
     var id: String { rawValue }
 
@@ -17,13 +20,24 @@ enum ParakeetModel: String, CaseIterable, Identifiable {
         switch self {
         case .redux: L("Быстрая")
         case .ultra: L("Точная")
+        case .nemotron: L("Живая")
         }
     }
 
     var detail: String {
         switch self {
-        case .redux: L("Parakeet Redux: меньше места и памяти")
-        case .ultra: L("Parakeet Ultra: точнее, особенно для русского и украинского")
+        case .redux: L("Меньше места и памяти. Текст появится, когда отпустите клавишу")
+        case .ultra: L("Лучше всех понимает русский и украинский. Текст появится, когда отпустите клавишу")
+        case .nemotron: L("Текст виден прямо во время речи, но ошибок больше, чем у Точной")
+        }
+    }
+
+    /// The model itself, named in the picker beside the plain title.
+    var engine: String {
+        switch self {
+        case .redux: "Parakeet Redux"
+        case .ultra: "Parakeet Ultra"
+        case .nemotron: "Nemotron 3.5"
         }
     }
 
@@ -32,13 +46,14 @@ enum ParakeetModel: String, CaseIterable, Identifiable {
         return true
     }
 
-    fileprivate var repo: String { "FluidInference/parakeet-\(rawValue)-coreml" }
+    fileprivate var repo: String { self == .nemotron ? NemotronModel.repo : "FluidInference/parakeet-\(rawValue)-coreml" }
 
     /// Pinned: a changed repository never reaches Nook without a new manifest here.
     fileprivate var revision: String {
         switch self {
         case .redux: "8c5ef97a29cd120dc76b354b3f22b7fec3b486f9"
         case .ultra: "95eaa59a39d4394f047a4dc5cce480388a60d1b6"
+        case .nemotron: NemotronModel.revision
         }
     }
 
@@ -47,24 +62,59 @@ enum ParakeetModel: String, CaseIterable, Identifiable {
         switch self {
         case .redux: ParakeetFile.redux
         case .ultra: ParakeetFile.ultra
+        case .nemotron: NemotronModel.files
         }
     }
 
-    var downloadSize: Int64 { files.reduce(0) { $0 + $1.size } }
+    var downloadSize: Int64 { manifest.downloadSize }
 
     static let folder = supportDir.appendingPathComponent("Models", isDirectory: true)
-    var directory: URL { Self.folder.appendingPathComponent("parakeet-\(rawValue)", isDirectory: true) }
-    fileprivate var staging: URL { Self.folder.appendingPathComponent("parakeet-\(rawValue).partial", isDirectory: true) }
+    var directory: URL {
+        self == .nemotron ? NemotronModel.directory : Self.folder.appendingPathComponent("parakeet-\(rawValue)", isDirectory: true)
+    }
+
+    var manifest: ModelManifest {
+        if self == .nemotron { return NemotronModel.manifest }
+        return ModelManifest(repo: repo, revision: revision, folder: "", files: files, directory: directory,
+                      staging: Self.folder.appendingPathComponent("parakeet-\(rawValue).partial", isDirectory: true))
+    }
 
     /// Installed means: the download finished and every file passed its check (the folder is renamed only then).
-    var isInstalled: Bool { FileManager.default.fileExists(atPath: directory.appendingPathComponent(ParakeetFile.vocab).path) }
+    var isInstalled: Bool {
+        self == .nemotron ? NemotronModel.isInstalled
+            : FileManager.default.fileExists(atPath: directory.appendingPathComponent(ParakeetFile.vocab).path)
+    }
 }
 
-fileprivate struct ParakeetFile {
+/// One file of a pinned model: its path in the repository folder, size and SHA-256 at the pinned revision.
+struct ModelFile {
     let path: String
     let size: Int64
     let sha256: String
+}
 
+/// Where a pinned model comes from and where it is installed. Every file is checked against its size and SHA-256;
+/// the staging folder is renamed to `directory` only when all of them passed.
+struct ModelManifest {
+    let repo: String
+    let revision: String
+    /// Folder inside the repository, "" for its root.
+    let folder: String
+    let files: [ModelFile]
+    let directory: URL
+    let staging: URL
+
+    var downloadSize: Int64 { files.reduce(0) { $0 + $1.size } }
+
+    func url(_ file: ModelFile) -> URL {
+        let path = folder.isEmpty ? file.path : "\(folder)/\(file.path)"
+        return URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(path)")!
+    }
+}
+
+fileprivate typealias ParakeetFile = ModelFile
+
+fileprivate extension ModelFile {
     static let vocab = "parakeet_v3_vocab.json"
     static let redux: [ParakeetFile] = [
         ParakeetFile(path: "Decoder.mlmodelc/analytics/coremldata.bin", size: 243,
@@ -157,24 +207,31 @@ enum ParakeetError: LocalizedError {
 
 // MARK: Download
 
+/// The Parakeet name of the shared download, used by `Dictation`.
+typealias ParakeetDownload = ModelDownload
+
 /// Downloads one model file by file into a staging folder, checks size and SHA-256 of each, then renames the
 /// folder. Files already checked in an interrupted download are kept.
-final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
-    let model: ParakeetModel
+final class ModelDownload: NSObject, URLSessionDownloadDelegate {
+    let manifest: ModelManifest
     /// On the main thread: bytes done of the whole model.
     var onProgress: ((Int64, Int64) -> Void)?
     /// On the main thread: nil when the model is installed.
     var onFinish: ((Error?) -> Void)?
 
     private var session: URLSession!
-    private var queue: [ParakeetFile] = []
-    private var current: ParakeetFile?
+    private var queue: [ModelFile] = []
+    private var current: ModelFile?
     private var done: Int64 = 0
     private var cancelled = false
-    private let work = DispatchQueue(label: "nook.parakeet.download")
+    private let work = DispatchQueue(label: "nook.model.download")
 
-    init(model: ParakeetModel) {
-        self.model = model
+    convenience init(model: ParakeetModel) {
+        self.init(manifest: model.manifest)
+    }
+
+    init(manifest: ModelManifest) {
+        self.manifest = manifest
         super.init()
         let operations = OperationQueue()
         operations.maxConcurrentOperationCount = 1
@@ -185,9 +242,9 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
     func start() {
         work.async { [self] in
             let fm = FileManager.default
-            try? fm.createDirectory(at: model.staging, withIntermediateDirectories: true)
-            queue = model.files.filter { file in
-                let url = model.staging.appendingPathComponent(file.path)
+            try? fm.createDirectory(at: manifest.staging, withIntermediateDirectories: true)
+            queue = manifest.files.filter { file in
+                let url = manifest.staging.appendingPathComponent(file.path)
                 guard Self.size(url) == file.size, Self.sha256(url) == file.sha256 else { return true }
                 done += file.size
                 return false
@@ -209,15 +266,14 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
         guard !queue.isEmpty else { return finish() }
         let file = queue.removeFirst()
         current = file
-        let url = URL(string: "https://huggingface.co/\(model.repo)/resolve/\(model.revision)/\(file.path)")!
-        session.downloadTask(with: url).resume()
+        session.downloadTask(with: manifest.url(file)).resume()
     }
 
     private func finish() {
         let fm = FileManager.default
-        try? fm.removeItem(at: model.directory)
+        try? fm.removeItem(at: manifest.directory)
         do {
-            try fm.moveItem(at: model.staging, to: model.directory)
+            try fm.moveItem(at: manifest.staging, to: manifest.directory)
             report(nil)
         } catch {
             report(error)
@@ -231,7 +287,7 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        let total = model.downloadSize
+        let total = manifest.downloadSize
         let now = done + totalBytesWritten
         DispatchQueue.main.async { self.onProgress?(now, total) }
     }
@@ -243,7 +299,7 @@ final class ParakeetDownload: NSObject, URLSessionDownloadDelegate {
             cancelled = true
             return report(ParakeetError.download(L("Файл модели не прошёл проверку: \(file.path). Попробуйте ещё раз.")))
         }
-        let target = model.staging.appendingPathComponent(file.path)
+        let target = manifest.staging.appendingPathComponent(file.path)
         let fm = FileManager.default
         try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? fm.removeItem(at: target)

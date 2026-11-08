@@ -242,7 +242,9 @@ enum Format {
         let time = date.formatted(date: .omitted, time: .shortened)
         if cal.isDateInToday(date) { return L("сегодня в \(time)") }
         if cal.isDateInTomorrow(date) { return L("завтра в \(time)") }
-        if date.timeIntervalSinceNow < 6 * 86400 { return L("\(date.formatted(.dateTime.weekday(.abbreviated))) в \(time)") }
+        if cal.isDateInYesterday(date) { return L("вчера в \(time)") }
+        // Within the week around today, either way: a weekday says enough.
+        if abs(date.timeIntervalSinceNow) < 6 * 86400 { return L("\(date.formatted(.dateTime.weekday(.abbreviated))) в \(time)") }
         return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
@@ -262,10 +264,12 @@ enum Format {
     /// Russian plural: count(3, "файл", "файла", "файлов") → "3 файла". In English the words are looked up:
     /// `one` for 1, `many` for the rest ("1 file", "3 files").
     static func count(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
-        guard Language.shown == .ru else { return "\(n) \(Language.text(n == 1 ? one : many))" }
+        // Russian and Ukrainian have three forms (1, 2–4, 5+; 11–14 take the last); English and German two.
+        let slavic = Language.shown == .ru || Language.shown == .uk
+        guard slavic else { return "\(n) \(Language.text(n == 1 ? one : many))" }
         let tens = n % 100, ones = n % 10
         let word = (11...14).contains(tens) ? many : (ones == 1 ? one : ((2...4).contains(ones) ? few : many))
-        return "\(n) \(word)"
+        return "\(n) \(Language.text(word))"
     }
 }
 

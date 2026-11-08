@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var settings: SettingsWindowController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installEditMenu()
         panel = NotchPanel(model: model)
         model.panel = panel
         panel.orderFrontRegardless()
@@ -141,8 +142,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.isVisible = Settings.showMenuIcon
     }
 
+    /// An accessory app shows no menu bar, but AppKit still sends ⌘A, ⌘C, ⌘V, ⌘X and ⌘Z to text fields through the
+    /// main menu (and matches them on any keyboard layout). No Close or Quit here: ⌘W or ⌘Q while the search has
+    /// the keyboard must not close the notch. The titles are never shown.
+    private func installEditMenu() {
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let main = NSMenu(title: "Main")
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        editItem.submenu = edit
+        main.addItem(NSMenuItem(title: "Nook", action: nil, keyEquivalent: ""))
+        main.addItem(editItem)
+        NSApp.mainMenu = main
+    }
+
     /// Built fresh on every opening, so the coffee state is current.
     func menuNeedsUpdate(_ menu: NSMenu) { fill(menu) }
+
+    func menuWillOpen(_ menu: NSMenu) { model.statusMenuWillOpen() }
 
     /// Quick actions only; everything else lives in the Settings window.
     private func fill(_ menu: NSMenu) {
@@ -161,7 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
              #selector(toggleCaffeine), symbol: "cup.and.saucer").state = model.caffeine.on ? .on : .off
         menu.addItem(.separator())
         item(L("Настройки…"), #selector(openSettings), symbol: "gearshape", key: ",")
-        item(L("Проверить обновления…"), #selector(checkUpdates), symbol: "arrow.down.circle")
+        if let version = model.updater.readyVersion {
+            item(L("Установить Nook 1.\(version)"), #selector(installUpdate), symbol: "arrow.down.circle.fill")
+        } else {
+            item(L("Проверить обновления…"), #selector(checkUpdates), symbol: "arrow.down.circle")
+        }
         item(L("Сказать спасибо…"), #selector(openThanks), symbol: "heart")
         menu.addItem(.separator())
         item(L("Выйти из Nook"), #selector(NSApplication.terminate(_:)), symbol: "power", key: "q").target = NSApp
@@ -172,6 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleCaffeine() { model.caffeine.toggle() }
     @objc private func openSettings() { settings.show() }
     @objc private func openThanks() { settings.show(.thanks) }
+
+    @objc private func installUpdate() { model.updater.install() }
 
     @objc private func checkUpdates() {
         settings.show(.updates)

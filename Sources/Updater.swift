@@ -2,21 +2,25 @@ import AppKit
 import Security
 
 /// Updates from the GitHub releases of the Nook repository (published by `release.sh`).
-/// Checks a minute after launch and every 6 hours, downloads a newer build, checks that it is signed by Nook
-/// (`signedByNook`), and installs it when the notch is idle; then Nook restarts itself.
+/// Checks a minute after launch and every 6 hours, downloads a newer build and checks that it is signed by Nook
+/// (`signedByNook`). Then it offers it (a drop, Settings → Updates, the menu); it installs only when asked,
+/// and Nook restarts itself.
 final class Updater {
     static let repo = "olehmrvz/nook"
 
     /// Short text for the menu: what the updater last did.
     private(set) var status = ""
-    /// Called on the main thread: true when nothing is open or waiting for an answer.
-    var isIdle: () -> Bool = { true }
+    /// Called on the main thread when a checked build is ready to install (again on every later check).
+    var onReady: ((Int) -> Void)?
+    /// The version waiting to be installed.
+    var readyVersion: Int? { staged?.version }
+    /// Called on the main thread when «Установить» did not work, with the reason: the drop that asked is gone.
+    var onInstallFailed: ((String) -> Void)?
 
     private let queue = DispatchQueue(label: "nook.updates")
     private var timer: Timer?
-    private var installTimer: Timer?
     private var busy = false
-    /// A downloaded and verified Nook.app waiting for an idle moment.
+    /// A downloaded and verified Nook.app waiting until the person clicks Install.
     private var staged: (app: URL, version: Int)?
 
     /// Nook.zip is about 1–2 MB; anything far larger is not a real build.
@@ -34,7 +38,7 @@ final class Updater {
     /// `manual`: from the menu; runs even with automatic updates off, and reports "up to date".
     func check(manual: Bool = false, done: ((String) -> Void)? = nil) {
         guard manual || Settings.autoUpdate else { return }
-        guard !busy, staged == nil else { done?(staged != nil ? L("Обновление скачано и установится, когда Nook закрыт.") : L("Проверка уже идёт.")); return }
+        guard !busy else { done?(L("Проверка уже идёт.")); return }
         if Bundle.main.bundlePath.contains("/AppTranslocation/") {
             finish(L("Перенесите Nook в папку «Программы», тогда он сможет обновляться."), done)
             return
@@ -60,7 +64,18 @@ final class Updater {
                 self.finish(L("Установлена последняя версия."), done)
                 return
             }
-            self.download(url, version: version, done: done)
+            DispatchQueue.main.async {
+                // Already downloaded and still the newest: offer it again instead of downloading it twice. A newer
+                // release replaces the one that waited.
+                if let staged = self.staged, staged.version >= version {
+                    self.busy = false
+                    if !manual { self.onReady?(staged.version) }
+                    self.status = L("Версия 1.\(staged.version) скачана: нажмите «Установить».")
+                    done?(self.status)
+                    return
+                }
+                self.download(url, version: version, done: done)
+            }
         }.resume()
     }
 
@@ -89,10 +104,11 @@ final class Updater {
                 }
                 DispatchQueue.main.async {
                     self.busy = false
+                    if let old = self.staged { self.queue.async { try? FileManager.default.removeItem(at: old.app.deletingLastPathComponent()) } }
                     self.staged = (app, version)
-                    self.status = L("Скачана версия 1.\(version), установится, когда Nook закрыт.")
+                    self.status = L("Версия 1.\(version) скачана: нажмите «Установить».")
                     done?(self.status)
-                    self.installWhenIdle()
+                    self.onReady?(version)
                 }
             }
         }.resume()
@@ -106,18 +122,8 @@ final class Updater {
         }
     }
 
-    /// Waits for a moment when the panel is closed and no agent waits for an answer.
-    private func installWhenIdle() {
-        installTimer?.invalidate()
-        installTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
-            guard let self, self.isIdle() else { return }
-            self.installTimer?.invalidate()
-            self.install()
-        }
-        installTimer?.tolerance = 5
-    }
-
-    private func install() {
+    /// Replaces this copy with the downloaded one and restarts (the drop's «Установить», Settings, the menu).
+    func install() {
         guard let staged else { return }
         let target = Bundle.main.bundleURL
         let pid = ProcessInfo.processInfo.processIdentifier
@@ -127,6 +133,7 @@ final class Updater {
                 DispatchQueue.main.async {
                     self.staged = nil
                     self.status = L("Обновление изменилось после скачивания и не установлено.")
+                    self.onInstallFailed?(self.status)
                 }
                 return
             }
@@ -136,6 +143,7 @@ final class Updater {
                 DispatchQueue.main.async {
                     self.staged = nil
                     self.status = L("Не удалось установить обновление: \(error.localizedDescription)")
+                    self.onInstallFailed?(self.status)
                 }
                 return
             }

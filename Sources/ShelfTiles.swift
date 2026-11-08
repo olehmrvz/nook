@@ -25,6 +25,11 @@ struct ShelfTab: View {
             .animation(Motion.smooth, value: shelf.items.map(\.id))
         }
         .defaultScrollAnchor(.top)
+        // While a file is dragged, the whole shelf is the target: the drop tile at the end can be scrolled away.
+        .overlay {
+            if model.draggingFile || targeted { dropZone.transition(.opacity) }
+        }
+        .animation(Motion.quick, value: model.draggingFile || targeted)
         .entrance(0)
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             for provider in providers {
@@ -49,6 +54,19 @@ struct ShelfTab: View {
         .tile(.target(Tone.limit))
         .brightness(targeted ? 0.12 : 0)
         .animation(Motion.quick, value: targeted)
+    }
+
+    private var dropZone: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 28, weight: .semibold)).foregroundStyle(Tone.limit)
+            Text("Отпустите — файл ляжет на полку первым").font(.system(size: 15, weight: .semibold))
+            Text("Он остаётся на своём месте; на полке — ссылка на него").font(.system(size: 11.5)).foregroundStyle(muted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: Spacing.radius, style: .continuous).fill(Color.black.opacity(0.82)))
+        .tile(.target(Tone.limit))
+        .brightness(targeted ? 0.06 : 0)
+        .allowsHitTesting(false)
     }
 
     private var summaryTile: some View {

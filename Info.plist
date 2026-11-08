@@ -25,6 +25,8 @@
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
+		<string>de</string>
+		<string>uk</string>
 		<string>ru</string>
 	</array>
 	<key>LSMinimumSystemVersion</key>

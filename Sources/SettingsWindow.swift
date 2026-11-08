@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Carbon.HIToolbox
 import Combine
 import CoreImage
 import Security
@@ -159,10 +160,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 }
 
 private final class SettingsNSWindow: NSWindow {
-    /// Nook has no main menu (accessory app), so ⌘W is handled here.
+    /// Nook's main menu has no Close or Quit (they would close the notch), so ⌘W and ⌘Q close this window here.
+    /// Matched by key code: with a Cyrillic layout the characters are «ц» and «й».
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.charactersIgnoringModifiers == "w" {
+           [UInt16(kVK_ANSI_W), UInt16(kVK_ANSI_Q)].contains(event.keyCode) {
             performClose(nil)
             return true
         }
@@ -192,7 +194,6 @@ final class SettingsState: ObservableObject {
     @Published private(set) var loginItem = false
     @Published private(set) var shellConnected = false
     @Published private(set) var mutedApps: [NamedApp] = []
-    @Published private(set) var signature: Signature?
     @Published private(set) var checking = false
     @Published private(set) var launcherKeyTaken = false
     @Published private(set) var updateText = ""
@@ -237,13 +238,11 @@ final class SettingsState: ObservableObject {
             let login = LoginItem.isEnabled
             let apps = muted.map { NamedApp(id: $0, name: Self.appName($0)) }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            let signature = Signature.current
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.shellConnected != zshrc.contains(shellScript) { self.shellConnected = zshrc.contains(shellScript) }
                 if self.loginItem != login { self.loginItem = login }
                 if self.mutedApps != apps { self.mutedApps = apps }
-                if self.signature == nil { self.signature = signature }
             }
         }
     }
@@ -269,6 +268,12 @@ final class SettingsState: ObservableObject {
     func chooseScreen(_ id: String?) {
         objectWillChange.send()
         app?.chooseScreen(id)
+    }
+
+    func setGameSleep(_ mode: GameSleep) {
+        objectWillChange.send()
+        Settings.gameSleep = mode
+        model.gameWatch.check()
     }
 
     // Privacy
@@ -387,62 +392,6 @@ final class SettingsState: ObservableObject {
             self.checking = false
             self.updateText = text
             self.checkedAt = Date()
-        }
-    }
-}
-
-/// Who signed the running copy: shown under Updates, because updates accept only builds signed by Nook.
-struct Signature: Equatable {
-    enum Kind { case developerID, local, other, adHoc }
-    var kind: Kind
-    /// "Oleh Yaitsov" for Developer ID, the certificate name otherwise.
-    var name: String
-    var notarized: Bool
-
-    static let current: Signature = {
-        var me: SecCode?
-        var code: SecStaticCode?
-        var info: CFDictionary?
-        guard SecCodeCopySelf([], &me) == errSecSuccess, let me,
-              SecCodeCopyStaticCode(me, [], &code) == errSecSuccess, let code,
-              SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-              let leaf = ((info as? [String: Any])?[kSecCodeInfoCertificates as String] as? [SecCertificate])?.first
-        else { return Signature(kind: .adHoc, name: "", notarized: false) }
-        let subject = SecCertificateCopySubjectSummary(leaf) as String? ?? ""
-        var requirement: SecRequirement?
-        let notarized = SecRequirementCreateWithString("notarized" as CFString, [], &requirement) == errSecSuccess
-            && requirement.map { SecStaticCodeCheckValidity(code, [], $0) == errSecSuccess } == true
-        let prefix = "Developer ID Application: "
-        if subject.hasPrefix(prefix) {
-            // "Developer ID Application: Oleh Yaitsov (T2KMY2TV9W)" → "Oleh Yaitsov".
-            var name = String(subject.dropFirst(prefix.count))
-            if let team = name.range(of: " (", options: .backwards) { name = String(name[..<team.lowerBound]) }
-            return Signature(kind: .developerID, name: name, notarized: notarized)
-        }
-        return Signature(kind: subject == "Nook Local Signing" ? .local : .other, name: subject, notarized: notarized)
-    }()
-
-    var title: String {
-        switch kind {
-        case .developerID: "Developer ID · \(name)"
-        case .local: L("Локальный сертификат Nook")
-        case .other: name
-        case .adHoc: L("Без постоянной подписи")
-        }
-    }
-
-    var explanation: String {
-        switch kind {
-        case .developerID where notarized:
-            L("Подписано сертификатом разработчика и проверено Apple: macOS открывает Nook без предупреждений.")
-        case .developerID:
-            L("Подписано сертификатом разработчика. Эту сборку Apple ещё не проверяла (нотаризация), её собрали на этом Mac.")
-        case .local:
-            L("Подписано сертификатом «Nook Local Signing». macOS сохраняет разрешения между сборками.")
-        case .other:
-            L("Обновление установится, только если оно подписано так же, как эта копия.")
-        case .adHoc:
-            L("Сборка без сертификата: macOS будет заново спрашивать разрешения, а обновления с GitHub не установятся.")
         }
     }
 }
@@ -577,6 +526,10 @@ struct GeneralPane: View {
                             Text(screen.localizedName).tag(Optional(id))
                         }
                     }
+                }
+                SettingsPicker("Засыпать", subtitle: L("Вырез прячется и не открывается наведением, уведомления ждут конца игры. Сочетания клавиш работают."),
+                               selection: state.bind({ Settings.gameSleep }, state.setGameSleep)) {
+                    ForEach(GameSleep.allCases) { Text($0.title).tag($0) }
                 }
             }
             SettingsGroup("Горячие клавиши", footer: "Меняются в разделах «Поиск» и «Диктовка».") {
@@ -1100,15 +1053,26 @@ struct DictationPane: View {
                 }
             }
             SettingsGroup("Модель") {
-                SettingsPicker("Модель", selection: state.bind({ Settings.dictationModel }, {
+                SettingsPicker("Модель", subtitle: selected.detail, selection: state.bind({ Settings.dictationModel }, {
                     Settings.dictationModel = $0
                     dictation.unload()
                 })) {
                     ForEach(ParakeetModel.allCases) { model in
-                        Text("\(model.title) · \(Self.size(model.downloadSize))").tag(model).disabled(!model.isSupported)
+                        Text(verbatim: "\(model.title) · \(model.engine) · \(Self.size(model.downloadSize))").tag(model)
+                            .disabled(!model.isSupported)
                     }
                 }
                 modelStatus(selected)
+                if selected == .nemotron {
+                    // A named language is more accurate than the model's own guess.
+                    SettingsPicker("Язык речи", selection: state.bind({ Settings.dictationLanguage }, { Settings.dictationLanguage = $0 })) {
+                        Text("Определять самой").tag("auto")
+                        Text(verbatim: "Русский").tag("ru")
+                        Text(verbatim: "Українська").tag("uk")
+                        Text(verbatim: "English").tag("en")
+                        Text(verbatim: "Deutsch").tag("de")
+                    }
+                }
                 if let error = dictation.downloadError { SettingsLine { NoteText(note: .init(ok: false, text: error)) } }
                 SettingsPicker("Выгружать модель из памяти", selection: state.bind({ Settings.dictationUnloadMinutes }, {
                     Settings.dictationUnloadMinutes = $0
@@ -1293,28 +1257,23 @@ struct UpdatesPane: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        Button { state.checkUpdates() } label: {
-                            if state.checking {
-                                ProgressView().controlSize(.small).frame(width: 110)
-                            } else {
-                                Text("Проверить сейчас").frame(minWidth: 110)
+                        if let version = state.model.updater.readyVersion {
+                            Button { state.model.updater.install() } label: { Text(L("Установить 1.\(version)")).frame(minWidth: 110) }
+                                .buttonStyle(.borderedProminent)
+                        } else {
+                            Button { state.checkUpdates() } label: {
+                                if state.checking {
+                                    ProgressView().controlSize(.small).frame(width: 110)
+                                } else {
+                                    Text("Проверить сейчас").frame(minWidth: 110)
+                                }
                             }
+                            .disabled(state.checking)
                         }
-                        .disabled(state.checking)
                     }
                     .padding(.vertical, 4)
                 }
-                SettingsToggle("Обновлять автоматически", isOn: state.bind({ Settings.autoUpdate }, { Settings.autoUpdate = $0 }))
-            }
-            if let signature = state.signature {
-                SettingsGroup("Эта копия") {
-                    SettingsRow("Подпись") { Text(signature.title).foregroundStyle(.secondary) }
-                    if signature.kind == .developerID {
-                        SettingsRow("Проверка Apple") {
-                            StatusText(ok: signature.notarized, yes: L("Нотаризовано"), no: L("Нет"))
-                        }
-                    }
-                }
+                SettingsToggle("Проверять автоматически", isOn: state.bind({ Settings.autoUpdate }, { Settings.autoUpdate = $0 }))
             }
             SettingsGroup {
                 SettingsRow("Все версии и что нового") {

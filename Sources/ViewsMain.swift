@@ -128,14 +128,21 @@ struct RootView: View {
         case .expanded:
             return CGSize(width: NotchModel.expandedSize.width + 2 * NotchModel.ear, height: NotchModel.expandedSize.height)
         case .prompter: return NotchModel.prompterSize
-        case .island: return model.islandFrame
-        case .collapsed: return CGSize(width: model.collapsedWidth, height: model.notch.height)
+        // A flat shape wider than the camera is as tall as macOS says the notch is, and the housing's bottom edge
+        // showed under it: 1 pt more covers it. The bare notch stays as it is.
+        case .island:
+            let frame = model.islandFrame
+            return frame.height == model.notch.height ? CGSize(width: frame.width, height: frame.height + 1) : frame
+        case .collapsed:
+            return CGSize(width: model.collapsedWidth,
+                          height: model.notch.height + (model.slotWidth > 0 ? 1 : 0) + model.dictationTextHeight)
         }
     }
 
     private var radius: CGFloat {
         if mode == .island, let island = model.island { return model.dropMetrics(island).radius }
-        return mode == .collapsed ? 11 : (mode == .expanded ? 26 : 22)
+        if mode == .collapsed { return model.dictationTextHeight > 0 ? 20 : 11 }
+        return mode == .expanded ? 26 : 22
     }
 
     /// Drops leave the menu bar with softer 12 pt corners; the collapsed notch and the panel keep 8 pt.
@@ -178,8 +185,12 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
-        .environment(\.motionPaused, model.resting)
+        .environment(\.motionPaused, model.resting || model.hidden)
+        // Asleep for a game: not drawn at all, and its loops stand still.
+        .opacity(model.hidden ? 0 : 1)
+        .animation(Motion.smooth, value: model.hidden)
         .animation(spring, value: mode)
+        .animation(Motion.smooth, value: model.dictationTextHeight)
         .animation(Motion.smooth, value: model.islandHovered)
         .animation(Motion.morph, value: model.island?.id)
         .animation(.spring(response: 0.38, dampingFraction: 0.9), value: model.hasLiveActivity)
@@ -246,14 +257,26 @@ struct CollapsedView: View {
     @ObservedObject var model: NotchModel
 
     var body: some View {
-        HStack(spacing: 0) {
-            slot(leftSlot, toward: 1)
-            Spacer(minLength: model.notch.width)
-            slot(rightSlot, toward: -1)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                slot(leftSlot, toward: 1)
+                Spacer(minLength: model.notch.width)
+                slot(rightSlot, toward: -1)
+            }
+            .frame(height: model.notch.height)
+            .clipped()
+            .animation(Motion.morph, value: slotKey)
+            if model.dictationTextHeight > 0 {
+                // The newest words stay in view: the start of a long text gives way to "…".
+                Text(model.dictation.liveText)
+                    .font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(2).truncationMode(.head).lineSpacing(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, Spacing.under).padding(.horizontal, Spacing.edge - NotchModel.ear).padding(.bottom, 8)
+                    .frame(height: model.dictationTextHeight)
+                    .transition(.opacity)
+            }
         }
-        .frame(height: model.notch.height)
-        .clipped()
-        .animation(Motion.morph, value: slotKey)
     }
 
     /// Changes whenever the slots show something else, so the old content scales away and the new one in.
@@ -690,8 +713,9 @@ struct ExpandedView: View {
         }
         .onChange(of: model.tab) { _, _ in model.showPower = false }
         .background {
-            // Esc closes the panel whenever it has keyboard focus (opened by the hotkey or a click in a field).
-            Button("") { model.collapse() }
+            // Esc closes the panel whenever it has keyboard focus (opened by the hotkey or a click in a field); the
+            // clipboard opened from the search goes back there. This runs before a field's own Esc handling.
+            Button("") { model.escapeKey() }
                 .keyboardShortcut(.cancelAction)
                 .focusable(false)
                 .opacity(0)
