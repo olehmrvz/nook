@@ -407,7 +407,7 @@ final class NotchModel: ObservableObject {
             self.show(.focus(on: on, name: name, symbol: symbol), for: 2.5)
         }
         focus.start()
-        dictation.onRecording = { [weak self] on in
+        dictation.onDuck = { [weak self] on in
             guard let self else { return }
             if on, Settings.dictationDuck { self.volume.duck(to: 0.05) } else if !on { self.volume.restore() }
         }

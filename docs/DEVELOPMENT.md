@@ -198,8 +198,11 @@ Timer values are checked: more than 0 and at most 24 h.
   The microphone is an Audio Queue that records 16 kHz mono Float32 itself (`AudioInput`), opened and closed on
   `audioQueue`, never on the main thread: Core Audio can hang while it asks the hardware (AVAudioEngine's
   `inputNode` once froze the whole notch there). A watchdog gives up after 3 s: "The microphone isn't responding",
-  and dictation stays off until the queue answers. During recording other sound goes down to 5 %
-  (`VolumeControl.duck`) and comes back on the same device after it, also on quit.
+  and dictation stays off until the queue answers. Other sound fades down to 5 % in 0.3 s (`VolumeControl.duck`,
+  60 steps a second, eased at both ends) from the moment the hold key goes down (a combination, a double tap or
+  `--dictate`: from the start of recording), so the start sound plays at the lowered level. A tap or ⌥+letter fades
+  it back; after recording it fades back in 0.4 s on the same device, at once on quit, never over a level the person
+  set meanwhile.
   `~/Library/Application Support/Nook/dictation-debug.log` keeps the last ~200 lines: how long the microphone took to
   open, length, recognition time, characters, pasted or copied (never the text). Recognition on a serial queue: Parakeet TDT 0.6B v3 in Core ML
   (Preprocessor → Encoder → Decoder/JointDecisionv3, greedy TDT, 15 s windows cut at the quietest moment, decoder

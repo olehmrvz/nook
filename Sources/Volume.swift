@@ -18,8 +18,13 @@ final class VolumeControl {
     private var tap: CFMachPort?
     private var deviceListener: AudioObjectPropertyListenerBlock?
     private var valueListener: AudioObjectPropertyListenerBlock?
-    /// Lowered for dictation: the level before, the level set, and on which device.
+    /// Lowered for dictation: the level before, the level set, and on which device. Kept while the level fades back,
+    /// so a new press in that time goes down again from where it is and still comes back to `from`.
     private var ducked: (from: Float, to: Float, device: AudioObjectID)?
+    /// The fade that runs now: down for dictation or back up after it.
+    private var fade: (timer: Timer, down: Bool)?
+    private static let fadeDown: TimeInterval = 0.3
+    private static let fadeUp: TimeInterval = 0.4
     /// Nook's own change is not shown in the notch.
     private var silentUntil: Date?
 
@@ -41,7 +46,7 @@ final class VolumeControl {
         restoreAfterCrash()
         // Quitting while dictation listens (the menu, a restart for a new language, an update): the level comes back.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
-                                               queue: .main) { [weak self] _ in self?.restore() }
+                                               queue: .main) { [weak self] _ in self?.restore(fading: false) }
         if Settings.volumeHUD { installKeyTap() }
         if tap == nil && Settings.volumeHUD && !Settings.askedKeyAccess {
             // Once: macOS shows its own volume/brightness HUD until Nook may take the keys.
@@ -107,27 +112,79 @@ final class VolumeControl {
 
     // MARK: Ducking
 
-    /// Down to `level` while dictation listens; nothing to do when it is already this low or muted.
+    /// Down to `level` while dictation listens, in a short fade that starts at once; nothing to do when it is already
+    /// this low or muted.
     func duck(to level: Float) {
-        guard ducked == nil, let now = current, !now.muted, now.level > level + 0.001 else { return }
-        var target = level
-        silentUntil = Date().addingTimeInterval(0.5)
-        guard AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &target) == noErr
-        else { return }
-        let lowered = (from: now.level, to: current?.level ?? level, device: device)
+        if let ducked {
+            // Still coming back after the last recording: down again from where it is.
+            if fade?.down == false { lower(ducked) }
+            return
+        }
+        guard let now = current, !now.muted, now.level > level + 0.001, canSetVolume else { return }
+        let lowered = (from: now.level, to: level, device: device)
         ducked = lowered
-        if let uid = Self.uid(of: lowered.device) {
-            Settings.duckedVolume = ["from": Double(lowered.from), "to": Double(lowered.to), "uid": uid]
+        save(lowered)
+        lower(lowered)
+    }
+
+    private func lower(_ lowered: (from: Float, to: Float, device: AudioObjectID)) {
+        guard let now = state(of: lowered.device) else { return }
+        run(on: lowered.device, from: now.level, to: lowered.to, down: true) { [weak self] in
+            // The device may round the level: `restore` compares with the level it really took.
+            guard let self, var ducked = self.ducked, let reached = self.state(of: ducked.device) else { return }
+            ducked.to = reached.level
+            self.ducked = ducked
+            self.save(ducked)
         }
     }
 
     /// Back to the level before on the device that was lowered, also when the output changed in between (AirPods
-    /// came in); not when the person set another level on that device.
-    func restore() {
-        guard let ducked else { return }
-        self.ducked = nil
+    /// came in); not when the person set another level on that device. At once, without a fade, when Nook quits.
+    func restore(fading: Bool = true) {
+        guard let ducked, fade?.down != false || !fading else { return }
+        // During a fade the level is Nook's own; after it, only the level Nook left counts.
+        let ours = fade != nil || state(of: ducked.device).map { abs($0.level - ducked.to) < 0.01 } == true
+        stopFade()
+        guard ours, fading, let now = state(of: ducked.device) else {
+            if ours { write(ducked.from, on: ducked.device) }
+            clearDuck()
+            return
+        }
+        run(on: ducked.device, from: now.level, to: ducked.from, down: false) { [weak self] in self?.clearDuck() }
+    }
+
+    private func clearDuck() {
+        ducked = nil
         Settings.duckedVolume = nil
-        set(ducked.from, on: ducked.device, ifStill: ducked.to)
+    }
+
+    private func save(_ lowered: (from: Float, to: Float, device: AudioObjectID)) {
+        guard let uid = Self.uid(of: lowered.device) else { return }
+        Settings.duckedVolume = ["from": Double(lowered.from), "to": Double(lowered.to), "uid": uid]
+    }
+
+    /// Small steps about 60 times a second, slow at both ends so neither the start nor the stop is heard as a jump.
+    /// The timer runs only for the fade.
+    private func run(on device: AudioObjectID, from start: Float, to end: Float, down: Bool,
+                     then done: @escaping () -> Void) {
+        stopFade()
+        let began = Date()
+        let seconds = down ? Self.fadeDown : Self.fadeUp
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let t = Float(min(1, Date().timeIntervalSince(began) / seconds))
+            self.write(start + (end - start) * t * t * (3 - 2 * t), on: device)
+            guard t >= 1 else { return }
+            self.stopFade()
+            done()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        fade = (timer, down)
+    }
+
+    private func stopFade() {
+        fade?.timer.invalidate()
+        fade = nil
     }
 
     /// Nook ended while dictation had the output lowered (a crash, a kill, `install.sh`): the level comes back
@@ -142,6 +199,10 @@ final class VolumeControl {
 
     private func set(_ level: Float, on device: AudioObjectID, ifStill expected: Float) {
         guard let now = state(of: device), abs(now.level - expected) < 0.01 else { return }
+        write(level, on: device)
+    }
+
+    private func write(_ level: Float, on device: AudioObjectID) {
         var level = level
         if device == self.device { silentUntil = Date().addingTimeInterval(0.5) }
         AudioObjectSetPropertyData(device, &Self.volume, 0, nil, UInt32(MemoryLayout<Float32>.size), &level)

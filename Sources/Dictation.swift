@@ -128,8 +128,10 @@ final class Dictation: ObservableObject {
     var onNotice: ((_ title: String, _ detail: String, _ settings: Bool) -> Void)?
     /// The level meter in the notch: 0…1, about 12 times a second while recording.
     var onLevel: ((Float) -> Void)?
-    /// On the main thread: the microphone is on (true, after the start sound) or off again.
-    var onRecording: ((Bool) -> Void)?
+    /// On the main thread: other sound goes down (true: the key is held for a recording, or the microphone is on) or
+    /// comes back.
+    var onDuck: ((Bool) -> Void)?
+    private var ducking = false
 
     /// The engine lives here; loading and recognition never run on the main thread.
     private let queue = DispatchQueue(label: "nook.dictation", qos: .userInitiated)
@@ -233,6 +235,10 @@ final class Dictation: ObservableObject {
         if let watchSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), watchSource, .commonModes) }
         watch = nil
         watchSource = nil
+        // A key held now is never let go for Nook: the sound it lowered comes back.
+        holdWork?.cancel()
+        keyDownAt = nil
+        if phase == .idle { duck(false) }
     }
 
     private func handle(_ type: CGEventType, _ event: CGEvent) {
@@ -245,7 +251,7 @@ final class Dictation: ObservableObject {
             // keyboard). Also after a slow start: the recording that began is dropped.
             chord = true
             holdWork?.cancel()
-            if Settings.dictationMode == .hold && phase == .recording { cancel() }
+            if Settings.dictationMode == .hold && phase == .recording { cancel() } else if phase == .idle { duck(false) }
         }
     }
 
@@ -253,9 +259,12 @@ final class Dictation: ObservableObject {
         keyDownAt = Date()
         chord = false
         guard Settings.dictationMode == .hold, phase == .idle else { return }
+        // The sound goes down with the key, not after the wait and the start sound; a shortcut or a tap brings it back.
+        duck(true)
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.keyDownAt != nil, !self.chord else { return }
             self.begin()
+            if self.phase != .recording { self.duck(false) }
         }
         holdWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
@@ -267,7 +276,7 @@ final class Dictation: ObservableObject {
         holdWork?.cancel()
         switch Settings.dictationMode {
         case .hold:
-            if phase == .recording { finish() }
+            if phase == .recording { finish() } else if phase == .idle { duck(false) }
         case .toggle:
             guard let downAt, !chord, Date().timeIntervalSince(downAt) < 0.3 else { lastTap = nil; return }
             if phase == .recording { finish(); lastTap = nil; return }
@@ -373,6 +382,7 @@ final class Dictation: ObservableObject {
         }
         phase = .recording
         startedAt = Date()
+        duck(true)
         installKeys()
         limit = Timer.scheduledTimer(withTimeInterval: Self.maxSeconds, repeats: false) { [weak self] _ in self?.finish() }
         let watchdog = DispatchWorkItem { [weak self] in
@@ -399,11 +409,6 @@ final class Dictation: ObservableObject {
                     self.openedSession = current
                     if self.session == current, self.phase == .recording {
                         Self.play(Settings.dictationStartSound)
-                        // Quieter after the start sound, which plays at the usual volume.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.soundLength) {
-                            guard self.session == current, self.phase == .recording else { return }
-                            self.onRecording?(true)
-                        }
                     } else if self.session == current, self.phase == .idle {
                         // The watchdog gave up first: nobody else closes it.
                         self.audioQueue.async { self.closeMicrophone() }
@@ -501,6 +506,12 @@ final class Dictation: ObservableObject {
         }
     }
 
+    private func duck(_ on: Bool) {
+        guard ducking != on else { return }
+        ducking = on
+        onDuck?(on)
+    }
+
     /// On `audioQueue`.
     private func closeMicrophone() {
         microphone?.close()
@@ -509,7 +520,7 @@ final class Dictation: ObservableObject {
 
     /// On the main thread: the keys, the time limit, the timer in the notch and the lowered volume.
     private func endRecording() {
-        onRecording?(false)
+        duck(false)
         removeKeys()
         limit?.invalidate()
         limit = nil
@@ -710,7 +721,6 @@ final class Dictation: ObservableObject {
         .filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
 
     private static var playing: NSSound?
-    private static var soundLength: TimeInterval { min(1, playing?.duration ?? 0) }
 
     /// One sound at a time: picking sounds one after another in Settings does not pile them up.
     static func play(_ name: String) {
