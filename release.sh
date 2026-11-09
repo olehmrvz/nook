@@ -77,9 +77,9 @@ if [ $LOCAL = 0 ]; then
   mkdir -p "$DMG_DIR"
   ditto "$APP" "$DMG_DIR/Nook.app"
   ln -s /Applications "$DMG_DIR/Applications"
-  # The window's picture and layout from dmg/make-assets.sh (committed): a lime tile like the icon, an arrow to
-  # Applications. The layout finds the picture by volume name and path, so the name stays "Nook" and the file system
-  # HFS+. Without them the image opens as a plain Finder window.
+  # The window's picture and layout from dmg/make-assets.sh (committed): a dark room lit from the notch, glowing
+  # chevrons from Nook to Applications. The layout finds the picture by volume name and path, so the name stays
+  # "Nook" and the file system HFS+. Without them the image opens as a plain Finder window.
   if [ -f "$PROJECT_DIR/dmg/DS_Store" ] && [ -f "$PROJECT_DIR/dmg/background.tiff" ]; then
     mkdir -p "$DMG_DIR/.background"
     cp "$PROJECT_DIR/dmg/background.tiff" "$DMG_DIR/.background/background.tiff"
@@ -87,8 +87,20 @@ if [ $LOCAL = 0 ]; then
   else
     echo "No DMG layout (dmg/DS_Store, dmg/background.tiff): the window stays plain. Run dmg/make-assets.sh and commit them." >&2
   fi
-  hdiutil create -quiet -volname Nook -srcfolder "$DMG_DIR" -fs HFS+ -format UDZO -ov "$DMG"
-  rm -rf "$DMG_DIR"
+  # The disk's own icon (window title, path bar, Desktop): .VolumeIcon.icns plus the volume's custom-icon flag.
+  # hdiutil does not carry the flag over from the folder, so the image is made writable, flagged, then compressed.
+  cp "$APP/Contents/Resources/AppIcon.icns" "$DMG_DIR/.VolumeIcon.icns"
+  RW="$PROJECT_DIR/.build/Nook-rw.dmg"
+  MOUNT="$PROJECT_DIR/.build/dmg-mount"
+  rm -rf "$RW" "$MOUNT"
+  hdiutil create -quiet -volname Nook -srcfolder "$DMG_DIR" -fs HFS+ -format UDRW -ov "$RW"
+  mkdir -p "$MOUNT"
+  hdiutil attach -quiet -readwrite -noverify -noautoopen -nobrowse -mountpoint "$MOUNT" "$RW"
+  SetFile -a C "$MOUNT" && rm -rf "$MOUNT/.fseventsd" \
+    || { hdiutil detach -quiet "$MOUNT"; echo "Could not set the disk icon; release cancelled." >&2; exit 1; }
+  hdiutil detach -quiet "$MOUNT"
+  hdiutil convert -quiet "$RW" -format UDZO -ov -o "$DMG"
+  rm -rf "$DMG_DIR" "$RW" "$MOUNT"
   codesign --sign "$IDENTITY" --timestamp "$DMG"
   notarize "$DMG"
   xcrun stapler staple -q "$DMG"

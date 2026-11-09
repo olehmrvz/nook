@@ -36,12 +36,15 @@ One-time setup on the release Mac (needs the paid Apple Developer Program; the a
 notarizes `Nook.dmg`, checks both with `spctl`, and publishes. Notarization takes a few minutes; on a
 rejection the script prints Apple's log and publishes nothing.
 
-The DMG window (a lime tile like the icon, an arrow from Nook to Applications) comes from `dmg/background.tiff`
-and `dmg/DS_Store`, which `release.sh` copies into the image (volume "Nook", HFS+: the layout finds the picture by
-volume name and path). `dmg/make-assets.sh` redraws the picture and has Finder record the layout on a scratch image
-(the first run asks for permission to control Finder); commit both files afterwards. Without them `release.sh` warns
-and the image opens as a plain Finder window. Finder keeps black icon names on a window with a picture,
-in Dark Mode too, so the picture stays light.
+The DMG window (a dark room lit from the notch: a drop saying "Drag Nook to Applications", glowing chevrons from
+Nook to Applications, a dashed frame around Applications) comes from `dmg/background.tiff` and `dmg/DS_Store`, which
+`release.sh` copies into the image (volume "Nook", HFS+: the layout finds the picture by volume name and path).
+`dmg/make-assets.sh` redraws the picture and has Finder record the layout on a scratch image (the first run asks for
+permission to control Finder); commit both files afterwards. Without them `release.sh` warns and the image opens as a
+plain Finder window. Finder keeps black icon names on a window with a picture, in Dark Mode too, so each name sits on
+a light plate drawn in the picture; the bottom 28 pt may hide under Finder's path bar (a global Finder setting).
+`release.sh` also gives the disk Nook's icon (`.VolumeIcon.icns` and the custom-icon flag, set on a writable copy
+before compressing: `hdiutil create -srcfolder` drops the flag).
 
 Copies released before Developer ID (v10 and earlier, signed with "Nook Local Signing") accept only that
 certificate. Move them once with a bridge release: `./release.sh --local-signing` (old signing, not notarized)
