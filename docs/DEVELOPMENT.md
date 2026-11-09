@@ -201,8 +201,9 @@ Timer values are checked: more than 0 and at most 24 h.
   and dictation stays off until the queue answers. Other sound fades down to 5 % in 0.3 s (`VolumeControl.duck`,
   60 steps a second, eased at both ends) from the moment the hold key goes down (a combination, a double tap or
   `--dictate`: from the start of recording), so the start sound plays at the lowered level. A tap or ⌥+letter fades
-  it back; after recording it fades back in 0.4 s on the same device, at once on quit, never over a level the person
-  set meanwhile.
+  it back; after recording it fades back in 0.4 s on the same device (the end sound waits for that), at once on quit,
+  never over a level the person set meanwhile. During a fade only Nook's own volume keys count as such a change: a
+  level read back from AirPods can lag behind the fade, so comparing levels would stop fades by mistake.
   `~/Library/Application Support/Nook/dictation-debug.log` keeps the last ~200 lines: how long the microphone took to
   open, length, recognition time, characters, pasted or copied (never the text). Recognition on a serial queue: Parakeet TDT 0.6B v3 in Core ML
   (Preprocessor → Encoder → Decoder/JointDecisionv3, greedy TDT, 15 s windows cut at the quietest moment, decoder

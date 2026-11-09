@@ -129,9 +129,11 @@ final class Dictation: ObservableObject {
     /// The level meter in the notch: 0…1, about 12 times a second while recording.
     var onLevel: ((Float) -> Void)?
     /// On the main thread: other sound goes down (true: the key is held for a recording, or the microphone is on) or
-    /// comes back.
-    var onDuck: ((Bool) -> Void)?
+    /// comes back; returns the seconds until it is back up.
+    var onDuck: ((Bool) -> TimeInterval)?
     private var ducking = false
+    /// When the other sound is back up after a recording: the end sound waits for it.
+    private var soundBack = Date.distantPast
 
     /// The engine lives here; loading and recognition never run on the main thread.
     private let queue = DispatchQueue(label: "nook.dictation", qos: .userInitiated)
@@ -451,7 +453,11 @@ final class Dictation: ObservableObject {
             phase = .idle
             return
         }
-        Self.play(Settings.dictationEndSound)
+        // At the lowered level the end sound would hardly be heard.
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, soundBack.timeIntervalSinceNow)) { [weak self] in
+            guard self?.phase != .recording else { return }
+            Self.play(Settings.dictationEndSound)
+        }
         let model = Settings.dictationModel
         let target = self.target
         queue.async { [weak self] in
@@ -506,10 +512,11 @@ final class Dictation: ObservableObject {
         }
     }
 
-    private func duck(_ on: Bool) {
-        guard ducking != on else { return }
+    @discardableResult
+    private func duck(_ on: Bool) -> TimeInterval {
+        guard ducking != on else { return 0 }
         ducking = on
-        onDuck?(on)
+        return onDuck?(on) ?? 0
     }
 
     /// On `audioQueue`.
@@ -520,7 +527,7 @@ final class Dictation: ObservableObject {
 
     /// On the main thread: the keys, the time limit, the timer in the notch and the lowered volume.
     private func endRecording() {
-        duck(false)
+        soundBack = Date().addingTimeInterval(duck(false))
         removeKeys()
         limit?.invalidate()
         limit = nil

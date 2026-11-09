@@ -21,8 +21,8 @@ final class VolumeControl {
     /// Lowered for dictation: the level before, the level set, and on which device. Kept while the level fades back,
     /// so a new press in that time goes down again from where it is and still comes back to `from`.
     private var ducked: (from: Float, to: Float, device: AudioObjectID)?
-    /// The fade that runs now: down for dictation or back up after it.
-    private var fade: (timer: Timer, down: Bool)?
+    /// The fade that runs now: down for dictation or back up after it, and when it ends.
+    private var fade: (timer: Timer, down: Bool, ends: Date)?
     private static let fadeDown: TimeInterval = 0.3
     private static let fadeUp: TimeInterval = 0.4
     /// Nook's own change is not shown in the notch.
@@ -140,17 +140,21 @@ final class VolumeControl {
 
     /// Back to the level before on the device that was lowered, also when the output changed in between (AirPods
     /// came in); not when the person set another level on that device. At once, without a fade, when Nook quits.
-    func restore(fading: Bool = true) {
-        guard let ducked, fade?.down != false || !fading else { return }
+    /// Returns the seconds until the level is back (0: nothing to wait for).
+    @discardableResult
+    func restore(fading: Bool = true) -> TimeInterval {
+        guard let ducked else { return 0 }
+        if let fade, !fade.down, fading { return max(0, fade.ends.timeIntervalSinceNow) }
         // During a fade the level is Nook's own; after it, only the level Nook left counts.
         let ours = fade != nil || state(of: ducked.device).map { abs($0.level - ducked.to) < 0.01 } == true
         stopFade()
         guard ours, fading, let now = state(of: ducked.device) else {
             if ours { write(ducked.from, on: ducked.device) }
             clearDuck()
-            return
+            return 0
         }
         run(on: ducked.device, from: now.level, to: ducked.from, down: false) { [weak self] in self?.clearDuck() }
+        return Self.fadeUp
     }
 
     private func clearDuck() {
@@ -179,7 +183,7 @@ final class VolumeControl {
             done()
         }
         RunLoop.main.add(timer, forMode: .common)
-        fade = (timer, down)
+        fade = (timer, down, began.addingTimeInterval(seconds))
     }
 
     private func stopFade() {
@@ -239,6 +243,11 @@ final class VolumeControl {
             var muted: UInt32 = now.muted ? 0 : 1
             AudioObjectSetPropertyData(device, &Self.mute, 0, nil, UInt32(MemoryLayout<UInt32>.size), &muted)
         } else {
+            // The person takes the level: a fade stops here, and dictation leaves the level as set.
+            if ducked?.device == device {
+                stopFade()
+                clearDuck()
+            }
             let step: Float = fine ? 1 / 64 : 1 / 16
             let target = now.level + (key == NX_KEYTYPE_SOUND_UP ? step : -step)
             var level = max(0, min(1, (target / step).rounded() * step))
