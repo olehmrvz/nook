@@ -92,15 +92,22 @@ if [ $LOCAL = 0 ]; then
   cp "$APP/Contents/Resources/AppIcon.icns" "$DMG_DIR/.VolumeIcon.icns"
   RW="$PROJECT_DIR/.build/Nook-rw.dmg"
   MOUNT="$PROJECT_DIR/.build/dmg-mount"
-  rm -rf "$RW" "$MOUNT"
+  # A run that stopped while the writable copy was attached left it there: detach it, and never delete inside it.
+  hdiutil detach -quiet -force "$MOUNT" 2>/dev/null || true
+  [ ! -d "$MOUNT" ] || rmdir "$MOUNT" \
+    || { echo "$MOUNT is still in use: eject it first; release cancelled." >&2; exit 1; }
+  rm -f "$RW"
   hdiutil create -quiet -volname Nook -srcfolder "$DMG_DIR" -fs HFS+ -format UDRW -ov "$RW"
   mkdir -p "$MOUNT"
+  trap 'hdiutil detach -quiet -force "$MOUNT" 2>/dev/null || true' EXIT
   hdiutil attach -quiet -readwrite -noverify -noautoopen -nobrowse -mountpoint "$MOUNT" "$RW"
   SetFile -a C "$MOUNT" && rm -rf "$MOUNT/.fseventsd" \
-    || { hdiutil detach -quiet "$MOUNT"; echo "Could not set the disk icon; release cancelled." >&2; exit 1; }
-  hdiutil detach -quiet "$MOUNT"
+    || { echo "Could not set the disk icon; release cancelled." >&2; exit 1; }
+  hdiutil detach -quiet "$MOUNT" || hdiutil detach -quiet -force "$MOUNT"
+  trap - EXIT
+  rmdir "$MOUNT"
   hdiutil convert -quiet "$RW" -format UDZO -ov -o "$DMG"
-  rm -rf "$DMG_DIR" "$RW" "$MOUNT"
+  rm -rf "$DMG_DIR" "$RW"
   codesign --sign "$IDENTITY" --timestamp "$DMG"
   notarize "$DMG"
   xcrun stapler staple -q "$DMG"

@@ -191,9 +191,13 @@ func render(scale: CGFloat, to path: String) {
     zone.stroke()
 
     // Plates under the names: Finder writes them in black on any picture, in Dark Mode too.
-    // Name centre = icon centre + 83.5 pt at icon size 128, text size 13.
+    // Name centre = icon centre + 83.5 pt at icon size 128, text size 13. Measured, wide enough for "Nook.app"
+    // (Finder → Show all filename extensions), 14.5 pt of plate on each side.
     let nameY = iconY + 83.5
-    for (x, w, color) in [(nookX, 58.0, lime), (appsX, 104.0, NSColor(white: 0.93, alpha: 1))] {
+    func plate(_ name: String) -> CGFloat {
+        (NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 13)]).size().width + 29).rounded()
+    }
+    for (x, w, color) in [(nookX, plate("Nook.app"), lime), (appsX, plate("Applications"), NSColor(white: 0.93, alpha: 1))] {
         let plate = NSBezierPath(roundedRect: NSRect(x: x - w / 2, y: flip(nameY) - 11, width: w, height: 22),
                                  xRadius: 11, yRadius: 11)
         NSGraphicsContext.saveGraphicsState()
